@@ -18,7 +18,7 @@ export default async function ReportsPage() {
   }
 
   // Pobierz wszystkie sesje z pełnymi danymi
-  const { data: sessions } = await supabase
+  const { data: rawSessions } = await supabase
     .from('tutoring_sessions')
     .select(`
       id,
@@ -45,6 +45,29 @@ export default async function ReportsPage() {
     `)
     .order('session_date', { ascending: false })
 
+  // Przekształć dane do oczekiwanego formatu
+  const sessions = rawSessions?.map((session: {
+    id: string;
+    session_date: string;
+    duration_minutes: number;
+    students: { id: string; first_name: string; last_name: string }[] | null;
+    profiles: { id: string; full_name: string }[] | null;
+    student_assignments: {
+      subjects: { id: string; name: string }[] | null;
+      subject_levels: { price_per_hour: number }[] | null;
+    }[] | null;
+  }) => ({
+    id: session.id,
+    session_date: session.session_date,
+    duration_minutes: session.duration_minutes,
+    students: session.students?.[0] || { id: '', first_name: '', last_name: '' },
+    profiles: session.profiles?.[0] || { id: '', full_name: '' },
+    student_assignments: {
+      subjects: session.student_assignments?.[0]?.subjects?.[0] || { id: '', name: '' },
+      subject_levels: session.student_assignments?.[0]?.subject_levels?.[0] || { price_per_hour: 0 },
+    },
+  })) || []
+
   // Pobierz listę wszystkich tutorów i uczniów dla filtrów
   const [tutors, students, subjects] = await Promise.all([
     supabase.from('profiles').select('id, full_name').eq('role', 'tutor').order('full_name'),
@@ -62,7 +85,7 @@ export default async function ReportsPage() {
       </div>
 
       <ReportsView
-        sessions={sessions || []}
+        sessions={sessions}
         tutors={tutors.data || []}
         students={students.data || []}
         subjects={subjects.data || []}

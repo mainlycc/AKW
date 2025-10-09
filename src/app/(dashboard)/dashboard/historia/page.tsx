@@ -18,7 +18,7 @@ export default async function HistoryPage() {
   }
 
   // Pobierz wszystkie sesje tutora
-  const { data: sessions } = await supabase
+  const { data: rawSessions } = await supabase
     .from('tutoring_sessions')
     .select(`
       id,
@@ -44,6 +44,29 @@ export default async function HistoryPage() {
     .eq('tutor_id', profile.id)
     .order('session_date', { ascending: false })
 
+  // Przekształć dane do oczekiwanego formatu
+  const sessions = rawSessions?.map((session: {
+    id: string;
+    session_date: string;
+    duration_minutes: number;
+    notes: string | null;
+    students: { id: string; first_name: string; last_name: string }[] | null;
+    student_assignments: {
+      subjects: { id: string; name: string }[] | null;
+      subject_levels: { level_name: string; price_per_hour: number }[] | null;
+    }[] | null;
+  }) => ({
+    id: session.id,
+    session_date: session.session_date,
+    duration_minutes: session.duration_minutes,
+    notes: session.notes,
+    students: session.students?.[0] || { id: '', first_name: '', last_name: '' },
+    student_assignments: {
+      subjects: session.student_assignments?.[0]?.subjects?.[0] || { id: '', name: '' },
+      subject_levels: session.student_assignments?.[0]?.subject_levels?.[0] || { level_name: '', price_per_hour: 0 },
+    },
+  })) || []
+
   return (
     <div className="space-y-4">
       <div>
@@ -53,7 +76,7 @@ export default async function HistoryPage() {
         </p>
       </div>
 
-      <HistoryView sessions={sessions || []} />
+      <HistoryView sessions={sessions} />
     </div>
   )
 }

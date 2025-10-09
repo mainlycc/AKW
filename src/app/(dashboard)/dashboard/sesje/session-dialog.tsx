@@ -46,8 +46,6 @@ export function SessionDialog({ open, onClose, assignments, userId }: SessionDia
     notes: '',
   })
 
-  const selectedAssignment = assignments.find((a) => a.id === formData.assignment_id)
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     

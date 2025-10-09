@@ -14,7 +14,7 @@ export default async function DashboardPage() {
   const isTutor = profile.role === 'tutor'
 
   // Pobierz statystyki
-  let stats = {
+  const stats = {
     studentsCount: 0,
     tutorsCount: 0,
     sessionsThisMonth: 0,

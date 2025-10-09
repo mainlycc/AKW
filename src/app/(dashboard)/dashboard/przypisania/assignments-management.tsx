@@ -82,7 +82,7 @@ export function AssignmentsManagement({
   }
 
   const getStatusBadge = (status: string) => {
-    const variants = {
+    const variants: Record<string, "default" | "secondary" | "destructive"> = {
       active: 'default',
       completed: 'secondary',
       cancelled: 'destructive',
@@ -93,7 +93,7 @@ export function AssignmentsManagement({
       cancelled: 'Anulowane',
     }
     return (
-      <Badge variant={variants[status as keyof typeof variants] as any}>
+      <Badge variant={variants[status as keyof typeof variants]}>
         {labels[status as keyof typeof labels]}
       </Badge>
     )

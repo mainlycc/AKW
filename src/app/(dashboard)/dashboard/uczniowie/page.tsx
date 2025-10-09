@@ -1,8 +1,6 @@
 import { createClient } from "@/lib/supabase/server"
 import { getUserProfile } from "@/lib/actions/auth"
 import { StudentsTable } from "./students-table"
-import { Button } from "@/components/ui/button"
-import Link from "next/link"
 
 export default async function StudentsPage() {
   const profile = await getUserProfile()

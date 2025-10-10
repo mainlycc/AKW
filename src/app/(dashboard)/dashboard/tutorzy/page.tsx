@@ -2,6 +2,15 @@ import { createClient } from "@/lib/supabase/server"
 import { getUserProfile } from "@/lib/actions/auth"
 import { TutorsTable } from "./tutors-table"
 
+interface TutorSubjectLevel {
+  id: string
+  tutor_id: string
+  subject_id: string
+  subject_level_id: string
+  subjects: { id: string; name: string } | null
+  subject_levels: { id: string; level_name: string; price_per_hour: number } | null
+}
+
 export default async function TutorsPage() {
   const profile = await getUserProfile()
   const supabase = await createClient()
@@ -68,12 +77,12 @@ export default async function TutorsPage() {
     `)
 
   // Group by tutor_id
-  const tutorSubjects: Record<string, typeof allTutorSubjects> = {}
+  const tutorSubjects: Record<string, TutorSubjectLevel[]> = {}
   allTutorSubjects?.forEach((ts) => {
     if (!tutorSubjects[ts.tutor_id]) {
       tutorSubjects[ts.tutor_id] = []
     }
-    tutorSubjects[ts.tutor_id]!.push(ts)
+    tutorSubjects[ts.tutor_id]!.push(ts as TutorSubjectLevel)
   })
 
   return (

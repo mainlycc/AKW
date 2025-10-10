@@ -14,6 +14,8 @@ import {
   IconReceipt,
   IconClockDollar,
   IconMailPlus,
+  IconCalendarTime,
+  IconCalendarCheck,
 } from "@tabler/icons-react"
 
 import { NavMain } from "@/components/nav-main"
@@ -64,6 +66,11 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
       icon: IconMailPlus,
     },
     {
+      title: "Dostępność tutorów",
+      url: "/dashboard/dostepnosc-tutorow",
+      icon: IconCalendarCheck,
+    },
+    {
       title: "Przedmioty",
       url: "/dashboard/przedmioty",
       icon: IconBook,
@@ -100,6 +107,11 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
       title: "Profil",
       url: "/dashboard/profil",
       icon: IconUserCircle,
+    },
+    {
+      title: "Kalendarz",
+      url: "/dashboard/kalendarz",
+      icon: IconCalendarTime,
     },
     {
       title: "Moi Uczniowie",

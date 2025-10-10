@@ -2,6 +2,29 @@ import { getUserProfile } from "@/lib/actions/auth"
 import { createClient } from "@/lib/supabase/server"
 import { ReportsManagement } from "./reports-management"
 
+interface MonthlyReport {
+  id: string
+  month: number
+  year: number
+  status: string
+  total_hours: number
+  total_amount: number | null
+  submitted_at: string | null
+  profiles: {
+    id: string
+    full_name: string
+    hourly_rate: number | null
+  }
+  monthly_report_entries: {
+    id: string
+    hours: number
+    students: {
+      first_name: string
+      last_name: string
+    }
+  }[]
+}
+
 export default async function TutorReportsPage() {
   const profile = await getUserProfile()
   const supabase = await createClient()
@@ -56,7 +79,7 @@ export default async function TutorReportsPage() {
   return (
     <div className="space-y-4">
       <ReportsManagement
-        reports={reports || []}
+        reports={(reports as unknown as MonthlyReport[]) || []}
         tutors={tutors || []}
         adminId={profile.id}
       />

@@ -3,6 +3,34 @@ import { getUserProfile } from "@/lib/actions/auth"
 import { getTutorSubjectLevels } from "@/lib/actions/tutor"
 import { StudentsTable } from "./students-table"
 
+interface Parent {
+  id: string
+  first_name: string
+  last_name: string
+  email: string
+  phone: string | null
+  parent_type: string
+}
+
+interface SubjectLevel {
+  id: string
+  level_name: string
+  level_order: number
+  price_per_hour: number
+}
+
+interface Subject {
+  id: string
+  name: string
+  subject_levels: SubjectLevel[]
+}
+
+interface TutorSubjectLevel {
+  subject_level_id: string
+  subjects: { id: string; name: string } | null
+  subject_levels: { id: string; level_name: string } | null
+}
+
 export default async function StudentsPage() {
   const profile = await getUserProfile()
   const supabase = await createClient()
@@ -14,7 +42,8 @@ export default async function StudentsPage() {
   const isAdmin = profile.role === 'admin'
   const isTutor = profile.role === 'tutor'
 
-  let students = []
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let students: any[] = []
 
   if (isAdmin) {
     const { data } = await supabase
@@ -104,9 +133,9 @@ export default async function StudentsPage() {
   }
 
   // Get all parents and subjects for dialog
-  let allParents: any[] = []
-  let allSubjects: any[] = []
-  let tutorSubjectLevels: any[] = []
+  let allParents: Parent[] = []
+  let allSubjects: Subject[] = []
+  let tutorSubjectLevels: TutorSubjectLevel[] = []
 
   if (isAdmin) {
     const [parentsData, subjectsData] = await Promise.all([
@@ -123,10 +152,10 @@ export default async function StudentsPage() {
       `).order('name'),
     ])
 
-    allParents = parentsData.data || []
-    allSubjects = subjectsData.data || []
+    allParents = (parentsData.data as unknown as Parent[]) || []
+    allSubjects = (subjectsData.data as unknown as Subject[]) || []
   } else if (isTutor) {
-    tutorSubjectLevels = await getTutorSubjectLevels(profile.id)
+    tutorSubjectLevels = (await getTutorSubjectLevels(profile.id)) as unknown as TutorSubjectLevel[]
   }
 
   return (

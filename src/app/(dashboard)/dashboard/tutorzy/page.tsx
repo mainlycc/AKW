@@ -82,7 +82,7 @@ export default async function TutorsPage() {
     if (!tutorSubjects[ts.tutor_id]) {
       tutorSubjects[ts.tutor_id] = []
     }
-    tutorSubjects[ts.tutor_id]!.push(ts as TutorSubjectLevel)
+    tutorSubjects[ts.tutor_id]!.push(ts as unknown as TutorSubjectLevel)
   })
 
   return (

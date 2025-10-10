@@ -104,9 +104,9 @@ export default async function StudentsPage() {
   }
 
   // Get all parents and subjects for dialog
-  let allParents = []
-  let allSubjects = []
-  let tutorSubjectLevels = []
+  let allParents: any[] = []
+  let allSubjects: any[] = []
+  let tutorSubjectLevels: any[] = []
 
   if (isAdmin) {
     const [parentsData, subjectsData] = await Promise.all([

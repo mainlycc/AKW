@@ -25,7 +25,14 @@ interface Parent {
   email: string
   phone: string | null
   parent_type: ParentType
-  student_parents: { student_id: string }[]
+  student_parents: { 
+    student_id: string
+    students: { 
+      id: string
+      first_name: string
+      last_name: string
+    } | null
+  }[]
 }
 
 interface ParentsTableProps {
@@ -146,7 +153,7 @@ export function ParentsTable({ parents }: ParentsTableProps) {
               <TableHead>Typ</TableHead>
               <TableHead>Email</TableHead>
               <TableHead>Telefon</TableHead>
-              <TableHead className="text-right">Liczba dzieci</TableHead>
+              <TableHead>Dzieci</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -174,7 +181,21 @@ export function ParentsTable({ parents }: ParentsTableProps) {
                   <TableCell>{parentTypeLabels[parent.parent_type]}</TableCell>
                   <TableCell>{parent.email}</TableCell>
                   <TableCell>{parent.phone || '-'}</TableCell>
-                  <TableCell className="text-right">{parent.student_parents.length}</TableCell>
+                  <TableCell>
+                    {parent.student_parents.length === 0 ? (
+                      <span className="text-muted-foreground">Brak dzieci</span>
+                    ) : (
+                      <div className="flex flex-col gap-1">
+                        {parent.student_parents.map((sp) => (
+                          sp.students ? (
+                            <span key={sp.student_id} className="text-sm">
+                              {sp.students.first_name} {sp.students.last_name}
+                            </span>
+                          ) : null
+                        ))}
+                      </div>
+                    )}
+                  </TableCell>
                 </TableRow>
               ))
             )}

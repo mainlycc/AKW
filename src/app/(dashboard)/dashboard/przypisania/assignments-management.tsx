@@ -127,7 +127,6 @@ export function AssignmentsManagement({
               <TableHead>Tutor</TableHead>
               <TableHead>Przedmiot</TableHead>
               <TableHead>Poziom</TableHead>
-              <TableHead>Cena/h</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="text-right">Akcje</TableHead>
             </TableRow>
@@ -135,7 +134,7 @@ export function AssignmentsManagement({
           <TableBody>
             {filteredAssignments.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="text-center text-muted-foreground">
+                <TableCell colSpan={6} className="text-center text-muted-foreground">
                   Brak przypisań do wyświetlenia
                 </TableCell>
               </TableRow>
@@ -148,7 +147,6 @@ export function AssignmentsManagement({
                   <TableCell>{assignment.profiles.full_name}</TableCell>
                   <TableCell>{assignment.subjects.name}</TableCell>
                   <TableCell>{assignment.subject_levels.level_name}</TableCell>
-                  <TableCell>{assignment.subject_levels.price_per_hour} zł</TableCell>
                   <TableCell>{getStatusBadge(assignment.status)}</TableCell>
                   <TableCell className="text-right">
                     {assignment.status === 'active' && (

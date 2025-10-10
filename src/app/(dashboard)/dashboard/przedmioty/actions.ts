@@ -7,13 +7,35 @@ import { createClient } from '@/lib/supabase/server'
 export async function createSubject(data: { name: string; description: string }) {
   const supabase = await createClient()
 
-  const { error } = await supabase.from('subjects').insert({
-    name: data.name,
-    description: data.description || null,
-  })
+  // Utwórz przedmiot
+  const { data: subject, error: subjectError } = await supabase
+    .from('subjects')
+    .insert({
+      name: data.name,
+      description: data.description || null,
+    })
+    .select()
+    .single()
 
-  if (error) {
-    throw error
+  if (subjectError) {
+    throw subjectError
+  }
+
+  // Automatycznie dodaj 3 standardowe poziomy
+  const standardLevels = [
+    { subject_id: subject.id, level_name: 'Szkoła podstawowa', level_order: 1, price_per_hour: 0 },
+    { subject_id: subject.id, level_name: 'Szkoła średnia podstawa', level_order: 2, price_per_hour: 0 },
+    { subject_id: subject.id, level_name: 'Szkoła średnia rozszerzenie', level_order: 3, price_per_hour: 0 },
+  ]
+
+  const { error: levelsError } = await supabase
+    .from('subject_levels')
+    .insert(standardLevels)
+
+  if (levelsError) {
+    // Usuń przedmiot jeśli nie udało się dodać poziomów
+    await supabase.from('subjects').delete().eq('id', subject.id)
+    throw levelsError
   }
 
   revalidatePath('/dashboard/przedmioty')
@@ -50,36 +72,32 @@ export async function deleteSubject(id: string) {
 }
 
 // Subject Level actions
+// DEPRECATED: Levels are now automatically created when creating a subject
+// Keeping for backward compatibility, but should not be used
+/**
+ * @deprecated Poziomy są teraz automatycznie tworzone przy tworzeniu przedmiotu.
+ * Każdy przedmiot ma 3 standardowe poziomy. Nie używaj tej funkcji.
+ */
+/* eslint-disable @typescript-eslint/no-unused-vars */
 export async function createSubjectLevel(
-  subjectId: string,
-  data: {
+  _subjectId: string,
+  _data: {
     level_name: string
     level_order: number
-    price_per_hour: number
+    price_per_hour?: number
   }
 ) {
-  const supabase = await createClient()
-
-  const { error } = await supabase.from('subject_levels').insert({
-    subject_id: subjectId,
-    level_name: data.level_name,
-    level_order: data.level_order,
-    price_per_hour: data.price_per_hour,
-  })
-
-  if (error) {
-    throw error
-  }
-
-  revalidatePath('/dashboard/przedmioty')
+  console.warn('createSubjectLevel is deprecated. Levels are automatically created.')
+  throw new Error('Nie można dodawać nowych poziomów. Każdy przedmiot ma 3 standardowe poziomy.')
 }
+/* eslint-enable @typescript-eslint/no-unused-vars */
 
 export async function updateSubjectLevel(
   id: string,
   data: {
     level_name: string
     level_order: number
-    price_per_hour: number
+    price_per_hour?: number  // Deprecated: defaults to 0
   }
 ) {
   const supabase = await createClient()
@@ -89,7 +107,7 @@ export async function updateSubjectLevel(
     .update({
       level_name: data.level_name,
       level_order: data.level_order,
-      price_per_hour: data.price_per_hour,
+      price_per_hour: data.price_per_hour ?? 0,  // Default to 0 (deprecated field)
     })
     .eq('id', id)
 
@@ -100,15 +118,13 @@ export async function updateSubjectLevel(
   revalidatePath('/dashboard/przedmioty')
 }
 
-export async function deleteSubjectLevel(id: string) {
-  const supabase = await createClient()
-
-  const { error } = await supabase.from('subject_levels').delete().eq('id', id)
-
-  if (error) {
-    throw error
-  }
-
-  revalidatePath('/dashboard/przedmioty')
+/**
+ * @deprecated Poziomy są nieusuwalne. Każdy przedmiot musi mieć 3 standardowe poziomy.
+ */
+/* eslint-disable @typescript-eslint/no-unused-vars */
+export async function deleteSubjectLevel(_id: string) {
+  console.warn('deleteSubjectLevel is deprecated. Levels cannot be deleted.')
+  throw new Error('Nie można usuwać poziomów. Każdy przedmiot musi mieć 3 standardowe poziomy.')
 }
+/* eslint-enable @typescript-eslint/no-unused-vars */
 

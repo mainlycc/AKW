@@ -26,7 +26,6 @@ export function SubjectLevelDialog({ open, onClose, level, subjectId }: SubjectL
   const [formData, setFormData] = useState({
     level_name: '',
     level_order: 1,
-    price_per_hour: 0,
   })
 
   useEffect(() => {
@@ -34,13 +33,11 @@ export function SubjectLevelDialog({ open, onClose, level, subjectId }: SubjectL
       setFormData({
         level_name: level.level_name,
         level_order: level.level_order,
-        price_per_hour: level.price_per_hour,
       })
     } else {
       setFormData({
         level_name: '',
         level_order: 1,
-        price_per_hour: 0,
       })
     }
   }, [level, open])
@@ -57,9 +54,9 @@ export function SubjectLevelDialog({ open, onClose, level, subjectId }: SubjectL
 
     try {
       if (level) {
-        await updateSubjectLevel(level.id, formData)
+        await updateSubjectLevel(level.id, { ...formData, price_per_hour: 0 })
       } else {
-        await createSubjectLevel(subjectId, formData)
+        await createSubjectLevel(subjectId, { ...formData, price_per_hour: 0 })
       }
       onClose()
     } catch (error) {
@@ -73,11 +70,9 @@ export function SubjectLevelDialog({ open, onClose, level, subjectId }: SubjectL
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
-          <DialogTitle>
-            {level ? 'Edytuj poziom trudności' : 'Dodaj poziom trudności'}
-          </DialogTitle>
+          <DialogTitle>Edytuj nazwę poziomu</DialogTitle>
           <DialogDescription>
-            {level ? 'Zaktualizuj dane poziomu' : 'Wprowadź dane nowego poziomu'}
+            Zmień nazwę poziomu. Kolejność poziomów jest ustalona i nie można jej zmieniać.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -93,28 +88,13 @@ export function SubjectLevelDialog({ open, onClose, level, subjectId }: SubjectL
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="level_order">Kolejność</Label>
+            <Label htmlFor="level_order">Kolejność (nie można zmieniać)</Label>
             <Input
               id="level_order"
               type="number"
-              min="1"
               value={formData.level_order}
-              onChange={(e) => setFormData({ ...formData, level_order: parseInt(e.target.value) })}
-              required
-              disabled={loading}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="price_per_hour">Cena za godzinę (zł)</Label>
-            <Input
-              id="price_per_hour"
-              type="number"
-              min="0"
-              step="0.01"
-              value={formData.price_per_hour}
-              onChange={(e) => setFormData({ ...formData, price_per_hour: parseFloat(e.target.value) })}
-              required
-              disabled={loading}
+              disabled
+              className="bg-muted cursor-not-allowed"
             />
           </div>
           <div className="flex justify-end gap-2">
@@ -122,7 +102,7 @@ export function SubjectLevelDialog({ open, onClose, level, subjectId }: SubjectL
               Anuluj
             </Button>
             <Button type="submit" disabled={loading}>
-              {loading ? 'Zapisywanie...' : level ? 'Zapisz zmiany' : 'Dodaj poziom'}
+              {loading ? 'Zapisywanie...' : 'Zapisz zmiany'}
             </Button>
           </div>
         </form>

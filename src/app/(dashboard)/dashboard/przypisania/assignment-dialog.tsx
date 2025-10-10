@@ -184,7 +184,7 @@ export function AssignmentDialog({
                   .sort((a, b) => a.level_order - b.level_order)
                   .map((level) => (
                     <SelectItem key={level.id} value={level.id}>
-                      {level.level_name} - {level.price_per_hour} zł/h
+                      {level.level_name}
                     </SelectItem>
                   ))}
               </SelectContent>

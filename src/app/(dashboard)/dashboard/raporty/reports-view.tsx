@@ -27,10 +27,9 @@ interface Session {
   session_date: string
   duration_minutes: number
   students: { id: string; first_name: string; last_name: string }
-  profiles: { id: string; full_name: string }
+  profiles: { id: string; full_name: string; hourly_rate: number | null }
   student_assignments: {
     subjects: { id: string; name: string }
-    subject_levels: { price_per_hour: number }
   }
 }
 
@@ -107,8 +106,9 @@ export function ReportsView({ sessions, tutors, students, subjects }: ReportsVie
       
       data[key].totalMinutes += session.duration_minutes
       data[key].sessionCount += 1
+      const hourlyRate = session.profiles.hourly_rate || 0
       data[key].totalCost +=
-        (session.duration_minutes / 60) * session.student_assignments.subject_levels.price_per_hour
+        (session.duration_minutes / 60) * hourlyRate
     })
 
     return Object.values(data)

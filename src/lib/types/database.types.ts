@@ -2,6 +2,8 @@ export type UserRole = 'admin' | 'tutor'
 
 export type AssignmentStatus = 'active' | 'completed' | 'cancelled'
 
+export type InvitationStatus = 'pending' | 'accepted' | 'expired'
+
 export interface Profile {
   id: string
   role: UserRole
@@ -24,7 +26,7 @@ export interface SubjectLevel {
   subject_id: string
   level_name: string
   level_order: number
-  price_per_hour: number
+  price_per_hour: number  // DEPRECATED: Use profiles.hourly_rate instead
   created_at?: string
   updated_at?: string
 }
@@ -61,6 +63,17 @@ export interface TutoringSession {
   duration_minutes: number
   notes: string | null
   created_by: string
+  created_at: string
+  updated_at: string
+}
+
+export interface TutorInvitation {
+  id: string
+  email: string
+  token: string
+  status: InvitationStatus
+  created_by: string
+  expires_at: string
   created_at: string
   updated_at: string
 }

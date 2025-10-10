@@ -391,7 +391,7 @@ export function StudentDialog({
                               htmlFor={level.id}
                               className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
                             >
-                              {level.level_name} ({level.price_per_hour} zł/h)
+                              {level.level_name}
                             </label>
                           </div>
                         ))}

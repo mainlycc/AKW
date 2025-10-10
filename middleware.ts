@@ -6,6 +6,7 @@ export async function middleware(request: NextRequest) {
 
   // Sprawdź czy użytkownik próbuje uzyskać dostęp do chronionej strony
   const isAuthPage = request.nextUrl.pathname.startsWith('/login')
+  const isRegisterPage = request.nextUrl.pathname.startsWith('/register')
   const isDashboard = request.nextUrl.pathname.startsWith('/dashboard')
 
   // Jeśli użytkownik nie jest zalogowany i próbuje dostać się do dashboardu
@@ -13,8 +14,8 @@ export async function middleware(request: NextRequest) {
     return Response.redirect(new URL('/login', request.url))
   }
 
-  // Jeśli użytkownik jest zalogowany i próbuje dostać się do strony logowania
-  if (user && isAuthPage) {
+  // Jeśli użytkownik jest zalogowany i próbuje dostać się do strony logowania lub rejestracji
+  if (user && (isAuthPage || isRegisterPage)) {
     return Response.redirect(new URL('/dashboard', request.url))
   }
 

@@ -35,8 +35,7 @@ export default async function HistoryPage() {
           name
         ),
         subject_levels (
-          level_name,
-          price_per_hour
+          level_name
         )
       )
     `)
@@ -52,7 +51,7 @@ export default async function HistoryPage() {
     students: { id: string; first_name: string; last_name: string }[] | null;
     student_assignments: {
       subjects: { id: string; name: string }[] | null;
-      subject_levels: { level_name: string; price_per_hour: number }[] | null;
+      subject_levels: { level_name: string }[] | null;
     }[] | null;
   }) => ({
     id: session.id,
@@ -62,7 +61,7 @@ export default async function HistoryPage() {
     students: session.students?.[0] || { id: '', first_name: '', last_name: '' },
     student_assignments: {
       subjects: session.student_assignments?.[0]?.subjects?.[0] || { id: '', name: '' },
-      subject_levels: session.student_assignments?.[0]?.subject_levels?.[0] || { level_name: '', price_per_hour: 0 },
+      subject_levels: session.student_assignments?.[0]?.subject_levels?.[0] || { level_name: '' },
     },
   })) || []
 

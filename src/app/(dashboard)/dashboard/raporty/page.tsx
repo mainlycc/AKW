@@ -30,15 +30,13 @@ export default async function ReportsPage() {
       ),
       profiles!tutoring_sessions_tutor_id_fkey (
         id,
-        full_name
+        full_name,
+        hourly_rate
       ),
       student_assignments (
         subjects (
           id,
           name
-        ),
-        subject_levels (
-          price_per_hour
         )
       )
     `)
@@ -50,20 +48,18 @@ export default async function ReportsPage() {
     session_date: string;
     duration_minutes: number;
     students: { id: string; first_name: string; last_name: string }[] | null;
-    profiles: { id: string; full_name: string }[] | null;
+    profiles: { id: string; full_name: string; hourly_rate: number | null }[] | null;
     student_assignments: {
       subjects: { id: string; name: string }[] | null;
-      subject_levels: { price_per_hour: number }[] | null;
     }[] | null;
   }) => ({
     id: session.id,
     session_date: session.session_date,
     duration_minutes: session.duration_minutes,
     students: session.students?.[0] || { id: '', first_name: '', last_name: '' },
-    profiles: session.profiles?.[0] || { id: '', full_name: '' },
+    profiles: session.profiles?.[0] || { id: '', full_name: '', hourly_rate: null },
     student_assignments: {
       subjects: session.student_assignments?.[0]?.subjects?.[0] || { id: '', name: '' },
-      subject_levels: session.student_assignments?.[0]?.subject_levels?.[0] || { price_per_hour: 0 },
     },
   })) || []
 

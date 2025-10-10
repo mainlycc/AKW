@@ -21,7 +21,7 @@ interface Session {
   students: { id: string; first_name: string; last_name: string }
   student_assignments: {
     subjects: { id: string; name: string }
-    subject_levels: { level_name: string; price_per_hour: number }
+    subject_levels: { level_name: string }
   }
 }
 
@@ -54,15 +54,10 @@ export function HistoryView({ sessions }: HistoryViewProps) {
 
   const stats = useMemo(() => {
     const totalMinutes = filteredSessions.reduce((acc, s) => acc + s.duration_minutes, 0)
-    const totalCost = filteredSessions.reduce(
-      (acc, s) => acc + (s.duration_minutes / 60) * s.student_assignments.subject_levels.price_per_hour,
-      0
-    )
 
     return {
       totalHours: totalMinutes / 60,
       totalSessions: filteredSessions.length,
-      totalCost,
     }
   }, [filteredSessions])
 
@@ -84,7 +79,7 @@ export function HistoryView({ sessions }: HistoryViewProps) {
   return (
     <div className="space-y-6">
       {/* Statystyki */}
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Suma godzin</CardTitle>
@@ -102,16 +97,6 @@ export function HistoryView({ sessions }: HistoryViewProps) {
           <CardContent>
             <div className="text-2xl font-bold">{stats.totalSessions}</div>
             <p className="text-xs text-muted-foreground">Wszystkie sesje</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Suma zarobków</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.totalCost.toFixed(2)} zł</div>
-            <p className="text-xs text-muted-foreground">Na podstawie ceny za godzinę</p>
           </CardContent>
         </Card>
       </div>
@@ -160,14 +145,13 @@ export function HistoryView({ sessions }: HistoryViewProps) {
                   <TableHead>Przedmiot</TableHead>
                   <TableHead>Poziom</TableHead>
                   <TableHead className="text-right">Czas trwania</TableHead>
-                  <TableHead className="text-right">Zarobek</TableHead>
                   <TableHead>Notatki</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredSessions.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center text-muted-foreground">
+                    <TableCell colSpan={6} className="text-center text-muted-foreground">
                       Brak sesji do wyświetlenia
                     </TableCell>
                   </TableRow>
@@ -183,13 +167,6 @@ export function HistoryView({ sessions }: HistoryViewProps) {
                       <TableCell>{session.student_assignments.subjects.name}</TableCell>
                       <TableCell>{session.student_assignments.subject_levels.level_name}</TableCell>
                       <TableCell className="text-right">{session.duration_minutes} min</TableCell>
-                      <TableCell className="text-right">
-                        {(
-                          (session.duration_minutes / 60) *
-                          session.student_assignments.subject_levels.price_per_hour
-                        ).toFixed(2)}{' '}
-                        zł
-                      </TableCell>
                       <TableCell className="max-w-xs truncate">
                         {session.notes || '-'}
                       </TableCell>

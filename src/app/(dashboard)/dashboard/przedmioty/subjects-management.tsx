@@ -3,11 +3,11 @@
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { IconPlus, IconEdit, IconTrash } from "@tabler/icons-react"
+import { IconPlus, IconEdit, IconTrash, IconInfoCircle } from "@tabler/icons-react"
 import { Subject, SubjectLevel } from "@/lib/types/database.types"
 import { SubjectDialog } from "./subject-dialog"
 import { SubjectLevelDialog } from "./subject-level-dialog"
-import { deleteSubject, deleteSubjectLevel } from "./actions"
+import { deleteSubject } from "./actions"
 import { Badge } from "@/components/ui/badge"
 import { ConfirmDialog } from "@/components/confirm-dialog"
 
@@ -49,31 +49,22 @@ export function SubjectsManagement({ subjects }: SubjectsManagementProps) {
     setConfirmDialogOpen(true)
   }
 
-  const handleAddLevel = (subjectId: string) => {
-    setSelectedSubjectId(subjectId)
-    setEditingLevel(null)
-    setLevelDialogOpen(true)
-  }
-
   const handleEditLevel = (level: SubjectLevel, subjectId: string) => {
     setSelectedSubjectId(subjectId)
     setEditingLevel(level)
     setLevelDialogOpen(true)
   }
 
-  const handleDeleteLevel = async (id: string) => {
-    setConfirmDialogContent({
-      title: 'Usuwanie poziomu',
-      description: 'Czy na pewno chcesz usunąć ten poziom?',
-      onConfirm: async () => {
-        await deleteSubjectLevel(id)
-      }
-    })
-    setConfirmDialogOpen(true)
-  }
-
   return (
     <div className="space-y-4">
+      <div className="flex items-start gap-3 rounded-lg border border-blue-200 bg-blue-50 p-4 dark:border-blue-900 dark:bg-blue-950">
+        <IconInfoCircle className="h-5 w-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
+        <p className="text-sm text-blue-900 dark:text-blue-100">
+          Każdy przedmiot ma 3 standardowe poziomy: Szkoła podstawowa, Szkoła średnia podstawa i Szkoła średnia rozszerzenie. 
+          Możesz edytować ich nazwy, ale nie możesz ich usuwać ani dodawać nowych.
+        </p>
+      </div>
+
       <div className="flex justify-end">
         <Button onClick={handleAddSubject}>
           <IconPlus className="mr-2 h-4 w-4" />
@@ -119,17 +110,7 @@ export function SubjectsManagement({ subjects }: SubjectsManagementProps) {
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">Poziomy trudności:</span>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleAddLevel(subject.id)}
-                    >
-                      <IconPlus className="mr-1 h-3 w-3" />
-                      Dodaj
-                    </Button>
-                  </div>
+                  <span className="text-sm font-medium">Poziomy trudności:</span>
                   {subject.subject_levels && subject.subject_levels.length > 0 ? (
                     <div className="space-y-2">
                       {subject.subject_levels
@@ -143,27 +124,14 @@ export function SubjectsManagement({ subjects }: SubjectsManagementProps) {
                               <Badge variant="secondary">{level.level_order}</Badge>
                               <span className="text-sm font-medium">{level.level_name}</span>
                             </div>
-                            <div className="flex items-center gap-2">
-                              <span className="text-sm text-muted-foreground">
-                                {level.price_per_hour} zł/h
-                              </span>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-6 w-6"
-                                onClick={() => handleEditLevel(level, subject.id)}
-                              >
-                                <IconEdit className="h-3 w-3" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-6 w-6"
-                                onClick={() => handleDeleteLevel(level.id)}
-                              >
-                                <IconTrash className="h-3 w-3" />
-                              </Button>
-                            </div>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6"
+                              onClick={() => handleEditLevel(level, subject.id)}
+                            >
+                              <IconEdit className="h-3 w-3" />
+                            </Button>
                           </div>
                         ))}
                     </div>

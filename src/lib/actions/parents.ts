@@ -13,7 +13,12 @@ export async function getParents() {
     .select(`
       *,
       student_parents (
-        student_id
+        student_id,
+        students (
+          id,
+          first_name,
+          last_name
+        )
       )
     `)
     .order('last_name')

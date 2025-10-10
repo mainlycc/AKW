@@ -13,6 +13,7 @@ import {
   IconUsersGroup,
   IconReceipt,
   IconClockDollar,
+  IconMailPlus,
 } from "@tabler/icons-react"
 
 import { NavMain } from "@/components/nav-main"
@@ -56,6 +57,11 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
       title: "Tutorzy",
       url: "/dashboard/tutorzy",
       icon: IconSchool,
+    },
+    {
+      title: "Zaproszenia",
+      url: "/dashboard/zaproszenia",
+      icon: IconMailPlus,
     },
     {
       title: "Przedmioty",

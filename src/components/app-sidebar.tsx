@@ -9,6 +9,10 @@ import {
   IconSchool,
   IconUsers,
   IconUserPlus,
+  IconUserCircle,
+  IconUsersGroup,
+  IconReceipt,
+  IconClockDollar,
 } from "@tabler/icons-react"
 
 import { NavMain } from "@/components/nav-main"
@@ -44,6 +48,11 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
       icon: IconUsers,
     },
     {
+      title: "Rodzice",
+      url: "/dashboard/rodzice",
+      icon: IconUsersGroup,
+    },
+    {
       title: "Tutorzy",
       url: "/dashboard/tutorzy",
       icon: IconSchool,
@@ -68,6 +77,11 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
       url: "/dashboard/raporty",
       icon: IconFileReport,
     },
+    {
+      title: "Raporty tutorów",
+      url: "/dashboard/raporty-tutorow",
+      icon: IconClockDollar,
+    },
   ]
 
   const tutorNavItems = [
@@ -75,6 +89,11 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
       title: "Dashboard",
       url: "/dashboard",
       icon: IconDashboard,
+    },
+    {
+      title: "Profil",
+      url: "/dashboard/profil",
+      icon: IconUserCircle,
     },
     {
       title: "Moi Uczniowie",
@@ -90,6 +109,11 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
       title: "Historia",
       url: "/dashboard/historia",
       icon: IconFileReport,
+    },
+    {
+      title: "Moje raporty",
+      url: "/dashboard/moje-raporty",
+      icon: IconReceipt,
     },
   ]
 

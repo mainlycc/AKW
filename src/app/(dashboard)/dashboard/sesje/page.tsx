@@ -122,13 +122,6 @@ export default async function SessionsPage() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Sesje korepetycji</h1>
-        <p className="text-muted-foreground">
-          {isAdmin ? 'Zarządzaj sesjami korepetycji' : 'Dodawaj i przeglądaj swoje sesje'}
-        </p>
-      </div>
-
       <SessionsManagement
         sessions={sessions}
         assignments={assignments}

@@ -9,6 +9,7 @@ import { SubjectDialog } from "./subject-dialog"
 import { SubjectLevelDialog } from "./subject-level-dialog"
 import { deleteSubject, deleteSubjectLevel } from "./actions"
 import { Badge } from "@/components/ui/badge"
+import { ConfirmDialog } from "@/components/confirm-dialog"
 
 interface SubjectWithLevels extends Subject {
   subject_levels: SubjectLevel[]
@@ -24,6 +25,8 @@ export function SubjectsManagement({ subjects }: SubjectsManagementProps) {
   const [editingSubject, setEditingSubject] = useState<SubjectWithLevels | null>(null)
   const [editingLevel, setEditingLevel] = useState<SubjectLevel | null>(null)
   const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(null)
+  const [confirmDialogOpen, setConfirmDialogOpen] = useState(false)
+  const [confirmDialogContent, setConfirmDialogContent] = useState<{ title: string; description: string; onConfirm: () => void }>({ title: '', description: '', onConfirm: () => {} })
 
   const handleAddSubject = () => {
     setEditingSubject(null)
@@ -36,9 +39,14 @@ export function SubjectsManagement({ subjects }: SubjectsManagementProps) {
   }
 
   const handleDeleteSubject = async (id: string) => {
-    if (confirm('Czy na pewno chcesz usunąć ten przedmiot? Usunięte zostaną również wszystkie poziomy.')) {
-      await deleteSubject(id)
-    }
+    setConfirmDialogContent({
+      title: 'Usuwanie przedmiotu',
+      description: 'Czy na pewno chcesz usunąć ten przedmiot? Usunięte zostaną również wszystkie poziomy.',
+      onConfirm: async () => {
+        await deleteSubject(id)
+      }
+    })
+    setConfirmDialogOpen(true)
   }
 
   const handleAddLevel = (subjectId: string) => {
@@ -54,9 +62,14 @@ export function SubjectsManagement({ subjects }: SubjectsManagementProps) {
   }
 
   const handleDeleteLevel = async (id: string) => {
-    if (confirm('Czy na pewno chcesz usunąć ten poziom?')) {
-      await deleteSubjectLevel(id)
-    }
+    setConfirmDialogContent({
+      title: 'Usuwanie poziomu',
+      description: 'Czy na pewno chcesz usunąć ten poziom?',
+      onConfirm: async () => {
+        await deleteSubjectLevel(id)
+      }
+    })
+    setConfirmDialogOpen(true)
   }
 
   return (
@@ -175,6 +188,16 @@ export function SubjectsManagement({ subjects }: SubjectsManagementProps) {
         onClose={() => setLevelDialogOpen(false)}
         level={editingLevel}
         subjectId={selectedSubjectId}
+      />
+
+      <ConfirmDialog
+        open={confirmDialogOpen}
+        onOpenChange={setConfirmDialogOpen}
+        title={confirmDialogContent.title}
+        description={confirmDialogContent.description}
+        onConfirm={confirmDialogContent.onConfirm}
+        confirmText="Usuń"
+        cancelText="Anuluj"
       />
     </div>
   )

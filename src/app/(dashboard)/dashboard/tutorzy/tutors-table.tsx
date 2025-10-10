@@ -11,29 +11,54 @@ import {
 } from "@/components/ui/table"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { TutorDetailDialog } from "./tutor-detail-dialog"
 
 interface TutorWithStats {
   id: string
   full_name: string
   email: string
+  phone: string | null
+  bio: string | null
+  hourly_rate: number | null
   created_at: string
   activeAssignments: number
   totalHours: number
   totalSessions: number
 }
 
-interface TutorsTableProps {
-  tutors: TutorWithStats[]
+interface TutorSubjectLevel {
+  id: string
+  subject_id: string
+  subject_level_id: string
+  subjects: { id: string; name: string } | null
+  subject_levels: { id: string; level_name: string; price_per_hour: number } | null
 }
 
-export function TutorsTable({ tutors }: TutorsTableProps) {
+interface TutorsTableProps {
+  tutors: TutorWithStats[]
+  tutorSubjects: Record<string, TutorSubjectLevel[]>
+}
+
+export function TutorsTable({ tutors, tutorSubjects }: TutorsTableProps) {
   const [search, setSearch] = useState("")
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [selectedTutor, setSelectedTutor] = useState<TutorWithStats | null>(null)
 
   const filteredTutors = tutors.filter(
     (tutor) =>
       tutor.full_name.toLowerCase().includes(search.toLowerCase()) ||
       tutor.email.toLowerCase().includes(search.toLowerCase())
   )
+
+  const handleRowClick = (tutor: TutorWithStats) => {
+    setSelectedTutor(tutor)
+    setDialogOpen(true)
+  }
+
+  const handleDialogClose = () => {
+    setDialogOpen(false)
+    setSelectedTutor(null)
+  }
 
   const totalStats = {
     totalTutors: tutors.length,
@@ -91,6 +116,7 @@ export function TutorsTable({ tutors }: TutorsTableProps) {
             <TableRow>
               <TableHead>Imię i nazwisko</TableHead>
               <TableHead>Email</TableHead>
+              <TableHead className="text-right">Stawka (zł/h)</TableHead>
               <TableHead className="text-right">Aktywne przypisania</TableHead>
               <TableHead className="text-right">Liczba sesji</TableHead>
               <TableHead className="text-right">Suma godzin</TableHead>
@@ -99,15 +125,22 @@ export function TutorsTable({ tutors }: TutorsTableProps) {
           <TableBody>
             {filteredTutors.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={5} className="text-center text-muted-foreground">
+                <TableCell colSpan={6} className="text-center text-muted-foreground">
                   Brak tutorów do wyświetlenia
                 </TableCell>
               </TableRow>
             ) : (
               filteredTutors.map((tutor) => (
-                <TableRow key={tutor.id}>
+                <TableRow 
+                  key={tutor.id}
+                  className="cursor-pointer hover:bg-muted/50"
+                  onClick={() => handleRowClick(tutor)}
+                >
                   <TableCell className="font-medium">{tutor.full_name}</TableCell>
                   <TableCell>{tutor.email}</TableCell>
+                  <TableCell className="text-right">
+                    {tutor.hourly_rate ? `${tutor.hourly_rate.toFixed(2)}` : '-'}
+                  </TableCell>
                   <TableCell className="text-right">{tutor.activeAssignments}</TableCell>
                   <TableCell className="text-right">{tutor.totalSessions}</TableCell>
                   <TableCell className="text-right">{tutor.totalHours.toFixed(2)}h</TableCell>
@@ -117,6 +150,13 @@ export function TutorsTable({ tutors }: TutorsTableProps) {
           </TableBody>
         </Table>
       </div>
+
+      <TutorDetailDialog
+        open={dialogOpen}
+        onClose={handleDialogClose}
+        tutor={selectedTutor}
+        tutorSubjects={selectedTutor ? tutorSubjects[selectedTutor.id] || [] : []}
+      />
     </div>
   )
 }

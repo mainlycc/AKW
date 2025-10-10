@@ -8,10 +8,9 @@ export default async function AssignmentsPage() {
 
   if (!profile || profile.role !== 'admin') {
     return (
-      <div className="space-y-4">
-        <h1 className="text-3xl font-bold tracking-tight">Brak dostępu</h1>
-        <p className="text-muted-foreground">
-          Ta strona jest dostępna tylko dla administratorów.
+      <div className="p-4 rounded-lg border border-destructive/50 bg-destructive/10">
+        <p className="text-sm text-destructive font-medium">
+          Brak dostępu. Ta strona jest dostępna tylko dla administratorów.
         </p>
       </div>
     )
@@ -64,13 +63,6 @@ export default async function AssignmentsPage() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Przypisania</h1>
-        <p className="text-muted-foreground">
-          Przypisuj uczniów do tutorów
-        </p>
-      </div>
-
       <AssignmentsManagement
         assignments={assignments || []}
         students={students.data || []}

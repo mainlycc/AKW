@@ -16,6 +16,7 @@ import { deleteSession } from "./actions"
 import { IconPlus, IconTrash } from "@tabler/icons-react"
 import { format } from "date-fns"
 import { pl } from "date-fns/locale"
+import { ConfirmDialog } from "@/components/confirm-dialog"
 
 interface Session {
   id: string
@@ -54,6 +55,8 @@ export function SessionsManagement({
 }: SessionsManagementProps) {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [search, setSearch] = useState("")
+  const [confirmDialogOpen, setConfirmDialogOpen] = useState(false)
+  const [sessionToDelete, setSessionToDelete] = useState<string | null>(null)
 
   const filteredSessions = sessions.filter((session) => {
     const searchLower = search.toLowerCase()
@@ -66,8 +69,14 @@ export function SessionsManagement({
   })
 
   const handleDelete = async (id: string) => {
-    if (confirm('Czy na pewno chcesz usunąć tę sesję?')) {
-      await deleteSession(id)
+    setSessionToDelete(id)
+    setConfirmDialogOpen(true)
+  }
+
+  const confirmDelete = async () => {
+    if (sessionToDelete) {
+      await deleteSession(sessionToDelete)
+      setSessionToDelete(null)
     }
   }
 
@@ -159,6 +168,16 @@ export function SessionsManagement({
         onClose={() => setDialogOpen(false)}
         assignments={assignments}
         userId={userId}
+      />
+
+      <ConfirmDialog
+        open={confirmDialogOpen}
+        onOpenChange={setConfirmDialogOpen}
+        title="Usuwanie sesji"
+        description="Czy na pewno chcesz usunąć tę sesję?"
+        onConfirm={confirmDelete}
+        confirmText="Usuń"
+        cancelText="Anuluj"
       />
     </div>
   )

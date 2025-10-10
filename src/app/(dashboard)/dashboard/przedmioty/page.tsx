@@ -8,10 +8,9 @@ export default async function SubjectsPage() {
 
   if (!profile || profile.role !== 'admin') {
     return (
-      <div className="space-y-4">
-        <h1 className="text-3xl font-bold tracking-tight">Brak dostępu</h1>
-        <p className="text-muted-foreground">
-          Ta strona jest dostępna tylko dla administratorów.
+      <div className="p-4 rounded-lg border border-destructive/50 bg-destructive/10">
+        <p className="text-sm text-destructive font-medium">
+          Brak dostępu. Ta strona jest dostępna tylko dla administratorów.
         </p>
       </div>
     )
@@ -32,13 +31,6 @@ export default async function SubjectsPage() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Przedmioty</h1>
-        <p className="text-muted-foreground">
-          Zarządzaj przedmiotami i poziomami trudności
-        </p>
-      </div>
-
       <SubjectsManagement subjects={subjects || []} />
     </div>
   )

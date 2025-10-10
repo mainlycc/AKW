@@ -8,10 +8,9 @@ export default async function TutorsPage() {
 
   if (!profile || profile.role !== 'admin') {
     return (
-      <div className="space-y-4">
-        <h1 className="text-3xl font-bold tracking-tight">Brak dostępu</h1>
-        <p className="text-muted-foreground">
-          Ta strona jest dostępna tylko dla administratorów.
+      <div className="p-4 rounded-lg border border-destructive/50 bg-destructive/10">
+        <p className="text-sm text-destructive font-medium">
+          Brak dostępu. Ta strona jest dostępna tylko dla administratorów.
         </p>
       </div>
     )
@@ -49,16 +48,37 @@ export default async function TutorsPage() {
     })
   )
 
+  // Pobierz przedmioty wszystkich tutorów
+  const { data: allTutorSubjects } = await supabase
+    .from('tutor_subject_levels')
+    .select(`
+      id,
+      tutor_id,
+      subject_id,
+      subject_level_id,
+      subjects (
+        id,
+        name
+      ),
+      subject_levels (
+        id,
+        level_name,
+        price_per_hour
+      )
+    `)
+
+  // Group by tutor_id
+  const tutorSubjects: Record<string, typeof allTutorSubjects> = {}
+  allTutorSubjects?.forEach((ts) => {
+    if (!tutorSubjects[ts.tutor_id]) {
+      tutorSubjects[ts.tutor_id] = []
+    }
+    tutorSubjects[ts.tutor_id].push(ts)
+  })
+
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Tutorzy</h1>
-        <p className="text-muted-foreground">
-          Przeglądaj tutorów i ich statystyki
-        </p>
-      </div>
-
-      <TutorsTable tutors={tutorsWithStats} />
+      <TutorsTable tutors={tutorsWithStats} tutorSubjects={tutorSubjects} />
     </div>
   )
 }

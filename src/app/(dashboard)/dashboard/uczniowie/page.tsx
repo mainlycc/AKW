@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server"
 import { getUserProfile } from "@/lib/actions/auth"
+import { getTutorSubjectLevels } from "@/lib/actions/tutor"
 import { StudentsTable } from "./students-table"
 
 export default async function StudentsPage() {
@@ -18,7 +19,39 @@ export default async function StudentsPage() {
   if (isAdmin) {
     const { data } = await supabase
       .from('students')
-      .select('*')
+      .select(`
+        *,
+        student_parents (
+          id,
+          is_primary,
+          parents (
+            id,
+            first_name,
+            last_name,
+            email,
+            phone,
+            parent_type
+          )
+        ),
+        student_notes (
+          id,
+          content,
+          created_at,
+          profiles (
+            id,
+            full_name
+          )
+        ),
+        student_subjects (
+          subject_level_id,
+          subjects (
+            name
+          ),
+          subject_levels (
+            level_name
+          )
+        )
+      `)
       .order('created_at', { ascending: false })
 
     students = data || []
@@ -31,6 +64,36 @@ export default async function StudentsPage() {
         student_assignments!inner(
           tutor_id,
           status
+        ),
+        student_parents (
+          id,
+          is_primary,
+          parents (
+            id,
+            first_name,
+            last_name,
+            email,
+            phone,
+            parent_type
+          )
+        ),
+        student_notes (
+          id,
+          content,
+          created_at,
+          profiles (
+            id,
+            full_name
+          )
+        ),
+        student_subjects (
+          subject_level_id,
+          subjects (
+            name
+          ),
+          subject_levels (
+            level_name
+          )
         )
       `)
       .eq('student_assignments.tutor_id', profile.id)
@@ -40,20 +103,44 @@ export default async function StudentsPage() {
     students = data || []
   }
 
+  // Get all parents and subjects for dialog
+  let allParents = []
+  let allSubjects = []
+  let tutorSubjectLevels = []
+
+  if (isAdmin) {
+    const [parentsData, subjectsData] = await Promise.all([
+      supabase.from('parents').select('*').order('last_name'),
+      supabase.from('subjects').select(`
+        id,
+        name,
+        subject_levels (
+          id,
+          level_name,
+          level_order,
+          price_per_hour
+        )
+      `).order('name'),
+    ])
+
+    allParents = parentsData.data || []
+    allSubjects = subjectsData.data || []
+  } else if (isTutor) {
+    tutorSubjectLevels = await getTutorSubjectLevels(profile.id)
+  }
+
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">
-            {isAdmin ? 'Uczniowie' : 'Moi Uczniowie'}
-          </h1>
-          <p className="text-muted-foreground">
-            {isAdmin ? 'Zarządzaj uczniami w systemie' : 'Lista Twoich uczniów'}
-          </p>
-        </div>
-      </div>
-
-      <StudentsTable students={students} isAdmin={isAdmin} />
+      <StudentsTable
+        students={students}
+        isAdmin={isAdmin}
+        isTutor={isTutor}
+        allParents={allParents}
+        allSubjects={allSubjects}
+        tutorId={profile.id}
+        tutorSubjectLevels={tutorSubjectLevels}
+        currentUserId={profile.id}
+      />
     </div>
   )
 }

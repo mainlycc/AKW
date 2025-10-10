@@ -20,7 +20,8 @@ export async function approveReport(reportId: string, adminId: string) {
 
   if (!report) throw new Error('Report not found')
 
-  const hourlyRate = report.profiles?.hourly_rate || 0
+  const profiles = report.profiles as { hourly_rate: number } | null
+  const hourlyRate = profiles?.hourly_rate || 0
   const totalAmount = report.total_hours * hourlyRate
 
   const { error } = await supabase

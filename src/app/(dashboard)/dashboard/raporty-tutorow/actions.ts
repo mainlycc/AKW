@@ -20,7 +20,7 @@ export async function approveReport(reportId: string, adminId: string) {
 
   if (!report) throw new Error('Report not found')
 
-  const profiles = report.profiles as { hourly_rate: number } | null
+  const profiles = report.profiles as unknown as { hourly_rate: number } | null
   const hourlyRate = profiles?.hourly_rate || 0
   const totalAmount = report.total_hours * hourlyRate
 

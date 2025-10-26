@@ -14,12 +14,6 @@ export function getDefaultAvailabilitySlots(): TimeSlot[] {
       slots.push({
         day: day as DayOfWeek,
         startTime: `${hour.toString().padStart(2, '0')}:00`,
-        endTime: `${hour.toString().padStart(2, '0')}:30`,
-        isAvailable: false,
-      })
-      slots.push({
-        day: day as DayOfWeek,
-        startTime: `${hour.toString().padStart(2, '0')}:30`,
         endTime: `${(hour + 1).toString().padStart(2, '0')}:00`,
         isAvailable: false,
       })
@@ -30,12 +24,6 @@ export function getDefaultAvailabilitySlots(): TimeSlot[] {
       slots.push({
         day: day as DayOfWeek,
         startTime: `${hour.toString().padStart(2, '0')}:00`,
-        endTime: `${hour.toString().padStart(2, '0')}:30`,
-        isAvailable: true,
-      })
-      slots.push({
-        day: day as DayOfWeek,
-        startTime: `${hour.toString().padStart(2, '0')}:30`,
         endTime: `${(hour + 1).toString().padStart(2, '0')}:00`,
         isAvailable: true,
       })
@@ -48,12 +36,6 @@ export function getDefaultAvailabilitySlots(): TimeSlot[] {
       slots.push({
         day: day as DayOfWeek,
         startTime: `${hour.toString().padStart(2, '0')}:00`,
-        endTime: `${hour.toString().padStart(2, '0')}:30`,
-        isAvailable: true,
-      })
-      slots.push({
-        day: day as DayOfWeek,
-        startTime: `${hour.toString().padStart(2, '0')}:30`,
         endTime: `${(hour + 1).toString().padStart(2, '0')}:00`,
         isAvailable: true,
       })

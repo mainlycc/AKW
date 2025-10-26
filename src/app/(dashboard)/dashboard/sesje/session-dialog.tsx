@@ -145,8 +145,8 @@ export function SessionDialog({ open, onClose, assignments, userId }: SessionDia
             <Input
               id="duration_minutes"
               type="number"
-              min="15"
-              step="15"
+              min="60"
+              step="60"
               value={formData.duration_minutes}
               onChange={(e) => setFormData({ ...formData, duration_minutes: parseInt(e.target.value) })}
               required

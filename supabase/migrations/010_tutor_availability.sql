@@ -1,5 +1,5 @@
 -- Migration 010: Tutor Availability Calendar System
--- System kalendarza dostępności tutorów z 30-minutowymi slotami
+-- System kalendarza dostępności tutorów z godzinowymi slotami
 
 -- Tabela przechowująca szablony tygodniowe dostępności tutorów
 CREATE TABLE tutor_availability_templates (
@@ -12,7 +12,7 @@ CREATE TABLE tutor_availability_templates (
   UNIQUE(tutor_id, version)
 );
 
--- Tabela przechowująca poszczególne 30-minutowe sloty dostępności
+-- Tabela przechowująca poszczególne godzinowe sloty dostępności
 CREATE TABLE tutor_availability_slots (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   template_id UUID NOT NULL REFERENCES tutor_availability_templates(id) ON DELETE CASCADE,

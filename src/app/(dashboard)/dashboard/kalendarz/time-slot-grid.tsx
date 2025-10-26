@@ -24,10 +24,6 @@ export function TimeSlotGrid({ slots, isEditing = true, onSlotToggle }: TimeSlot
     for (let hour = startHour; hour < endHour; hour++) {
       timeSlots.push({
         start: `${hour.toString().padStart(2, '0')}:00`,
-        end: `${hour.toString().padStart(2, '0')}:30`,
-      })
-      timeSlots.push({
-        start: `${hour.toString().padStart(2, '0')}:30`,
         end: `${(hour + 1).toString().padStart(2, '0')}:00`,
       })
     }
@@ -59,7 +55,7 @@ export function TimeSlotGrid({ slots, isEditing = true, onSlotToggle }: TimeSlot
             <div key={timeSlot.start} className="grid grid-cols-8 gap-1">
               {/* Kolumna z czasem */}
               <div className="flex items-center justify-end pr-2 text-xs text-muted-foreground">
-                {index % 2 === 0 && timeSlot.start}
+                {timeSlot.start}
               </div>
               
               {/* Kolumny dla każdego dnia */}

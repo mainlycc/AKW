@@ -155,15 +155,25 @@ export async function getInvitations(): Promise<TutorInvitation[]> {
 export async function validateInvitationToken(token: string): Promise<ValidateTokenResult> {
   const supabase = await createClient()
 
+  console.log('Validating invitation token:', token)
+
   const { data: invitation, error } = await supabase
     .from('tutor_invitations')
     .select('*')
     .eq('token', token)
     .single()
 
-  if (error || !invitation) {
+  if (error) {
+    console.error('Error fetching invitation:', error)
     return { valid: false, error: 'Nieprawidłowy token zaproszenia' }
   }
+
+  if (!invitation) {
+    console.error('Invitation not found for token:', token)
+    return { valid: false, error: 'Nieprawidłowy token zaproszenia' }
+  }
+
+  console.log('Found invitation:', invitation)
 
   if (invitation.status !== 'pending') {
     return { valid: false, error: 'To zaproszenie zostało już wykorzystane lub wygasło' }

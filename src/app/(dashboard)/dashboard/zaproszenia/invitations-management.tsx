@@ -115,7 +115,7 @@ export function InvitationsManagement({ invitations }: InvitationsManagementProp
           </div>
           <Button onClick={() => setDialogOpen(true)}>
             <IconPlus className="mr-2 h-4 w-4" />
-            Utwórz zaproszenie
+            Wyślij zaproszenie
           </Button>
         </div>
 

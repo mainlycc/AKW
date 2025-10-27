@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import type { TutorInvitation } from '@/lib/types/database.types'
+import { sendInvitationEmail } from '@/lib/email/send'
 
 interface CreateInvitationResult {
   success: boolean
@@ -84,6 +85,23 @@ export async function createInvitation(email: string): Promise<CreateInvitationR
   if (error) {
     console.error('Error creating invitation:', error)
     return { success: false, error: 'Nie udało się utworzyć zaproszenia' }
+  }
+
+  // Wyślij email z zaproszeniem
+  const invitationLink = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/register?token=${invitation.token}`
+  
+  const emailResult = await sendInvitationEmail({
+    to: email,
+    invitationLink,
+    expiryDays: 7,
+  })
+
+  if (!emailResult.success) {
+    console.error('Failed to send invitation email:', emailResult.error)
+    // Kontynuujemy - zaproszenie jest już utworzone, użytkownik może skopiować link ręcznie
+    // W przyszłości można dodać opcję ponownego wysłania emaila
+  } else {
+    console.log('Invitation email sent successfully to:', email)
   }
 
   revalidatePath('/dashboard/zaproszenia')

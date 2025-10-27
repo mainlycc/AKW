@@ -88,7 +88,12 @@ export async function createInvitation(email: string): Promise<CreateInvitationR
   }
 
   // Wyślij email z zaproszeniem
-  const invitationLink = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/register?token=${invitation.token}`
+  // W produkcji użyj VERCEL_URL, w developmencie NEXT_PUBLIC_APP_URL
+  const baseUrl = process.env.VERCEL_URL 
+    ? `https://${process.env.VERCEL_URL}`
+    : process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+  
+  const invitationLink = `${baseUrl}/register?token=${invitation.token}`
   
   const emailResult = await sendInvitationEmail({
     to: email,

@@ -88,10 +88,16 @@ export async function createInvitation(email: string): Promise<CreateInvitationR
   }
 
   // Wyślij email z zaproszeniem
-  // W produkcji użyj VERCEL_URL, w developmencie NEXT_PUBLIC_APP_URL
-  const baseUrl = process.env.VERCEL_URL 
-    ? `https://${process.env.VERCEL_URL}`
-    : process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+  // W produkcji użyj VERCEL_URL jeśli to produkcja (production branch), inaczej NEXT_PUBLIC_APP_URL
+  let baseUrl = 'http://localhost:3000'
+  
+  if (process.env.VERCEL_ENV === 'production' && process.env.VERCEL_URL) {
+    // Produkcja na Vercel - użyj VERCEL_URL
+    baseUrl = `https://${process.env.VERCEL_URL}`
+  } else if (process.env.NEXT_PUBLIC_APP_URL) {
+    // Development lub custom domain
+    baseUrl = process.env.NEXT_PUBLIC_APP_URL
+  }
   
   const invitationLink = `${baseUrl}/register?token=${invitation.token}`
   

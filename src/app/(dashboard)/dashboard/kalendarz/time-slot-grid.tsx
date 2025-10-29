@@ -16,8 +16,8 @@ export function TimeSlotGrid({ slots, isEditing = true, onSlotToggle }: TimeSlot
   // Generuj wszystkie możliwe sloty czasowe
   const generateTimeSlots = (day: DayOfWeek) => {
     const isWeekend = day === 6 || day === 7
-    const startHour = isWeekend ? 9 : 8
-    const endHour = isWeekend ? 14 : 21
+    const startHour = isWeekend ? 8 : 8
+    const endHour = isWeekend ? 21 : 21
 
     const timeSlots: { start: string; end: string }[] = []
     
@@ -43,7 +43,7 @@ export function TimeSlotGrid({ slots, isEditing = true, onSlotToggle }: TimeSlot
             <div key={day} className="text-center p-2">
               <div className="text-xs font-medium">{DAY_NAMES_SHORT[day]}</div>
               <div className="text-[10px] text-muted-foreground">
-                {day <= 5 ? '8-21' : '9-14'}
+                {day <= 5 ? '8-21' : '8-21'}
               </div>
             </div>
           ))}
@@ -61,7 +61,7 @@ export function TimeSlotGrid({ slots, isEditing = true, onSlotToggle }: TimeSlot
               {/* Kolumny dla każdego dnia */}
               {days.map((day) => {
                 const dayTimeSlots = generateTimeSlots(day)
-                const currentSlot = dayTimeSlots[index]
+                const currentSlot = dayTimeSlots.find((s) => s.start === timeSlot.start)
                 
                 if (!currentSlot) {
                   // Poza godzinami pracy dla tego dnia

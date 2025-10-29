@@ -149,7 +149,7 @@ export function AvailabilityCalendar({ tutorId, initialAvailability }: Availabil
               Zielone sloty = dostępny, szare = niedostępny.
             </p>
             <p>
-              <strong>Godziny pracy:</strong> Pn-Pt: 8:00-21:00, Sb-Nd: 9:00-14:00 
+              <strong>Godziny pracy:</strong> Pn-Pt: 8:00-21:00, Sb-Nd: 8:00-21:00 
               (domyślnie 8:00-14:00 w tygodniu jest niedostępne)
             </p>
           </div>
@@ -194,7 +194,7 @@ export function AvailabilityCalendar({ tutorId, initialAvailability }: Availabil
             </span>
             <span>•</span>
             <span>
-              Godziny tygodniowo: <strong className="text-foreground">{(availableCount * 0.5).toFixed(1)}h</strong>
+              Godziny tygodniowo: <strong className="text-foreground">{availableCount}h</strong>
             </span>
           </div>
 

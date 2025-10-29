@@ -30,9 +30,19 @@ export function getDefaultAvailabilitySlots(): TimeSlot[] {
     }
   }
   
-  // Weekend (Sb-Nd): 9:00-14:00 dostępne
+  // Weekend (Sb-Nd): 8:00-14:00 dostępne
   for (let day = 6; day <= 7; day++) {
-    for (let hour = 9; hour < 14; hour++) {
+    for (let hour = 8; hour < 14; hour++) {
+      slots.push({
+        day: day as DayOfWeek,
+        startTime: `${hour.toString().padStart(2, '0')}:00`,
+        endTime: `${(hour + 1).toString().padStart(2, '0')}:00`,
+        isAvailable: true,
+      })
+    }
+
+    // Weekend rozszerzony: 14:00-21:00 dostępne
+    for (let hour = 14; hour < 21; hour++) {
       slots.push({
         day: day as DayOfWeek,
         startTime: `${hour.toString().padStart(2, '0')}:00`,
@@ -53,8 +63,8 @@ export function isWithinWorkingHours(day: DayOfWeek, time: string): boolean {
     // Dni tygodnia: 8:00-21:00
     return hour >= 8 && hour < 21
   } else {
-    // Weekend: 9:00-14:00
-    return hour >= 9 && hour < 14
+    // Weekend: 8:00-21:00
+    return hour >= 8 && hour < 21
   }
 }
 

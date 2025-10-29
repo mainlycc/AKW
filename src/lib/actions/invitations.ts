@@ -243,15 +243,18 @@ export async function registerWithInvitation(
     return { success: false, error: 'Nie udało się utworzyć konta' }
   }
 
-  // Aktualizuj status zaproszenia
-  const { error: updateError } = await supabase
-    .from('tutor_invitations')
-    .update({ status: 'accepted' })
-    .eq('id', invitation.id)
+  // Aktualizuj status zaproszenia używając funkcji bazy danych (omija RLS)
+  const { error: updateError } = await supabase.rpc('accept_invitation_by_token', {
+    invitation_token: token
+  })
 
   if (updateError) {
     console.error('Error updating invitation:', updateError)
+    // Nie przerywamy - konto zostało utworzone, tylko status zaproszenia się nie zaktualizował
   }
+
+  // Odśwież cache dla strony zaproszeń (aby admin zobaczył zmieniony status)
+  revalidatePath('/dashboard/zaproszenia')
 
   return { success: true }
 }

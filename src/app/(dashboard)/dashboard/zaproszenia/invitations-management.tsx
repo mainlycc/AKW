@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Table,
   TableBody,
@@ -15,7 +16,7 @@ import { IconPlus, IconCopy, IconX, IconCheck } from '@tabler/icons-react'
 import { toast } from 'sonner'
 import type { TutorInvitation } from '@/lib/types/database.types'
 import { InvitationDialog } from './invitation-dialog'
-import { cancelInvitation } from '@/lib/actions/invitations'
+import { cancelInvitation, resendInvitations, deleteInvitations } from '@/lib/actions/invitations'
 import { useRouter } from 'next/navigation'
 import {
   AlertDialog,
@@ -37,6 +38,8 @@ export function InvitationsManagement({ invitations }: InvitationsManagementProp
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false)
   const [selectedInvitationId, setSelectedInvitationId] = useState<string | null>(null)
   const [isProcessing, setIsProcessing] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<string[]>([])
+  const [isBulkProcessing, setIsBulkProcessing] = useState(false)
   const router = useRouter()
 
   const getInvitationUrl = (token: string) => {
@@ -103,6 +106,50 @@ export function InvitationsManagement({ invitations }: InvitationsManagementProp
     return new Date(expiresAt) < new Date()
   }
 
+  const allIds = invitations.map((i) => i.id)
+  const isAllSelected = selectedIds.length > 0 && selectedIds.length === allIds.length
+  const isSomeSelected = selectedIds.length > 0 && selectedIds.length < allIds.length
+
+  const toggleSelectAll = (checked: boolean) => {
+    setSelectedIds(checked ? allIds : [])
+  }
+
+  const toggleSelectOne = (id: string, checked: boolean) => {
+    setSelectedIds((prev) => (checked ? [...new Set([...prev, id])] : prev.filter((x) => x !== id)))
+  }
+
+  const handleBulkResend = async () => {
+    if (selectedIds.length === 0) return
+    setIsBulkProcessing(true)
+    const res = await resendInvitations(selectedIds)
+    if (res.success) {
+      toast.success('Wysłano ponownie zaproszenia')
+    } else {
+      if (res.failed && res.failed.length > 0) {
+        toast.error(`Nie udało się wysłać: ${res.failed.length}/${selectedIds.length}`)
+      } else {
+        toast.error(res.error || 'Nie udało się wysłać zaproszeń')
+      }
+    }
+    setIsBulkProcessing(false)
+    setSelectedIds([])
+    router.refresh()
+  }
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.length === 0) return
+    setIsBulkProcessing(true)
+    const res = await deleteInvitations(selectedIds)
+    if (res.success) {
+      toast.success('Usunięto wybrane zaproszenia')
+    } else {
+      toast.error(res.error || 'Nie udało się usunąć zaproszeń')
+    }
+    setIsBulkProcessing(false)
+    setSelectedIds([])
+    router.refresh()
+  }
+
   return (
     <>
       <div className="space-y-4">
@@ -119,10 +166,27 @@ export function InvitationsManagement({ invitations }: InvitationsManagementProp
           </Button>
         </div>
 
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={handleBulkResend} disabled={selectedIds.length === 0 || isBulkProcessing}>
+            Wyślij ponownie ({selectedIds.length})
+          </Button>
+          <Button variant="destructive" size="sm" onClick={handleBulkDelete} disabled={selectedIds.length === 0 || isBulkProcessing}>
+            Usuń zaznaczone
+          </Button>
+        </div>
+
         <div className="rounded-md border">
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-[40px]">
+                  <Checkbox
+                    checked={isAllSelected}
+                    onCheckedChange={(v) => toggleSelectAll(!!v)}
+                    aria-label="Zaznacz wszystkie"
+                    className={isSomeSelected && !isAllSelected ? 'data-[state=indeterminate]:opacity-100' : ''}
+                  />
+                </TableHead>
                 <TableHead>Email</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Data utworzenia</TableHead>
@@ -133,13 +197,20 @@ export function InvitationsManagement({ invitations }: InvitationsManagementProp
             <TableBody>
               {invitations.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
                     Brak zaproszeń
                   </TableCell>
                 </TableRow>
               ) : (
                 invitations.map((invitation) => (
                   <TableRow key={invitation.id}>
+                    <TableCell>
+                      <Checkbox
+                        checked={selectedIds.includes(invitation.id)}
+                        onCheckedChange={(v) => toggleSelectOne(invitation.id, !!v)}
+                        aria-label={`Zaznacz zaproszenie ${invitation.email}`}
+                      />
+                    </TableCell>
                     <TableCell className="font-medium">{invitation.email}</TableCell>
                     <TableCell>{getStatusBadge(invitation.status)}</TableCell>
                     <TableCell>{formatDate(invitation.created_at)}</TableCell>

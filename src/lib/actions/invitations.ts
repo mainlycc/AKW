@@ -150,6 +150,97 @@ export async function getInvitations(): Promise<TutorInvitation[]> {
 }
 
 /**
+ * Wysyła ponownie emaile z zaproszeniem dla podanych zaproszeń (tylko dla adminów)
+ */
+export async function resendInvitations(ids: string[]): Promise<{ success: boolean; failed?: string[]; error?: string }> {
+  const supabase = await createClient()
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { success: false, error: 'Nie jesteś zalogowany' }
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .single()
+
+  if (!profile || profile.role !== 'admin') return { success: false, error: 'Brak uprawnień' }
+
+  if (!ids || ids.length === 0) return { success: true }
+
+  // Pobierz zaproszenia
+  const { data: invitations, error } = await supabase
+    .from('tutor_invitations')
+    .select('*')
+    .in('id', ids)
+
+  if (error) {
+    console.error('Error fetching invitations for resend:', error)
+    return { success: false, error: 'Nie udało się pobrać zaproszeń' }
+  }
+
+  const failed: string[] = []
+
+  // Ustal bazowy URL tak jak przy tworzeniu
+  let baseUrl = 'http://localhost:3000'
+  if (process.env.NEXT_PUBLIC_APP_URL) {
+    baseUrl = process.env.NEXT_PUBLIC_APP_URL
+  } else if (process.env.VERCEL_ENV === 'production' && process.env.VERCEL_URL) {
+    baseUrl = `https://${process.env.VERCEL_URL}`
+  }
+
+  // Wyślij tylko dla statusów pending/expired
+  for (const inv of (invitations || [])) {
+    if (!inv || (inv.status !== 'pending' && inv.status !== 'expired')) continue
+    const invitationLink = `${baseUrl}/register?token=${inv.token}`
+    const result = await sendInvitationEmail({
+      to: inv.email,
+      invitationLink,
+      expiryDays: 7,
+    })
+    if (!result.success) failed.push(inv.id)
+  }
+
+  revalidatePath('/dashboard/zaproszenia')
+  return { success: failed.length === 0, failed: failed.length ? failed : undefined }
+}
+
+/**
+ * Usuwa zaproszenia o statusie pending/expired (tylko dla adminów)
+ */
+export async function deleteInvitations(ids: string[]): Promise<{ success: boolean; error?: string }> {
+  const supabase = await createClient()
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { success: false, error: 'Nie jesteś zalogowany' }
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .single()
+
+  if (!profile || profile.role !== 'admin') return { success: false, error: 'Brak uprawnień' }
+
+  if (!ids || ids.length === 0) return { success: true }
+
+  // Ogranicz do pending/expired po stronie bazy
+  const { error } = await supabase
+    .from('tutor_invitations')
+    .delete()
+    .in('id', ids)
+    .in('status', ['pending', 'expired'])
+
+  if (error) {
+    console.error('Error deleting invitations:', error)
+    return { success: false, error: 'Nie udało się usunąć zaproszeń' }
+  }
+
+  revalidatePath('/dashboard/zaproszenia')
+  return { success: true }
+}
+
+/**
  * Waliduje token zaproszenia
  */
 export async function validateInvitationToken(token: string): Promise<ValidateTokenResult> {

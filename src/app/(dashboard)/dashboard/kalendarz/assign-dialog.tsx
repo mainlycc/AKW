@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectVa
 import { createBookedSlotAction } from './actions'
 import type { DayOfWeek } from '@/lib/types/availability.types'
 
-interface AssignmentOption {
+export interface AssignmentOption {
   id: string
   students: { id: string; first_name: string; last_name: string }
   subjects: { id: string; name: string }

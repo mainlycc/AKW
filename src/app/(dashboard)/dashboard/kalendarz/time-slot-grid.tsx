@@ -53,7 +53,7 @@ export function TimeSlotGrid({ slots, isEditing = true, onSlotToggle, bookedSlot
 
         {/* Siatka slotów */}
         <div className="space-y-px">
-          {generateTimeSlots(1).map((timeSlot, index) => (
+          {generateTimeSlots(1).map((timeSlot) => (
             <div key={timeSlot.start} className="grid grid-cols-8 gap-1">
               {/* Kolumna z czasem */}
               <div className="flex items-center justify-end pr-2 text-xs text-muted-foreground">
@@ -92,10 +92,18 @@ export function TimeSlotGrid({ slots, isEditing = true, onSlotToggle, bookedSlot
                   (b) => b.weekday === day && b.start_time.substring(0,5) === currentSlot.start && b.end_time.substring(0,5) === currentSlot.end && b.status === 'booked'
                 )
                 const isBooked = !!matched
+                type BookedSlotWithAssignment = BookedSlot & {
+                  student_assignments?: {
+                    students?: { id: string; first_name: string; last_name: string } | null
+                    subjects?: { id: string; name: string } | null
+                    subject_levels?: { id: string; level_name: string } | null
+                  } | null
+                }
+
                 const bookedLabel = isBooked
                   ? (() => {
-                      const anySlot: any = matched as any
-                      const stud = anySlot?.student_assignments?.students
+                      const slotWith: BookedSlotWithAssignment = matched as BookedSlotWithAssignment
+                      const stud = slotWith?.student_assignments?.students
                       if (stud?.last_name) return String(stud.last_name)
                       return ''
                     })()

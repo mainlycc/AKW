@@ -13,7 +13,20 @@ export default async function BookedSlotsAdminPage() {
     )
   }
 
-  const slots = await listBookedSlots({ scope: 'admin' })
+  type BookedSlotWithRelations = Awaited<ReturnType<typeof listBookedSlots>> extends infer T
+    ? T extends Array<infer U>
+      ? U & {
+          student_assignments?: {
+            students?: { id: string; first_name: string; last_name: string } | null
+            subjects?: { id: string; name: string } | null
+            subject_levels?: { id: string; level_name: string } | null
+          } | null
+          profiles?: { id: string; full_name: string } | null
+        }
+      : never
+    : never
+
+  const slots = (await listBookedSlots({ scope: 'admin' })) as BookedSlotWithRelations[]
 
   return (
     <Card>
@@ -36,10 +49,10 @@ export default async function BookedSlotsAdminPage() {
           <TableBody>
             {slots.map((s) => (
               <TableRow key={s.id}>
-                <TableCell>{(s as any).profiles?.full_name ?? '—'}</TableCell>
-                <TableCell>{(s as any).student_assignments?.students ? `${(s as any).student_assignments.students.first_name} ${(s as any).student_assignments.students.last_name}` : '—'}</TableCell>
-                <TableCell>{(s as any).student_assignments?.subjects?.name ?? '—'}</TableCell>
-                <TableCell>{(s as any).student_assignments?.subject_levels?.level_name ?? '—'}</TableCell>
+                <TableCell>{s.profiles?.full_name ?? '—'}</TableCell>
+                <TableCell>{s.student_assignments?.students ? `${s.student_assignments.students.first_name} ${s.student_assignments.students.last_name}` : '—'}</TableCell>
+                <TableCell>{s.student_assignments?.subjects?.name ?? '—'}</TableCell>
+                <TableCell>{s.student_assignments?.subject_levels?.level_name ?? '—'}</TableCell>
                 <TableCell>{s.weekday}</TableCell>
                 <TableCell>{s.start_time.substring(0,5)}–{s.end_time.substring(0,5)}</TableCell>
                 <TableCell>{s.status}</TableCell>

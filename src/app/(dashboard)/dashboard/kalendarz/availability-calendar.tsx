@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { TimeSlotGrid } from './time-slot-grid'
-import { AssignDialog } from './assign-dialog'
+import { AssignDialog, type AssignmentOption } from './assign-dialog'
 import { saveAvailability, cancelBookedSlotAction } from './actions'
 import type { BookedSlot } from '@/lib/actions/booked-slots'
 import { getDefaultAvailabilitySlots, isWithinWorkingHours } from '@/lib/utils/availability-helpers'
@@ -17,7 +17,7 @@ interface AvailabilityCalendarProps {
   tutorId: string
   initialAvailability: TutorAvailabilityData | null
   initialBookedSlots: BookedSlot[]
-  initialAssignments: any[]
+  initialAssignments: AssignmentOption[]
   currentUserId: string
 }
 
@@ -25,7 +25,7 @@ export function AvailabilityCalendar({ tutorId, initialAvailability, initialBook
   const [slots, setSlots] = useState<TimeSlot[]>([])
   const [savedAvailability, setSavedAvailability] = useState<TutorAvailabilityData | null>(initialAvailability)
   const [bookedSlots, setBookedSlots] = useState<BookedSlot[]>(initialBookedSlots)
-  const [assignments] = useState<any[]>(initialAssignments)
+  const [assignments] = useState<AssignmentOption[]>(initialAssignments)
   const [loading, setLoading] = useState(false)
   const [hasChanges, setHasChanges] = useState(false)
   const [isEditing, setIsEditing] = useState(!initialAvailability) // Tryb edycji jeśli nie ma zapisanego grafiku

@@ -18,30 +18,50 @@ export default async function CalendarPage() {
     getTutorActiveAssignments(profile.id),
   ])
 
-  type TutorAssignmentRow = {
-    id: string
-    status: string
-    students: { id: string; first_name: string; last_name: string } | null
-    subjects: { id: string; name: string } | null
-    subject_levels: { id: string; level_name: string } | null
+  type TutorAssignmentRawRow = {
+    id: unknown
+    status: unknown
+    students: (
+      { id: unknown; first_name: unknown; last_name: unknown } |
+      { id: unknown; first_name: unknown; last_name: unknown }[]
+    ) | null
+    subjects: (
+      { id: unknown; name: unknown } |
+      { id: unknown; name: unknown }[]
+    ) | null
+    subject_levels: (
+      { id: unknown; level_name: unknown } |
+      { id: unknown; level_name: unknown }[]
+    ) | null
   }
 
-  const assignments: AssignmentOption[] = (assignmentsRaw as TutorAssignmentRow[]).map((a: TutorAssignmentRow) => ({
-    id: String(a.id),
-    students: {
-      id: String(a.students?.id ?? ''),
-      first_name: String(a.students?.first_name ?? ''),
-      last_name: String(a.students?.last_name ?? ''),
-    },
-    subjects: {
-      id: String(a.subjects?.id ?? ''),
-      name: String(a.subjects?.name ?? ''),
-    },
-    subject_levels: {
-      id: String(a.subject_levels?.id ?? ''),
-      level_name: String(a.subject_levels?.level_name ?? ''),
-    },
-  }))
+  const toSingle = <T,>(val: T | T[] | null | undefined): T | null => {
+    if (Array.isArray(val)) return val[0] ?? null
+    return val ?? null
+  }
+
+  const rawRows = assignmentsRaw as TutorAssignmentRawRow[]
+  const assignments: AssignmentOption[] = rawRows.map((a) => {
+    const stud = toSingle(a.students)
+    const subj = toSingle(a.subjects)
+    const level = toSingle(a.subject_levels)
+    return {
+      id: String(a.id ?? ''),
+      students: {
+        id: String(stud?.id ?? ''),
+        first_name: String(stud?.first_name ?? ''),
+        last_name: String(stud?.last_name ?? ''),
+      },
+      subjects: {
+        id: String(subj?.id ?? ''),
+        name: String(subj?.name ?? ''),
+      },
+      subject_levels: {
+        id: String(level?.id ?? ''),
+        level_name: String(level?.level_name ?? ''),
+      },
+    }
+  })
 
   return (
     <div className="space-y-4">

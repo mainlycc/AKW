@@ -67,6 +67,20 @@ Kalendarz pokazuje administratorowi kiedy jesteś dostępny na korepetycje. Dzi�
 
 ---
 
+## 🔁 Przypisywanie uczniów do stałych slotów
+
+### Jak przypisać ucznia do slotu
+1. Upewnij się, że Twój grafik jest zapisany (tryb podglądu, nie edycji).
+2. Kliknij zielony slot dostępności w siatce.
+3. Wybierz ucznia oraz przedmiot i poziom (tylko w ramach Twoich przypisań i kompetencji).
+4. Zatwierdź – slot stanie się zajęty cyklicznie co tydzień.
+
+### Jak anulować rezerwację slotu
+1. Kliknij fioletowy (zajęty) slot.
+2. Potwierdź anulowanie rezerwacji.
+
+💡 Rezerwacje są cykliczne (tygodniowe). Zmiana dostępności nie usuwa istniejących rezerwacji.
+
 ## 👨‍🎓 Twoi uczniowie
 
 ### Przeglądanie uczniów

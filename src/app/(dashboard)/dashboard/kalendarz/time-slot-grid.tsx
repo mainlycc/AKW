@@ -2,15 +2,17 @@
 
 import { DayColumn } from './day-column'
 import type { TimeSlot, DayOfWeek } from '@/lib/types/availability.types'
+import type { BookedSlot } from '@/lib/actions/booked-slots'
 import { DAY_NAMES_SHORT } from '@/lib/types/availability.types'
 
 interface TimeSlotGridProps {
   slots: TimeSlot[]
   isEditing?: boolean
   onSlotToggle: (day: DayOfWeek, startTime: string, endTime: string) => void
+  bookedSlots?: BookedSlot[]
 }
 
-export function TimeSlotGrid({ slots, isEditing = true, onSlotToggle }: TimeSlotGridProps) {
+export function TimeSlotGrid({ slots, isEditing = true, onSlotToggle, bookedSlots = [] }: TimeSlotGridProps) {
   const days: DayOfWeek[] = [1, 2, 3, 4, 5, 6, 7]
 
   // Generuj wszystkie możliwe sloty czasowe
@@ -86,6 +88,19 @@ export function TimeSlotGrid({ slots, isEditing = true, onSlotToggle }: TimeSlot
 
                 const isAvailable = existingSlot?.isAvailable ?? false
 
+                const matched = bookedSlots.find(
+                  (b) => b.weekday === day && b.start_time.substring(0,5) === currentSlot.start && b.end_time.substring(0,5) === currentSlot.end && b.status === 'booked'
+                )
+                const isBooked = !!matched
+                const bookedLabel = isBooked
+                  ? (() => {
+                      const anySlot: any = matched as any
+                      const stud = anySlot?.student_assignments?.students
+                      if (stud?.last_name) return String(stud.last_name)
+                      return ''
+                    })()
+                  : undefined
+
                 return (
                   <DayColumn
                     key={`${day}-${currentSlot.start}`}
@@ -93,6 +108,8 @@ export function TimeSlotGrid({ slots, isEditing = true, onSlotToggle }: TimeSlot
                     startTime={currentSlot.start}
                     endTime={currentSlot.end}
                     isAvailable={isAvailable}
+                    isBooked={isBooked}
+                    bookedLabel={bookedLabel}
                     isEditing={isEditing}
                     onToggle={onSlotToggle}
                   />
@@ -111,6 +128,10 @@ export function TimeSlotGrid({ slots, isEditing = true, onSlotToggle }: TimeSlot
           <div className="flex items-center gap-2">
             <div className="w-6 h-6 bg-muted border-2 border-border rounded" />
             <span>Niedostępny</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-6 bg-purple-500/20 border-2 border-purple-500 rounded" />
+            <span>Zarezerwowany (uczeń)</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="w-6 h-6 bg-muted/30 rounded" />

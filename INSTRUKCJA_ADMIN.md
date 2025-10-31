@@ -50,6 +50,19 @@ Witaj w systemie zarządzania Akademią Wiedzy! Ten dokument pomoże Ci w codzie
 
 ---
 
+## 📅 Rezerwacje slotów (stałe, tygodniowe)
+
+### Podgląd i zarządzanie
+1. Przejdź do „Przypisane sloty”.
+2. Zobaczysz listę rezerwacji: Tutor | Uczeń | Dzień | Godziny | Przedmiot | Poziom | Status.
+3. Filtruj po tutorze, uczniu lub statusie.
+
+### Przypisywanie z widoku kalendarza tutora
+- W podglądzie kalendarza danego tutora sloty zajęte są oznaczone kolorem.
+- Możesz przypisać ucznia do zielonego (wolnego) slotu lub anulować istniejącą rezerwację.
+
+💡 Rezerwacje są cykliczne (powtarzają się co tydzień). Anulowanie zmienia status na „cancelled”.
+
 ## 👨‍🎓 Zarządzanie Uczniami
 
 ### Dodawanie nowego ucznia

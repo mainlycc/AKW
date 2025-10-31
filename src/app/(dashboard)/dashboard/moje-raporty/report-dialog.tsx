@@ -48,7 +48,7 @@ const months = [
   { value: 12, label: 'Grudzień' },
 ]
 
-export function ReportDialog({ open, onClose, tutorId, students }: ReportDialogProps) {
+export function ReportDialog({ open, onClose, tutorId, students, initialReport }: ReportDialogProps & { initialReport?: { month: number; year: number; entries: { student_id: string; hours: number }[] } }) {
   const currentDate = new Date()
   const [loading, setLoading] = useState(false)
   const [month, setMonth] = useState(currentDate.getMonth() + 1)
@@ -57,12 +57,22 @@ export function ReportDialog({ open, onClose, tutorId, students }: ReportDialogP
 
   useEffect(() => {
     if (open) {
-      const date = new Date()
-      setMonth(date.getMonth() + 1)
-      setYear(date.getFullYear())
-      setHours({})
+      if (initialReport) {
+        setMonth(initialReport.month)
+        setYear(initialReport.year)
+        const mapped: Record<string, string> = {}
+        initialReport.entries.forEach(e => {
+          mapped[e.student_id] = e.hours.toString()
+        })
+        setHours(mapped)
+      } else {
+        const date = new Date()
+        setMonth(date.getMonth() + 1)
+        setYear(date.getFullYear())
+        setHours({})
+      }
     }
-  }, [open])
+  }, [open, initialReport])
 
   const handleHoursChange = (studentId: string, value: string) => {
     setHours(prev => ({ ...prev, [studentId]: value }))
@@ -113,7 +123,7 @@ export function ReportDialog({ open, onClose, tutorId, students }: ReportDialogP
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Utwórz raport miesięczny</DialogTitle>
+          <DialogTitle>{initialReport ? 'Edytuj raport miesięczny' : 'Utwórz raport miesięczny'}</DialogTitle>
           <DialogDescription>
             Wprowadź liczbę godzin przeprowadzonych z każdym uczniem
           </DialogDescription>
@@ -136,6 +146,7 @@ export function ReportDialog({ open, onClose, tutorId, students }: ReportDialogP
                   ))}
                 </SelectContent>
               </Select>
+              {initialReport && <p className="text-xs text-muted-foreground">Miesiąc nie może być zmieniony podczas edycji.</p>}
             </div>
             <div className="space-y-2">
               <Label>Rok</Label>
@@ -151,6 +162,7 @@ export function ReportDialog({ open, onClose, tutorId, students }: ReportDialogP
                   ))}
                 </SelectContent>
               </Select>
+              {initialReport && <p className="text-xs text-muted-foreground">Rok nie może być zmieniony podczas edycji.</p>}
             </div>
           </div>
 

@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { ReportDialog } from "./report-dialog"
 import { deleteReport, type ReportStatus } from "./actions"
-import { IconPlus, IconTrash } from "@tabler/icons-react"
+import { IconPlus, IconTrash, IconPencil } from "@tabler/icons-react"
 import { ConfirmDialog } from "@/components/confirm-dialog"
 
 interface MonthlyReport {
@@ -25,6 +25,7 @@ interface MonthlyReport {
   total_amount: number | null
   submitted_at: string | null
   created_at: string
+  monthly_report_entries?: { id: string; student_id: string; hours: number }[]
 }
 
 interface Student {
@@ -59,6 +60,11 @@ export function ReportsTable({ reports, tutorId, students }: ReportsTableProps) 
   const [dialogOpen, setDialogOpen] = useState(false)
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false)
   const [reportToDelete, setReportToDelete] = useState<string | null>(null)
+  const [initialReport, setInitialReport] = useState<{
+    month: number
+    year: number
+    entries: { student_id: string; hours: number }[]
+  } | null>(null)
 
   const handleDelete = async (id: string) => {
     setReportToDelete(id)
@@ -70,6 +76,15 @@ export function ReportsTable({ reports, tutorId, students }: ReportsTableProps) 
       await deleteReport(reportToDelete)
       setReportToDelete(null)
     }
+  }
+
+  const handleEdit = (report: MonthlyReport) => {
+    setInitialReport({
+      month: report.month,
+      year: report.year,
+      entries: (report.monthly_report_entries || []).map(e => ({ student_id: e.student_id, hours: e.hours })),
+    })
+    setDialogOpen(true)
   }
 
   return (
@@ -120,13 +135,24 @@ export function ReportsTable({ reports, tutorId, students }: ReportsTableProps) 
                   </TableCell>
                   <TableCell className="text-right">
                     {report.status === 'draft' && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleDelete(report.id)}
-                      >
-                        <IconTrash className="h-4 w-4" />
-                      </Button>
+                      <div className="flex justify-end gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleEdit(report)}
+                          title="Edytuj wersję roboczą"
+                        >
+                          <IconPencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleDelete(report.id)}
+                          title="Usuń raport"
+                        >
+                          <IconTrash className="h-4 w-4" />
+                        </Button>
+                      </div>
                     )}
                   </TableCell>
                 </TableRow>
@@ -138,9 +164,13 @@ export function ReportsTable({ reports, tutorId, students }: ReportsTableProps) 
 
       <ReportDialog
         open={dialogOpen}
-        onClose={() => setDialogOpen(false)}
+        onClose={() => {
+          setDialogOpen(false)
+          setInitialReport(null)
+        }}
         tutorId={tutorId}
         students={students}
+        initialReport={initialReport || undefined}
       />
 
       <ConfirmDialog

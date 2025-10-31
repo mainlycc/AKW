@@ -5,7 +5,9 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { TimeSlotGrid } from './time-slot-grid'
-import { saveAvailability } from './actions'
+import { AssignDialog } from './assign-dialog'
+import { saveAvailability, cancelBookedSlotAction } from './actions'
+import type { BookedSlot } from '@/lib/actions/booked-slots'
 import { getDefaultAvailabilitySlots, isWithinWorkingHours } from '@/lib/utils/availability-helpers'
 import type { TutorAvailabilityData, TimeSlot, DayOfWeek } from '@/lib/types/availability.types'
 import { IconDeviceFloppy, IconRefresh, IconInfoCircle, IconEdit } from '@tabler/icons-react'
@@ -14,14 +16,21 @@ import { toast } from 'sonner'
 interface AvailabilityCalendarProps {
   tutorId: string
   initialAvailability: TutorAvailabilityData | null
+  initialBookedSlots: BookedSlot[]
+  initialAssignments: any[]
+  currentUserId: string
 }
 
-export function AvailabilityCalendar({ tutorId, initialAvailability }: AvailabilityCalendarProps) {
+export function AvailabilityCalendar({ tutorId, initialAvailability, initialBookedSlots, initialAssignments, currentUserId }: AvailabilityCalendarProps) {
   const [slots, setSlots] = useState<TimeSlot[]>([])
   const [savedAvailability, setSavedAvailability] = useState<TutorAvailabilityData | null>(initialAvailability)
+  const [bookedSlots, setBookedSlots] = useState<BookedSlot[]>(initialBookedSlots)
+  const [assignments] = useState<any[]>(initialAssignments)
   const [loading, setLoading] = useState(false)
   const [hasChanges, setHasChanges] = useState(false)
   const [isEditing, setIsEditing] = useState(!initialAvailability) // Tryb edycji jeśli nie ma zapisanego grafiku
+  const [assignOpen, setAssignOpen] = useState(false)
+  const [selectedSlot, setSelectedSlot] = useState<{ day: DayOfWeek; start: string; end: string } | null>(null)
 
   // Inicjalizuj sloty TYLKO RAZ z initialAvailability
   useEffect(() => {
@@ -48,6 +57,23 @@ export function AvailabilityCalendar({ tutorId, initialAvailability }: Availabil
   const handleSlotToggle = (day: DayOfWeek, startTime: string, endTime: string) => {
     // Ignoruj kliknięcia jeśli nie jesteśmy w trybie edycji
     if (!isEditing) {
+      // w trybie podglądu – jeśli zajęty: zaproponuj anulowanie; jeśli dostępny: przypisz
+      const normalizeTime = (t: string) => t.substring(0,5)
+      const isBooked = bookedSlots.some(b => b.weekday === day && b.start_time.substring(0,5) === startTime && b.end_time.substring(0,5) === endTime && b.status === 'booked')
+      if (isBooked) {
+        const slot = bookedSlots.find(b => b.weekday === day && b.start_time.substring(0,5) === startTime && b.end_time.substring(0,5) === endTime && b.status === 'booked')
+        if (slot && window.confirm('Ten slot jest zarezerwowany. Czy chcesz anulować rezerwację?')) {
+          cancelBookedSlotAction(slot.id).then(() => {
+            setBookedSlots(prev => prev.map(s => s.id === slot.id ? { ...s, status: 'cancelled' } as BookedSlot : s))
+            toast.success('Rezerwacja anulowana')
+          }).catch(() => toast.error('Nie udało się anulować rezerwacji'))
+        }
+      } else {
+        const isAvailable = slots.some(s => s.day === day && normalizeTime(s.startTime) === startTime && normalizeTime(s.endTime) === endTime && s.isAvailable)
+        if (!isAvailable) return
+        setSelectedSlot({ day, start: startTime, end: endTime })
+        setAssignOpen(true)
+      }
       return
     }
 
@@ -199,7 +225,7 @@ export function AvailabilityCalendar({ tutorId, initialAvailability }: Availabil
           </div>
 
           {/* Siatka czasowa */}
-          <TimeSlotGrid slots={slots} isEditing={isEditing} onSlotToggle={handleSlotToggle} />
+          <TimeSlotGrid slots={slots} isEditing={isEditing} onSlotToggle={handleSlotToggle} bookedSlots={bookedSlots} />
 
           {/* Akcje */}
           <div className="flex items-center justify-between pt-4 border-t">
@@ -244,6 +270,21 @@ export function AvailabilityCalendar({ tutorId, initialAvailability }: Availabil
           </div>
         </CardContent>
       </Card>
+
+      {/* Dialog przypisania */}
+      {selectedSlot && (
+        <AssignDialog
+          open={assignOpen}
+          onClose={() => setAssignOpen(false)}
+          tutorId={tutorId}
+          createdBy={currentUserId}
+          weekday={selectedSlot.day}
+          startTime={selectedSlot.start}
+          endTime={selectedSlot.end}
+          assignments={assignments}
+          onAssigned={() => { /* proste odświeżenie lokalnego stanu po success */ }}
+        />
+      )}
     </div>
   )
 }

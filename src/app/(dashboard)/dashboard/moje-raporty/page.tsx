@@ -12,10 +12,24 @@ export default async function MyReportsPage() {
 
   const supabase = await createClient()
 
-  // Get tutor's reports
+  // Get tutor's reports with entries for editing drafts
   const { data: reports } = await supabase
     .from('monthly_reports')
-    .select('*')
+    .select(`
+      id,
+      month,
+      year,
+      status,
+      total_hours,
+      total_amount,
+      submitted_at,
+      created_at,
+      monthly_report_entries (
+        id,
+        student_id,
+        hours
+      )
+    `)
     .eq('tutor_id', profile.id)
     .order('year', { ascending: false })
     .order('month', { ascending: false })

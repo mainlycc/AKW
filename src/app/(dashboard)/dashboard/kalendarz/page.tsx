@@ -18,7 +18,15 @@ export default async function CalendarPage() {
     getTutorActiveAssignments(profile.id),
   ])
 
-  const assignments: AssignmentOption[] = (assignmentsRaw as any[]).map((a) => ({
+  type TutorAssignmentRow = {
+    id: string
+    status: string
+    students: { id: string; first_name: string; last_name: string } | null
+    subjects: { id: string; name: string } | null
+    subject_levels: { id: string; level_name: string } | null
+  }
+
+  const assignments: AssignmentOption[] = (assignmentsRaw as TutorAssignmentRow[]).map((a: TutorAssignmentRow) => ({
     id: String(a.id),
     students: {
       id: String(a.students?.id ?? ''),

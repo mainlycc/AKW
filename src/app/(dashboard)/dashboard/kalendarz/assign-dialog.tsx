@@ -27,7 +27,7 @@ interface AssignDialogProps {
   onAssigned?: () => void
 }
 
-export function AssignDialog({ open, onClose, tutorId, createdBy, weekday, startTime, endTime, assignments, onAssigned }: AssignDialogProps) {
+export function AssignDialog({ open, onClose, tutorId: _tutorId, createdBy, weekday, startTime, endTime, assignments, onAssigned }: AssignDialogProps) {
   const [selectedAssignmentId, setSelectedAssignmentId] = useState<string>('')
   const [isPending, startTransition] = useTransition()
 
@@ -41,7 +41,9 @@ export function AssignDialog({ open, onClose, tutorId, createdBy, weekday, start
           start_time: startTime,
           end_time: endTime,
         })
-        onAssigned && onAssigned()
+        if (onAssigned) {
+          onAssigned()
+        }
         onClose()
       } catch (e) {
         console.error(e)

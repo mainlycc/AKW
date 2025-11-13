@@ -34,15 +34,15 @@ export function TimeSlotGrid({ slots, isEditing = true, onSlotToggle, bookedSlot
   }
 
   return (
-    <div className="overflow-x-auto">
-      <div className="min-w-max">
+    <div className="w-full">
+      <div className="w-full">
         {/* Nagłówki dni */}
-        <div className="grid grid-cols-8 gap-1 mb-2">
-          <div className="text-xs font-medium text-muted-foreground p-2">
+        <div className="grid grid-cols-8 gap-0.5 mb-2 w-full">
+          <div className="text-xs font-medium text-muted-foreground p-1.5 text-right">
             Czas
           </div>
           {days.map((day) => (
-            <div key={day} className="text-center p-2">
+            <div key={day} className="text-center p-1.5">
               <div className="text-xs font-medium">{DAY_NAMES_SHORT[day]}</div>
               <div className="text-[10px] text-muted-foreground">
                 {day <= 5 ? '8-21' : '8-21'}
@@ -52,11 +52,11 @@ export function TimeSlotGrid({ slots, isEditing = true, onSlotToggle, bookedSlot
         </div>
 
         {/* Siatka slotów */}
-        <div className="space-y-px">
+        <div className="space-y-px w-full">
           {generateTimeSlots(1).map((timeSlot) => (
-            <div key={timeSlot.start} className="grid grid-cols-8 gap-1">
+            <div key={timeSlot.start} className="grid grid-cols-8 gap-0.5 w-full">
               {/* Kolumna z czasem */}
-              <div className="flex items-center justify-end pr-2 text-xs text-muted-foreground">
+              <div className="flex items-center justify-end pr-1.5 text-xs text-muted-foreground">
                 {timeSlot.start}
               </div>
               

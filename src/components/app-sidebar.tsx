@@ -16,6 +16,7 @@ import {
   IconMailPlus,
   IconCalendarTime,
   IconCalendarCheck,
+  IconCalendarPlus,
 } from "@tabler/icons-react"
 
 import { NavMain } from "@/components/nav-main"
@@ -69,6 +70,11 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
       title: "Dostępność tutorów",
       url: "/dashboard/dostepnosc-tutorow",
       icon: IconCalendarCheck,
+    },
+    {
+      title: "Publiczne rezerwacje",
+      url: "/dashboard/rezerwacje-publiczne",
+      icon: IconCalendarPlus,
     },
     {
       title: "Przedmioty",

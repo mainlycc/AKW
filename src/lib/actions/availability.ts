@@ -5,10 +5,89 @@ import { createClient } from '@/lib/supabase/server'
 import type {
   AvailabilitySlot,
   AvailabilityTemplate,
+  DayOfWeek,
+  SuggestedTimeSlot,
   TimeSlot,
   TutorAvailabilityData,
   TutorAvailabilitySummary,
 } from '@/lib/types/availability.types'
+import {
+  DEFAULT_WORKING_HOURS,
+  DAY_NAMES,
+  SLOT_DURATION_MINUTES,
+} from '@/lib/types/availability.types'
+
+const normalizeTimeForDb = (time: string): string => {
+  const [hourStr = '00', minuteStr = '00'] = time.split(':')
+  const hours = hourStr.padStart(2, '0')
+  const minutes = minuteStr.padStart(2, '0')
+  return `${hours}:${minutes}`
+}
+
+const timeToMinutes = (time: string): number => {
+  const [hoursStr = '0', minutesStr = '0'] = normalizeTimeForDb(time).split(':')
+  const hours = Number.parseInt(hoursStr, 10)
+  const minutes = Number.parseInt(minutesStr, 10)
+  return hours * 60 + minutes
+}
+
+const validateSlots = (slots: TimeSlot[]) => {
+  if (!slots.length) {
+    throw new Error('Musisz zaznaczyć przynajmniej jeden slot w grafiku.')
+  }
+
+  const uniqueKeys = new Set<string>()
+  let availableCount = 0
+
+  for (const slot of slots) {
+    const normalizedStart = normalizeTimeForDb(slot.startTime)
+    const normalizedEnd = normalizeTimeForDb(slot.endTime)
+    const startMinutes = timeToMinutes(normalizedStart)
+    const endMinutes = timeToMinutes(normalizedEnd)
+
+    if (endMinutes <= startMinutes) {
+      throw new Error(`Slot ${normalizedStart}-${normalizedEnd} ma nieprawidłowy zakres czasu.`)
+    }
+
+    const duration = endMinutes - startMinutes
+    if (duration !== SLOT_DURATION_MINUTES) {
+      throw new Error(`Slot ${normalizedStart}-${normalizedEnd} musi mieć dokładnie ${SLOT_DURATION_MINUTES} minut.`)
+    }
+
+    if (startMinutes % SLOT_DURATION_MINUTES !== 0 || endMinutes % SLOT_DURATION_MINUTES !== 0) {
+      throw new Error(`Slot ${normalizedStart}-${normalizedEnd} musi zaczynać i kończyć się o pełnej godzinie.`)
+    }
+
+    const key = `${slot.day}-${normalizedStart}`
+    if (uniqueKeys.has(key)) {
+      throw new Error(`Slot ${normalizedStart} w dniu ${slot.day} został zdefiniowany więcej niż raz.`)
+    }
+    uniqueKeys.add(key)
+
+    const workingHours = slot.day >= 1 && slot.day <= 5 ? DEFAULT_WORKING_HOURS.weekday : DEFAULT_WORKING_HOURS.weekend
+    const workingStart = timeToMinutes(workingHours.start)
+    const workingEnd = timeToMinutes(workingHours.end)
+
+    if (startMinutes < workingStart || endMinutes > workingEnd) {
+      throw new Error(`Slot ${normalizedStart}-${normalizedEnd} jest poza dozwolonymi godzinami pracy.`)
+    }
+
+    if (slot.isAvailable) {
+      availableCount += 1
+    }
+  }
+
+  if (availableCount === 0) {
+    throw new Error('Musisz zaznaczyć przynajmniej jeden dostępny slot.')
+  }
+}
+
+const formatDate = (date: Date): string => {
+  const year = date.getFullYear()
+  const month = `${date.getMonth() + 1}`.padStart(2, '0')
+  const day = `${date.getDate()}`.padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
 
 // Pobierz aktywny szablon dostępności tutora
 export async function getTutorAvailability(tutorId: string): Promise<TutorAvailabilityData | null> {
@@ -64,9 +143,7 @@ export async function createAvailabilityTemplate(
   const supabase = await createClient()
 
   // Walidacja
-  if (slots.length === 0) {
-    throw new Error('Musisz zaznaczyć przynajmniej jeden dostępny slot')
-  }
+  validateSlots(slots)
 
   // Sprawdź najwyższą wersję
   const { data: existingTemplates } = await supabase
@@ -97,8 +174,8 @@ export async function createAvailabilityTemplate(
   const slotsToInsert = slots.map((slot) => ({
     template_id: template.id,
     day_of_week: slot.day,
-    start_time: slot.startTime,
-    end_time: slot.endTime,
+    start_time: normalizeTimeForDb(slot.startTime),
+    end_time: normalizeTimeForDb(slot.endTime),
     is_available: slot.isAvailable,
   }))
 
@@ -165,6 +242,106 @@ export async function getAllTutorsAvailability(): Promise<TutorAvailabilitySumma
       last_updated: template?.updated_at || null,
     }
   })
+}
+
+// Zaproponuj najbliższe dostępne sloty dla sesji
+export async function getSuggestedTimeSlots(
+  tutorId: string,
+  _studentId: string,
+  durationMinutes = SLOT_DURATION_MINUTES
+): Promise<SuggestedTimeSlot[]> {
+  if (durationMinutes !== SLOT_DURATION_MINUTES) {
+    throw new Error('Sugestie są dostępne tylko dla sesji trwających 60 minut.')
+  }
+
+  const supabase = await createClient()
+
+  const { data: template, error: templateError } = await supabase
+    .from('tutor_availability_templates')
+    .select('id')
+    .eq('tutor_id', tutorId)
+    .eq('is_active', true)
+    .single()
+
+  if (templateError || !template) {
+    return []
+  }
+
+  const { data: availableSlots, error: slotsError } = await supabase
+    .from('tutor_availability_slots')
+    .select('day_of_week, start_time, end_time, is_available')
+    .eq('template_id', template.id)
+    .eq('is_available', true)
+    .order('day_of_week')
+    .order('start_time')
+
+  if (slotsError || !availableSlots?.length) {
+    return []
+  }
+
+  const { data: bookedSlots } = await supabase
+    .from('booked_slots')
+    .select('weekday, start_time, end_time, status')
+    .eq('tutor_id', tutorId)
+    .eq('status', 'booked')
+
+  const bookedSet = new Set(
+    (bookedSlots || []).map(
+      (slot) => `${slot.weekday}-${normalizeTimeForDb(slot.start_time)}-${normalizeTimeForDb(slot.end_time)}`
+    )
+  )
+
+  const now = new Date()
+  now.setSeconds(0, 0)
+  const suggestions: SuggestedTimeSlot[] = []
+
+  const MAX_DAYS_AHEAD = 28
+  const MAX_SUGGESTIONS = 10
+
+  for (let offset = 0; offset < MAX_DAYS_AHEAD && suggestions.length < MAX_SUGGESTIONS; offset++) {
+    const date = new Date(now)
+    date.setHours(0, 0, 0, 0)
+    date.setDate(now.getDate() + offset)
+
+    const weekday = (((date.getDay() + 6) % 7) + 1) as DayOfWeek
+
+    const daySlots = availableSlots.filter((slot) => slot.day_of_week === weekday)
+
+    for (const slot of daySlots) {
+      const startTime = normalizeTimeForDb(slot.start_time)
+      const endTime = normalizeTimeForDb(slot.end_time)
+      const uniqueKey = `${weekday}-${startTime}-${endTime}`
+
+      if (bookedSet.has(uniqueKey)) {
+        continue
+      }
+
+      const slotDateTime = new Date(date)
+      const [startHour, startMinute] = startTime.split(':').map((value) => Number.parseInt(value, 10))
+      slotDateTime.setHours(startHour, startMinute, 0, 0)
+
+      if (slotDateTime <= now) {
+        continue
+      }
+
+      const localizedDate = formatDate(slotDateTime)
+      const label = `${DAY_NAMES[weekday]} ${localizedDate.split('-').reverse().join('.')} · ${startTime}-${endTime}`
+
+      suggestions.push({
+        weekday,
+        date: localizedDate,
+        startTime,
+        endTime,
+        label,
+      })
+
+      if (suggestions.length >= MAX_SUGGESTIONS) {
+        break
+      }
+    }
+  }
+
+  return suggestions
 }
 
 

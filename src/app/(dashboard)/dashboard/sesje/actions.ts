@@ -2,6 +2,8 @@
 
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
+import { getSuggestedTimeSlots } from '@/lib/actions/availability'
+import type { SuggestedTimeSlot } from '@/lib/types/availability.types'
 
 export async function createSession(data: {
   assignment_id: string
@@ -50,5 +52,14 @@ export async function deleteSession(id: string) {
   }
 
   revalidatePath('/dashboard/sesje')
+}
+
+export async function getSuggestedSessionTimes(params: {
+  tutorId: string
+  studentId: string
+  durationMinutes?: number
+}): Promise<SuggestedTimeSlot[]> {
+  const { tutorId, studentId, durationMinutes = 60 } = params
+  return getSuggestedTimeSlots(tutorId, studentId, durationMinutes)
 }
 

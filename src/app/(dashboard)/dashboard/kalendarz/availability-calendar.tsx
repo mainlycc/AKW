@@ -10,6 +10,7 @@ import { saveAvailability, cancelBookedSlotAction } from './actions'
 import type { BookedSlot } from '@/lib/actions/booked-slots'
 import { getDefaultAvailabilitySlots, isWithinWorkingHours } from '@/lib/utils/availability-helpers'
 import type { TutorAvailabilityData, TimeSlot, DayOfWeek } from '@/lib/types/availability.types'
+import { SLOT_DURATION_MINUTES } from '@/lib/types/availability.types'
 import { IconDeviceFloppy, IconRefresh, IconInfoCircle, IconEdit } from '@tabler/icons-react'
 import { toast } from 'sonner'
 
@@ -175,8 +176,8 @@ export function AvailabilityCalendar({ tutorId, initialAvailability, initialBook
               Zielone sloty = dostępny, szare = niedostępny.
             </p>
             <p>
-              <strong>Godziny pracy:</strong> Pn-Pt: 8:00-21:00, Sb-Nd: 8:00-21:00 
-              (domyślnie 8:00-14:00 w tygodniu jest niedostępne)
+              <strong>Godziny pracy:</strong> Pn-Pt: 8:00-21:00, Sb-Nd: 8:00-21:00.
+              Domyślnie graf zawiera dostępności Pn-Pt: 14:00-21:00, Sb-Nd: 9:00-14:00.
             </p>
           </div>
         </div>
@@ -220,7 +221,10 @@ export function AvailabilityCalendar({ tutorId, initialAvailability, initialBook
             </span>
             <span>•</span>
             <span>
-              Godziny tygodniowo: <strong className="text-foreground">{availableCount}h</strong>
+              Godziny tygodniowo:{' '}
+              <strong className="text-foreground">
+                {((availableCount * SLOT_DURATION_MINUTES) / 60).toFixed(0)}h
+              </strong>
             </span>
           </div>
 

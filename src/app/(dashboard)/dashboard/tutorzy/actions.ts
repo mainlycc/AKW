@@ -29,3 +29,13 @@ export async function updateTutorDetails(
   revalidatePath('/dashboard/tutorzy')
 }
 
+export async function deleteTutor(id: string) {
+  const supabase = await createClient()
+
+  const { error } = await supabase.from('profiles').delete().eq('id', id).eq('role', 'tutor')
+
+  if (error) throw error
+
+  revalidatePath('/dashboard/tutorzy')
+}
+

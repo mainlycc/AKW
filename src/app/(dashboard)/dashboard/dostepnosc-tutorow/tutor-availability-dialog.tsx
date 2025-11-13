@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge'
 import { getTutorAvailability, getAvailabilityHistory } from '@/lib/actions/availability'
 import { TimeSlotGrid } from '../kalendarz/time-slot-grid'
 import type { TutorAvailabilityData, AvailabilityTemplate } from '@/lib/types/availability.types'
+import { SLOT_DURATION_MINUTES } from '@/lib/types/availability.types'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   Select,
@@ -84,7 +85,7 @@ export function TutorAvailabilityDialog({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-[98vw] w-full max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Podgląd dostępności tutora</DialogTitle>
           <DialogDescription>
@@ -152,21 +153,23 @@ export function TutorAvailabilityDialog({
               <span>
                 Godziny tygodniowo:{' '}
                 <strong className="text-foreground">
-                  {(availability.slots.filter((s) => s.is_available).length * 0.5).toFixed(1)}h
+                  {((availability.slots.filter((s) => s.is_available).length * SLOT_DURATION_MINUTES) / 60).toFixed(0)}h
                 </strong>
               </span>
             </div>
 
             {/* Kalendarz (read-only) */}
-            <TimeSlotGrid
-              slots={availability.slots.map((slot) => ({
-                day: slot.day_of_week,
-                startTime: slot.start_time,
-                endTime: slot.end_time,
-                isAvailable: slot.is_available,
-              }))}
-              onSlotToggle={() => {}} // Read-only
-            />
+            <div className="w-full overflow-x-hidden">
+              <TimeSlotGrid
+                slots={availability.slots.map((slot) => ({
+                  day: slot.day_of_week,
+                  startTime: slot.start_time,
+                  endTime: slot.end_time,
+                  isAvailable: slot.is_available,
+                }))}
+                onSlotToggle={() => {}} // Read-only
+              />
+            </div>
           </div>
         ) : (
           <div className="py-8 text-center text-muted-foreground">

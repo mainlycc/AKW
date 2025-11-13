@@ -17,11 +17,12 @@ CREATE TABLE tutor_availability_slots (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   template_id UUID NOT NULL REFERENCES tutor_availability_templates(id) ON DELETE CASCADE,
   day_of_week INTEGER NOT NULL CHECK (day_of_week >= 1 AND day_of_week <= 7), -- 1=Pn, 7=Nd
-  start_time TIME NOT NULL,
-  end_time TIME NOT NULL,
+  start_time TIME NOT NULL CHECK (start_time >= TIME '08:00'),
+  end_time TIME NOT NULL CHECK (end_time <= TIME '21:00'),
   is_available BOOLEAN DEFAULT true,
   created_at TIMESTAMPTZ DEFAULT NOW(),
-  UNIQUE(template_id, day_of_week, start_time)
+  UNIQUE(template_id, day_of_week, start_time),
+  CHECK (end_time = start_time + INTERVAL '1 hour')
 );
 
 -- Indeksy dla wydajności

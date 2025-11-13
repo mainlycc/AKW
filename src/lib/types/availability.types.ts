@@ -5,7 +5,7 @@ export type DayOfWeek = 1 | 2 | 3 | 4 | 5 | 6 | 7 // 1=Monday, 7=Sunday
 export interface TimeSlot {
   day: DayOfWeek
   startTime: string // "14:00"
-  endTime: string // "14:30"
+  endTime: string // "15:00"
   isAvailable: boolean
 }
 
@@ -55,12 +55,36 @@ export interface DaySchedule {
 
 export interface WorkingHours {
   weekday: { start: string; end: string } // "08:00" - "21:00"
-  weekend: { start: string; end: string } // "09:00" - "14:00"
+  weekend: { start: string; end: string } // "08:00" - "21:00"
 }
 
 export const DEFAULT_WORKING_HOURS: WorkingHours = {
   weekday: { start: '08:00', end: '21:00' },
   weekend: { start: '08:00', end: '21:00' },
+}
+
+export const SLOT_DURATION_MINUTES = 60
+
+export interface SuggestedTimeSlot {
+  weekday: DayOfWeek
+  date: string // "2025-01-15"
+  startTime: string // "14:00"
+  endTime: string // "15:00"
+  label: string // "Środa 15.01 · 14:00-15:00"
+}
+
+export interface CalendarSlot {
+  weekday: DayOfWeek
+  date: string // "2025-01-15"
+  startTime: string
+  endTime: string
+  isAvailable: boolean
+  conflicts?: {
+    booked?: boolean
+    requested?: boolean
+  }
+  tutorId?: string
+  tutorName?: string
 }
 
 export const DAY_NAMES: Record<DayOfWeek, string> = {

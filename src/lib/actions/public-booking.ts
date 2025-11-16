@@ -6,6 +6,10 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import type { CalendarSlot, DayOfWeek } from '@/lib/types/availability.types'
 import { SLOT_DURATION_MINUTES } from '@/lib/types/availability.types'
 import { generateCalendarSlots } from '@/lib/utils/availability-helpers'
+import { sendBookingConfirmationEmail } from '@/lib/email/send'
+import { format, parseISO } from 'date-fns'
+import { pl } from 'date-fns/locale'
+import { createNotification } from '@/lib/actions/notifications'
 
 interface TutorProfile {
   id: string
@@ -313,8 +317,20 @@ export async function getSubjectLevelOpenSlots({
 
   const slots: SubjectLevelSlot[] = []
 
+  // Podwójne sprawdzenie - upewniamy się, że każdy tutor faktycznie prowadzi dany poziom
+  const verifiedTutorIds = new Set(activeTutorIds.filter((tutorId) => 
+    tutorIds.includes(tutorId)
+  ))
+
+  if (verifiedTutorIds.size !== activeTutorIds.length) {
+    console.warn('[getSubjectLevelOpenSlots] Some tutors were filtered out:', {
+      activeTutorIds: activeTutorIds.length,
+      verifiedTutorIds: verifiedTutorIds.size,
+    })
+  }
+
   const slotGroups = await Promise.all(
-    activeTutorIds.map(async (tutorId) => {
+    Array.from(verifiedTutorIds).map(async (tutorId) => {
       const tutorSlots = await getTutorOpenSlots({ tutorId, startDate, endDate })
       const availableSlots = tutorSlots.filter((slot) => slot.isAvailable)
       console.log(`[getSubjectLevelOpenSlots] Tutor ${tutorId}: ${availableSlots.length} available slots out of ${tutorSlots.length} total`)
@@ -324,11 +340,16 @@ export async function getSubjectLevelOpenSlots({
 
   for (const group of slotGroups) {
     for (const slot of group) {
-      slots.push({
-        ...slot,
-        tutorId: slot.tutorId!,
-        tutorName: slot.tutorName,
-      })
+      // Dodatkowe sprawdzenie - upewniamy się, że tutorId jest w zweryfikowanej liście
+      if (slot.tutorId && verifiedTutorIds.has(slot.tutorId)) {
+        slots.push({
+          ...slot,
+          tutorId: slot.tutorId,
+          tutorName: slot.tutorName,
+        })
+      } else {
+        console.warn('[getSubjectLevelOpenSlots] Skipping slot with invalid tutorId:', slot.tutorId)
+      }
     }
   }
 
@@ -391,6 +412,7 @@ export async function bookPublicSlot(payload: PublicBookingPayload) {
     throw new Error('Wybrany termin jest już zajęty. Odśwież kalendarz i wybierz inny slot.')
   }
 
+  // Sprawdzenie czy tutor prowadzi dany poziom (zabezpieczenie - powinno być już przefiltrowane w getSubjectLevelOpenSlots)
   const { data: tutorSubjectLevel, error: tutorSubjectError } = await admin
     .from('tutor_subject_levels')
     .select('id')
@@ -399,7 +421,12 @@ export async function bookPublicSlot(payload: PublicBookingPayload) {
     .maybeSingle()
 
   if (tutorSubjectError || !tutorSubjectLevel) {
-    throw tutorSubjectError ?? new Error('Wybrany tutor nie prowadzi tego poziomu.')
+    console.error('[bookPublicSlot] Tutor does not teach this level:', {
+      tutorId: payload.tutorId,
+      subjectLevelId: payload.subjectLevelId,
+      error: tutorSubjectError,
+    })
+    throw tutorSubjectError ?? new Error('Wybrany tutor nie prowadzi tego poziomu. Odśwież stronę i wybierz inny termin.')
   }
 
   // Find or create student
@@ -519,6 +546,91 @@ export async function bookPublicSlot(payload: PublicBookingPayload) {
       await admin.from('student_assignments').delete().eq('id', assignmentId)
     }
     throw insertError
+  }
+
+  // Pobierz dane do emaila (tutor, przedmiot, poziom)
+  const [tutorData, subjectData, levelData] = await Promise.all([
+    admin
+      .from('profiles')
+      .select('full_name')
+      .eq('id', payload.tutorId)
+      .single(),
+    admin
+      .from('subjects')
+      .select('name')
+      .eq('id', payload.subjectId)
+      .single(),
+    admin
+      .from('subject_levels')
+      .select('level_name')
+      .eq('id', payload.subjectLevelId)
+      .single(),
+  ])
+
+  // Wyślij email potwierdzający (nie przerywamy procesu jeśli się nie powiedzie)
+  if (tutorData.data && subjectData.data && levelData.data) {
+    try {
+      const formattedDate = format(parseISO(payload.date), 'd MMMM yyyy', { locale: pl })
+      const timeRange = `${startTime.substring(0, 5)}-${endTime.substring(0, 5)}`
+      const studentFullName = `${firstName} ${lastName}`
+
+      await sendBookingConfirmationEmail({
+        to: email,
+        studentName: studentFullName,
+        tutorName: tutorData.data.full_name,
+        subject: subjectData.data.name,
+        level: levelData.data.level_name,
+        date: formattedDate,
+        time: timeRange,
+        duration: SLOT_DURATION_MINUTES,
+      })
+    } catch (emailError) {
+      // Logujemy błąd, ale nie przerywamy procesu rezerwacji
+      console.error('Failed to send booking confirmation email:', emailError)
+    }
+  } else {
+    console.error('Failed to fetch booking data for email:', {
+      tutor: !!tutorData.data,
+      subject: !!subjectData.data,
+      level: !!levelData.data,
+    })
+  }
+
+  // Powiadomienie dla adminów o nowej rezerwacji
+  try {
+    // Pobierz wszystkich adminów
+    const { data: admins } = await admin
+      .from('profiles')
+      .select('id')
+      .eq('role', 'admin')
+
+    if (admins && admins.length > 0 && tutorData.data && subjectData.data && levelData.data) {
+      const formattedDate = format(parseISO(payload.date), 'd MMMM yyyy', { locale: pl })
+      const timeRange = `${startTime.substring(0, 5)}-${endTime.substring(0, 5)}`
+      const studentFullName = `${firstName} ${lastName}`
+
+      // Utwórz powiadomienia dla wszystkich adminów
+      await Promise.all(
+        admins.map((adminProfile) =>
+          createNotification({
+            userId: adminProfile.id,
+            type: 'public_booking_created',
+            title: 'Nowa rezerwacja publiczna',
+            message: `${studentFullName} zarezerwował(a) termin ${formattedDate} ${timeRange} u tutora ${tutorData.data.full_name} (${subjectData.data.name} - ${levelData.data.level_name})`,
+            metadata: {
+              booking_id: bookingRequest.id,
+              tutor_id: payload.tutorId,
+              student_name: studentFullName,
+              date: payload.date,
+              time: timeRange,
+            },
+          })
+        )
+      )
+    }
+  } catch (notificationError) {
+    // Logujemy błąd, ale nie przerywamy procesu rezerwacji
+    console.error('Failed to create notification:', notificationError)
   }
 
   revalidatePath('/public/rezerwacje')

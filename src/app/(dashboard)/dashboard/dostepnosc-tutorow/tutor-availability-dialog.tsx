@@ -22,6 +22,8 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
+import { createClient } from '@/lib/supabase/client'
+import type { BookedSlot } from '@/lib/actions/booked-slots'
 
 interface TutorAvailabilityDialogProps {
   open: boolean
@@ -38,6 +40,7 @@ export function TutorAvailabilityDialog({
   const [availability, setAvailability] = useState<TutorAvailabilityData | null>(null)
   const [history, setHistory] = useState<AvailabilityTemplate[]>([])
   const [selectedVersion, setSelectedVersion] = useState<number | null>(null)
+  const [booked, setBooked] = useState<BookedSlot[]>([])
 
   const loadData = async () => {
     setLoading(true)
@@ -51,6 +54,27 @@ export function TutorAvailabilityDialog({
       if (availabilityData) {
         setSelectedVersion(availabilityData.template.version)
       }
+
+      // Pobierz rezerwacje slotów dla tutora
+      const supabase = createClient()
+      const { data: bookedData, error } = await supabase
+        .from('booked_slots')
+        .select(`
+          *,
+          student_assignments (
+            id,
+            students (id, first_name, last_name),
+            subjects (id, name),
+            subject_levels (id, level_name)
+          )
+        `)
+        .eq('tutor_id', tutorId)
+        .order('weekday', { ascending: true })
+        .order('start_time', { ascending: true })
+
+      if (!error && bookedData) {
+        setBooked(bookedData as unknown as BookedSlot[])
+      }
     } catch (error) {
       console.error('Error loading availability:', error)
     } finally {
@@ -63,6 +87,87 @@ export function TutorAvailabilityDialog({
       loadData()
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, tutorId])
+
+  // Realtime: aktualizacja rezerwacji w trakcie otwartego dialogu
+  useEffect(() => {
+    if (!open || !tutorId) return
+
+    const supabase = createClient()
+
+    type RealtimeBooked = {
+      id: string
+      tutor_id: string
+      student_assignment_id: string
+      weekday: number
+      start_time: string
+      end_time: string
+      status: BookedSlot['status']
+      created_by: string
+      created_at: string
+      updated_at: string
+    }
+
+    const channel = supabase
+      .channel(`admin-booked-slots-${tutorId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'booked_slots',
+          filter: `tutor_id=eq.${tutorId}`,
+        },
+        (payload) => {
+          // Obsłuż DELETE - usuń z listy (payload.old istnieje, payload.new nie)
+          if (payload.old && !payload.new) {
+            const deletedId = (payload.old as RealtimeBooked).id
+            setBooked((prev) => prev.filter((s) => s.id !== deletedId))
+            return
+          }
+
+          // Obsłuż INSERT i UPDATE - użyj payload.new
+          const row = payload.new as RealtimeBooked | null
+          if (!row) return
+
+          setBooked((prev) => {
+            const existingIndex = prev.findIndex((s) => s.id === row.id)
+            if (existingIndex >= 0) {
+              const updated = [...prev]
+              updated[existingIndex] = {
+                ...updated[existingIndex],
+                status: row.status,
+                start_time: row.start_time,
+                end_time: row.end_time,
+                weekday: row.weekday,
+                updated_at: row.updated_at,
+              }
+              return updated
+            }
+
+            return [
+              ...prev,
+              {
+                id: row.id,
+                tutor_id: row.tutor_id,
+                student_assignment_id: row.student_assignment_id,
+                weekday: row.weekday,
+                start_time: row.start_time,
+                end_time: row.end_time,
+                status: row.status,
+                created_by: row.created_by,
+                created_at: row.created_at,
+                updated_at: row.updated_at,
+              } as BookedSlot,
+            ]
+          })
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
   }, [open, tutorId])
 
   const handleVersionChange = async (version: string) => {
@@ -168,6 +273,8 @@ export function TutorAvailabilityDialog({
                   isAvailable: slot.is_available,
                 }))}
                 onSlotToggle={() => {}} // Read-only
+                isEditing={false}
+                bookedSlots={booked}
               />
             </div>
           </div>

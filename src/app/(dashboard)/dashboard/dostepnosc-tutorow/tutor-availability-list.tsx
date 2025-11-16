@@ -12,6 +12,7 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import {
   Select,
@@ -22,7 +23,9 @@ import {
 } from '@/components/ui/select'
 import { TutorAvailabilityDialog } from './tutor-availability-dialog'
 import type { TutorAvailabilitySummary } from '@/lib/types/availability.types'
-import { IconEye, IconCalendar } from '@tabler/icons-react'
+import { IconEye, IconCalendar, IconTrash } from '@tabler/icons-react'
+import { ConfirmDialog } from '@/components/confirm-dialog'
+import { clearTutorsAvailability } from './actions'
 
 interface TutorAvailabilityListProps {
   tutors: TutorAvailabilitySummary[]
@@ -33,6 +36,17 @@ export function TutorAvailabilityList({ tutors }: TutorAvailabilityListProps) {
   const [filter, setFilter] = useState<'all' | 'has' | 'missing'>('all')
   const [selectedTutorId, setSelectedTutorId] = useState<string | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [confirmDialogOpen, setConfirmDialogOpen] = useState(false)
+  const [confirmDialogContent, setConfirmDialogContent] = useState<{
+    title: string
+    description: string
+    onConfirm: () => void
+  }>({
+    title: '',
+    description: '',
+    onConfirm: () => {},
+  })
 
   const filteredTutors = tutors.filter((tutor) => {
     const matchesSearch = tutor.tutor_name.toLowerCase().includes(search.toLowerCase())
@@ -52,6 +66,39 @@ export function TutorAvailabilityList({ tutors }: TutorAvailabilityListProps) {
   const handleView = (tutorId: string) => {
     setSelectedTutorId(tutorId)
     setDialogOpen(true)
+  }
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === filteredTutors.length) {
+      setSelectedIds(new Set())
+    } else {
+      setSelectedIds(new Set(filteredTutors.map((t) => t.tutor_id)))
+    }
+  }
+
+  const toggleSelectOne = (id: string) => {
+    const next = new Set(selectedIds)
+    if (next.has(id)) {
+      next.delete(id)
+    } else {
+      next.add(id)
+    }
+    setSelectedIds(next)
+  }
+
+  const handleClearSelected = () => {
+    if (selectedIds.size === 0) return
+
+    const count = selectedIds.size
+    setConfirmDialogContent({
+      title: 'Usuwanie dostępności',
+      description: `Czy na pewno chcesz usunąć grafiki dostępności dla ${count} ${count === 1 ? 'tutora' : 'tutorów'}?`,
+      onConfirm: async () => {
+        await clearTutorsAvailability(Array.from(selectedIds))
+        setSelectedIds(new Set())
+      },
+    })
+    setConfirmDialogOpen(true)
   }
 
   const formatDate = (date: string | null) => {
@@ -111,23 +158,35 @@ export function TutorAvailabilityList({ tutors }: TutorAvailabilityListProps) {
           <CardDescription>Przeglądaj i monitoruj grafiki dostępności</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex gap-4">
-            <Input
-              placeholder="Szukaj tutora..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="max-w-sm"
-            />
-            <Select value={filter} onValueChange={(v) => setFilter(v as typeof filter)}>
-              <SelectTrigger className="w-[200px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Wszyscy</SelectItem>
-                <SelectItem value="has">Z dostępnością</SelectItem>
-                <SelectItem value="missing">Bez dostępności</SelectItem>
-              </SelectContent>
-            </Select>
+          <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+            <div className="flex gap-4">
+              <Input
+                placeholder="Szukaj tutora..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="max-w-sm"
+              />
+              <Select value={filter} onValueChange={(v) => setFilter(v as typeof filter)}>
+                <SelectTrigger className="w-[200px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Wszyscy</SelectItem>
+                  <SelectItem value="has">Z dostępnością</SelectItem>
+                  <SelectItem value="missing">Bez dostępności</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {selectedIds.size > 0 && (
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={handleClearSelected}
+              >
+                <IconTrash className="mr-2 h-4 w-4" />
+                Usuń dostępność zaznaczonych ({selectedIds.size})
+              </Button>
+            )}
           </div>
 
           {/* Tabela */}
@@ -135,6 +194,15 @@ export function TutorAvailabilityList({ tutors }: TutorAvailabilityListProps) {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-12">
+                    <Checkbox
+                      checked={
+                        filteredTutors.length > 0 &&
+                        selectedIds.size === filteredTutors.length
+                      }
+                      onCheckedChange={toggleSelectAll}
+                    />
+                  </TableHead>
                   <TableHead>Tutor</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Wersja</TableHead>
@@ -152,6 +220,12 @@ export function TutorAvailabilityList({ tutors }: TutorAvailabilityListProps) {
                 ) : (
                   filteredTutors.map((tutor) => (
                     <TableRow key={tutor.tutor_id}>
+                      <TableCell>
+                        <Checkbox
+                          checked={selectedIds.has(tutor.tutor_id)}
+                          onCheckedChange={() => toggleSelectOne(tutor.tutor_id)}
+                        />
+                      </TableCell>
                       <TableCell className="font-medium">{tutor.tutor_name}</TableCell>
                       <TableCell>
                         {tutor.has_availability ? (

@@ -1,6 +1,7 @@
 import { Separator } from "@/components/ui/separator"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import { PageHeader } from "@/components/page-header"
+import { NotificationBell } from "@/components/notification-bell"
 
 export function SiteHeader() {
   return (
@@ -9,6 +10,9 @@ export function SiteHeader() {
         <SidebarTrigger className="-ml-1" />
         <Separator orientation="vertical" className="mr-2 h-4" />
         <PageHeader />
+        <div className="ml-auto">
+          <NotificationBell />
+        </div>
       </div>
     </header>
   )

@@ -2,6 +2,8 @@
 
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { createNotification } from '@/lib/actions/notifications'
 
 export type ReportStatus = 'draft' | 'submitted' | 'approved' | 'paid'
 
@@ -24,6 +26,8 @@ export async function createOrUpdateReport(
     .eq('month', month)
     .eq('year', year)
     .single()
+
+  let reportId: string
 
   if (existing) {
     // Update existing report
@@ -54,6 +58,7 @@ export async function createOrUpdateReport(
           }))
         )
     }
+    reportId = existing.id
   } else {
     // Create new report
     const { data: report, error } = await supabase
@@ -82,6 +87,59 @@ export async function createOrUpdateReport(
             hours: e.hours,
           }))
         )
+    }
+    reportId = report.id
+  }
+
+  // Powiadomienie dla adminów gdy raport jest wysłany
+  if (status === 'submitted') {
+    try {
+      // Pobierz wszystkich adminów
+      const admin = createAdminClient()
+      const { data: admins } = await admin
+        .from('profiles')
+        .select('id')
+        .eq('role', 'admin')
+
+      if (admins && admins.length > 0) {
+        const monthNames = [
+          'Styczeń',
+          'Luty',
+          'Marzec',
+          'Kwiecień',
+          'Maj',
+          'Czerwiec',
+          'Lipiec',
+          'Sierpień',
+          'Wrzesień',
+          'Październik',
+          'Listopad',
+          'Grudzień',
+        ]
+        const monthName = monthNames[month - 1] || month.toString()
+
+        // Utwórz powiadomienia dla wszystkich adminów
+        await Promise.all(
+          admins.map((adminProfile) =>
+            createNotification({
+              userId: adminProfile.id,
+              type: 'report_submitted',
+              title: 'Nowy raport do zatwierdzenia',
+              message: `Tutor wysłał raport za ${monthName} ${year} (${totalHours.toFixed(1)} godzin)`,
+              metadata: {
+                report_id: reportId,
+                tutor_id: tutorId,
+                month,
+                year,
+                total_hours: totalHours,
+              },
+            })
+          )
+        )
+      }
+    } catch (notificationError) {
+      // Logujemy błąd, ale nie przerywamy procesu
+      console.error('Failed to create notification:', notificationError)
     }
   }
 

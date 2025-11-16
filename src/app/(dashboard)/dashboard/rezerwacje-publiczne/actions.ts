@@ -3,6 +3,9 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { createNotification } from '@/lib/actions/notifications'
+import { format, parseISO } from 'date-fns'
+import { pl } from 'date-fns/locale'
 
 type BookingStatus = 'pending' | 'confirmed' | 'cancelled'
 
@@ -13,7 +16,7 @@ export async function updateBookingStatus(bookingId: string, status: BookingStat
   const { data: booking, error: fetchError } = await supabase
     .from('public_booking_requests')
     .select(
-      'assignment_id, booked_slot_id, tutor_id, request_date, weekday, start_time, end_time'
+      'assignment_id, booked_slot_id, tutor_id, request_date, weekday, start_time, end_time, student_first_name, student_last_name, subject_id, subject_level_id'
     )
     .eq('id', bookingId)
     .maybeSingle()
@@ -135,6 +138,67 @@ export async function updateBookingStatus(bookingId: string, status: BookingStat
     if (slotCancelError) {
       throw slotCancelError
     }
+  }
+
+  // Powiadomienie dla tutora o zmianie statusu rezerwacji
+  try {
+    if (booking.tutor_id && (status === 'confirmed' || status === 'cancelled')) {
+      // Pobierz dane potrzebne do powiadomienia
+      const [subjectData, levelData] = await Promise.all([
+        booking.subject_id
+          ? admin
+              .from('subjects')
+              .select('name')
+              .eq('id', booking.subject_id)
+              .maybeSingle()
+          : Promise.resolve({ data: null }),
+        booking.subject_level_id
+          ? admin
+              .from('subject_levels')
+              .select('level_name')
+              .eq('id', booking.subject_level_id)
+              .maybeSingle()
+          : Promise.resolve({ data: null }),
+      ])
+
+      const formattedDate = format(parseISO(booking.request_date), 'd MMMM yyyy', { locale: pl })
+      const timeRange = `${booking.start_time.substring(0, 5)}-${booking.end_time.substring(0, 5)}`
+      const studentName = `${booking.student_first_name} ${booking.student_last_name}`
+      const subjectLabel = subjectData.data?.name
+        ? `${subjectData.data.name}${levelData.data?.level_name ? ` - ${levelData.data.level_name}` : ''}`
+        : ''
+
+      if (status === 'confirmed') {
+        await createNotification({
+          userId: booking.tutor_id,
+          type: 'public_booking_confirmed',
+          title: 'Rezerwacja potwierdzona',
+          message: `Rezerwacja dla ${studentName} na ${formattedDate} ${timeRange}${subjectLabel ? ` (${subjectLabel})` : ''} została potwierdzona.`,
+          metadata: {
+            booking_id: bookingId,
+            student_name: studentName,
+            date: booking.request_date,
+            time: timeRange,
+          },
+        })
+      } else if (status === 'cancelled') {
+        await createNotification({
+          userId: booking.tutor_id,
+          type: 'public_booking_cancelled',
+          title: 'Rezerwacja anulowana',
+          message: `Rezerwacja dla ${studentName} na ${formattedDate} ${timeRange}${subjectLabel ? ` (${subjectLabel})` : ''} została anulowana.`,
+          metadata: {
+            booking_id: bookingId,
+            student_name: studentName,
+            date: booking.request_date,
+            time: timeRange,
+          },
+        })
+      }
+    }
+  } catch (notificationError) {
+    // Logujemy błąd, ale nie przerywamy procesu
+    console.error('Failed to create notification:', notificationError)
   }
 
   revalidatePath('/dashboard/rezerwacje-publiczne')

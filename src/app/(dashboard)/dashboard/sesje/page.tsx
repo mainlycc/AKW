@@ -18,7 +18,7 @@ export default async function SessionsPage() {
     .from('tutoring_sessions')
     .select(`
       *,
-      students (
+      students!tutoring_sessions_student_id_fkey (
         id,
         first_name,
         last_name
@@ -27,13 +27,13 @@ export default async function SessionsPage() {
         id,
         full_name
       ),
-      student_assignments (
+      student_assignments!tutoring_sessions_assignment_id_fkey (
         id,
-        subjects (
+        subjects!student_assignments_subject_id_fkey (
           id,
           name
         ),
-        subject_levels (
+        subject_levels!student_assignments_subject_level_id_fkey (
           id,
           level_name
         )
@@ -51,28 +51,52 @@ export default async function SessionsPage() {
   const sessions = rawSessions?.map((session: {
     id: string;
     session_date: string;
-    duration_minutes: number;
+    duration_minutes: number | null;
     notes: string | null;
-    students: { id: string; first_name: string; last_name: string }[] | null;
-    profiles: { id: string; full_name: string }[] | null;
+    students: { id: string; first_name: string; last_name: string } | { id: string; first_name: string; last_name: string }[] | null;
+    profiles: { id: string; full_name: string } | { id: string; full_name: string }[] | null;
     student_assignments: {
       id: string;
-      subjects: { id: string; name: string }[] | null;
-      subject_levels: { id: string; level_name: string }[] | null;
+      subjects: { id: string; name: string } | { id: string; name: string }[] | null;
+      subject_levels: { id: string; level_name: string } | { id: string; level_name: string }[] | null;
+    } | {
+      id: string;
+      subjects: { id: string; name: string } | { id: string; name: string }[] | null;
+      subject_levels: { id: string; level_name: string } | { id: string; level_name: string }[] | null;
     }[] | null;
-  }) => ({
-    id: session.id,
-    session_date: session.session_date,
-    duration_minutes: session.duration_minutes,
-    notes: session.notes,
-    students: session.students?.[0] || { id: '', first_name: '', last_name: '' },
-    profiles: session.profiles?.[0] || { id: '', full_name: '' },
-    student_assignments: {
-      id: session.student_assignments?.[0]?.id || '',
-      subjects: session.student_assignments?.[0]?.subjects?.[0] || { id: '', name: '' },
-      subject_levels: session.student_assignments?.[0]?.subject_levels?.[0] || { id: '', level_name: '' },
-    },
-  })) || []
+  }) => {
+    // Supabase może zwracać relacje jako obiekty lub tablice
+    const student = Array.isArray(session.students) 
+      ? session.students[0] 
+      : session.students;
+    const tutor = Array.isArray(session.profiles) 
+      ? session.profiles[0] 
+      : session.profiles;
+    const assignment = Array.isArray(session.student_assignments) 
+      ? session.student_assignments[0] 
+      : session.student_assignments;
+    
+    const subject = assignment && (Array.isArray(assignment.subjects) 
+      ? assignment.subjects[0] 
+      : assignment.subjects);
+    const subjectLevel = assignment && (Array.isArray(assignment.subject_levels) 
+      ? assignment.subject_levels[0] 
+      : assignment.subject_levels);
+
+    return {
+      id: session.id,
+      session_date: session.session_date,
+      duration_minutes: session.duration_minutes ?? 0,
+      notes: session.notes,
+      students: student || { id: '', first_name: '', last_name: '' },
+      profiles: tutor || { id: '', full_name: '' },
+      student_assignments: {
+        id: assignment?.id || '',
+        subjects: subject || { id: '', name: '' },
+        subject_levels: subjectLevel || { id: '', level_name: '' },
+      },
+    };
+  }) || []
 
   // Pobierz aktywne przypisania dla formularza
   let assignmentsQuery = supabase

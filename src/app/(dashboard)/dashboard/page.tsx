@@ -65,6 +65,65 @@ export default async function DashboardPage() {
     stats.totalHoursThisMonth = sessions.reduce((acc, s) => acc + s.duration_minutes, 0) / 60
   }
 
+  // Pobierz najbliższą lekcję dla tutora
+  let nextSession = null
+  if (isTutor) {
+    const now = new Date().toISOString()
+    const { data: nextSessionDataArray } = await supabase
+      .from('tutoring_sessions')
+      .select(`
+        id,
+        session_date,
+        students!tutoring_sessions_student_id_fkey (
+          id,
+          first_name,
+          last_name
+        ),
+        student_assignments!tutoring_sessions_assignment_id_fkey (
+          id,
+          subjects!student_assignments_subject_id_fkey (
+            id,
+            name
+          ),
+          subject_levels!student_assignments_subject_level_id_fkey (
+            id,
+            level_name
+          )
+        )
+      `)
+      .eq('tutor_id', profile.id)
+      .gte('session_date', now)
+      .order('session_date', { ascending: true })
+      .limit(1)
+
+    const nextSessionData = nextSessionDataArray && nextSessionDataArray.length > 0 
+      ? nextSessionDataArray[0] 
+      : null
+
+    if (nextSessionData) {
+      const student = Array.isArray(nextSessionData.students) 
+        ? nextSessionData.students[0] 
+        : nextSessionData.students;
+      const assignment = Array.isArray(nextSessionData.student_assignments) 
+        ? nextSessionData.student_assignments[0] 
+        : nextSessionData.student_assignments;
+      
+      const subject = assignment && (Array.isArray(assignment.subjects) 
+        ? assignment.subjects[0] 
+        : assignment.subjects);
+      const subjectLevel = assignment && (Array.isArray(assignment.subject_levels) 
+        ? assignment.subject_levels[0] 
+        : assignment.subject_levels);
+
+      nextSession = {
+        session_date: nextSessionData.session_date,
+        student_name: student ? `${student.first_name} ${student.last_name}` : 'Nieznany uczeń',
+        subject_name: subject?.name || 'Nieznany przedmiot',
+        level_name: subjectLevel?.level_name || 'Nieznany poziom',
+      }
+    }
+  }
+
   return (
     <div className="space-y-4">
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -128,6 +187,59 @@ export default async function DashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      {isTutor && nextSession && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Najbliższa lekcja</CardTitle>
+            <CardDescription>
+              Informacje o Twojej najbliższej zaplanowanej lekcji
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium text-muted-foreground">Data:</span>
+              <span className="text-sm font-semibold">
+                {new Date(nextSession.session_date).toLocaleString('pl-PL', {
+                  day: '2-digit',
+                  month: '2-digit',
+                  year: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit'
+                })}
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium text-muted-foreground">Uczeń:</span>
+              <span className="text-sm font-semibold">{nextSession.student_name}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium text-muted-foreground">Przedmiot:</span>
+              <span className="text-sm font-semibold">{nextSession.subject_name}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium text-muted-foreground">Poziom:</span>
+              <span className="text-sm font-semibold">{nextSession.level_name}</span>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {isTutor && !nextSession && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Najbliższa lekcja</CardTitle>
+            <CardDescription>
+              Informacje o Twojej najbliższej zaplanowanej lekcji
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground">
+              Nie masz zaplanowanych żadnych lekcji w przyszłości.
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>

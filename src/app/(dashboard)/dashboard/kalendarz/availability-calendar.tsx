@@ -13,6 +13,7 @@ import type { TutorAvailabilityData, TimeSlot, DayOfWeek } from '@/lib/types/ava
 import { SLOT_DURATION_MINUTES } from '@/lib/types/availability.types'
 import { IconDeviceFloppy, IconRefresh, IconInfoCircle, IconEdit } from '@tabler/icons-react'
 import { toast } from 'sonner'
+import { createClient } from '@/lib/supabase/client'
 
 interface AvailabilityCalendarProps {
   tutorId: string
@@ -54,6 +55,84 @@ export function AvailabilityCalendar({ tutorId, initialAvailability, initialBook
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []) // Uruchom TYLKO raz przy montowaniu
+
+  // Realtime: automatyczne odświeżanie listy rezerwacji
+  useEffect(() => {
+    const supabase = createClient()
+
+    type RealtimeBooked = {
+      id: string
+      tutor_id: string
+      student_assignment_id: string
+      weekday: number
+      start_time: string
+      end_time: string
+      status: BookedSlot['status']
+      created_by: string
+      created_at: string
+      updated_at: string
+    }
+
+    const channel = supabase
+      .channel(`booked-slots-${tutorId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'booked_slots',
+          filter: `tutor_id=eq.${tutorId}`,
+        },
+        (payload) => {
+          // Obsłuż DELETE - usuń z listy (payload.old istnieje, payload.new nie)
+          if (payload.old && !payload.new) {
+            const deletedId = (payload.old as RealtimeBooked).id
+            setBookedSlots((prev) => prev.filter((s) => s.id !== deletedId))
+            return
+          }
+
+          // Obsłuż INSERT i UPDATE - użyj payload.new
+          const row = payload.new as RealtimeBooked | null
+          if (!row) return
+
+          setBookedSlots((prev) => {
+            const existingIndex = prev.findIndex((s) => s.id === row.id)
+            if (existingIndex >= 0) {
+              const updated = [...prev]
+              updated[existingIndex] = {
+                ...updated[existingIndex],
+                status: row.status,
+                start_time: row.start_time,
+                end_time: row.end_time,
+                weekday: row.weekday,
+                updated_at: row.updated_at,
+              }
+              return updated
+            }
+            return [
+              ...prev,
+              {
+                id: row.id,
+                tutor_id: row.tutor_id,
+                student_assignment_id: row.student_assignment_id,
+                weekday: row.weekday,
+                start_time: row.start_time,
+                end_time: row.end_time,
+                status: row.status,
+                created_by: row.created_by,
+                created_at: row.created_at,
+                updated_at: row.updated_at,
+              } as BookedSlot,
+            ]
+          })
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [tutorId])
 
   const handleSlotToggle = (day: DayOfWeek, startTime: string, endTime: string) => {
     // Ignoruj kliknięcia jeśli nie jesteśmy w trybie edycji

@@ -10,6 +10,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { SessionDialog } from "./session-dialog"
 import { deleteSession } from "./actions"
@@ -55,29 +56,53 @@ export function SessionsManagement({
 }: SessionsManagementProps) {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [search, setSearch] = useState("")
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false)
-  const [sessionToDelete, setSessionToDelete] = useState<string | null>(null)
+  const [confirmDialogContent, setConfirmDialogContent] = useState<{ title: string; description: string; onConfirm: () => void }>({ title: '', description: '', onConfirm: () => {} })
 
   const filteredSessions = sessions.filter((session) => {
     const searchLower = search.toLowerCase()
     return (
-      session.students.first_name.toLowerCase().includes(searchLower) ||
-      session.students.last_name.toLowerCase().includes(searchLower) ||
-      session.profiles.full_name.toLowerCase().includes(searchLower) ||
-      session.student_assignments.subjects.name.toLowerCase().includes(searchLower)
+      session.students?.first_name?.toLowerCase().includes(searchLower) ||
+      session.students?.last_name?.toLowerCase().includes(searchLower) ||
+      session.profiles?.full_name?.toLowerCase().includes(searchLower) ||
+      session.student_assignments?.subjects?.name?.toLowerCase().includes(searchLower)
     )
   })
 
-  const handleDelete = async (id: string) => {
-    setSessionToDelete(id)
+  const handleDeleteSelected = async () => {
+    if (selectedIds.size === 0) return
+    
+    const count = selectedIds.size
+    setConfirmDialogContent({
+      title: 'Usuwanie sesji',
+      description: `Czy na pewno chcesz usunąć ${count} ${count === 1 ? 'sesję' : 'sesji'}?`,
+      onConfirm: async () => {
+        for (const id of selectedIds) {
+          await deleteSession(id)
+        }
+        setSelectedIds(new Set())
+      }
+    })
     setConfirmDialogOpen(true)
   }
 
-  const confirmDelete = async () => {
-    if (sessionToDelete) {
-      await deleteSession(sessionToDelete)
-      setSessionToDelete(null)
+  const toggleSelectAll = () => {
+    if (selectedIds.size === filteredSessions.length) {
+      setSelectedIds(new Set())
+    } else {
+      setSelectedIds(new Set(filteredSessions.map(s => s.id)))
     }
+  }
+
+  const toggleSelectOne = (id: string) => {
+    const newSelected = new Set(selectedIds)
+    if (newSelected.has(id)) {
+      newSelected.delete(id)
+    } else {
+      newSelected.add(id)
+    }
+    setSelectedIds(newSelected)
   }
 
   const formatDate = (dateString: string) => {
@@ -93,12 +118,24 @@ export function SessionsManagement({
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-4">
-        <Input
-          placeholder="Szukaj sesji..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="max-w-sm"
-        />
+        <div className="flex items-center gap-2">
+          <Input
+            placeholder="Szukaj sesji..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="max-w-sm"
+          />
+          {selectedIds.size > 0 && (
+            <Button 
+              variant="destructive" 
+              size="sm"
+              onClick={handleDeleteSelected}
+            >
+              <IconTrash className="mr-2 h-4 w-4" />
+              Usuń zaznaczone ({selectedIds.size})
+            </Button>
+          )}
+        </div>
         <div className="flex items-center gap-4">
           <div className="text-sm text-muted-foreground">
             Suma godzin: <span className="font-bold">{totalHours.toFixed(2)}h</span>
@@ -114,47 +151,47 @@ export function SessionsManagement({
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-12">
+                <Checkbox
+                  checked={selectedIds.size === filteredSessions.length && filteredSessions.length > 0}
+                  onCheckedChange={toggleSelectAll}
+                />
+              </TableHead>
               <TableHead>Data i godzina</TableHead>
               <TableHead>Uczeń</TableHead>
               {isAdmin && <TableHead>Tutor</TableHead>}
               <TableHead>Przedmiot</TableHead>
               <TableHead>Poziom</TableHead>
-              <TableHead>Czas trwania</TableHead>
               <TableHead>Notatki</TableHead>
-              <TableHead className="text-right">Akcje</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {filteredSessions.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={isAdmin ? 8 : 7} className="text-center text-muted-foreground">
+                <TableCell colSpan={isAdmin ? 7 : 6} className="text-center text-muted-foreground">
                   Brak sesji do wyświetlenia
                 </TableCell>
               </TableRow>
             ) : (
               filteredSessions.map((session) => (
                 <TableRow key={session.id}>
+                  <TableCell>
+                    <Checkbox
+                      checked={selectedIds.has(session.id)}
+                      onCheckedChange={() => toggleSelectOne(session.id)}
+                    />
+                  </TableCell>
                   <TableCell className="font-medium">
                     {formatDate(session.session_date)}
                   </TableCell>
                   <TableCell>
-                    {session.students.first_name} {session.students.last_name}
+                    {session.students?.first_name || ''} {session.students?.last_name || ''}
                   </TableCell>
-                  {isAdmin && <TableCell>{session.profiles.full_name}</TableCell>}
-                  <TableCell>{session.student_assignments.subjects.name}</TableCell>
-                  <TableCell>{session.student_assignments.subject_levels.level_name}</TableCell>
-                  <TableCell>{session.duration_minutes} min</TableCell>
+                  {isAdmin && <TableCell>{session.profiles?.full_name || '-'}</TableCell>}
+                  <TableCell>{session.student_assignments?.subjects?.name || '-'}</TableCell>
+                  <TableCell>{session.student_assignments?.subject_levels?.level_name || '-'}</TableCell>
                   <TableCell className="max-w-xs truncate">
                     {session.notes || '-'}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => handleDelete(session.id)}
-                    >
-                      <IconTrash className="h-4 w-4" />
-                    </Button>
                   </TableCell>
                 </TableRow>
               ))
@@ -173,9 +210,9 @@ export function SessionsManagement({
       <ConfirmDialog
         open={confirmDialogOpen}
         onOpenChange={setConfirmDialogOpen}
-        title="Usuwanie sesji"
-        description="Czy na pewno chcesz usunąć tę sesję?"
-        onConfirm={confirmDelete}
+        title={confirmDialogContent.title}
+        description={confirmDialogContent.description}
+        onConfirm={confirmDialogContent.onConfirm}
         confirmText="Usuń"
         cancelText="Anuluj"
       />

@@ -53,78 +53,88 @@ export function TimeSlotGrid({ slots, isEditing = true, onSlotToggle, bookedSlot
 
         {/* Siatka slotów */}
         <div className="space-y-px w-full">
-          {generateTimeSlots(1).map((timeSlot) => (
-            <div key={timeSlot.start} className="grid grid-cols-8 gap-0.5 w-full">
-              {/* Kolumna z czasem */}
-              <div className="flex items-center justify-end pr-1.5 text-xs text-muted-foreground">
-                {timeSlot.start}
-              </div>
-              
-              {/* Kolumny dla każdego dnia */}
-              {days.map((day) => {
-                const dayTimeSlots = generateTimeSlots(day)
-                const currentSlot = dayTimeSlots.find((s) => s.start === timeSlot.start)
+          {/* godziny 8:00–21:00 jako wiersze siatki */}
+          {Array.from({ length: 13 }, (_, idx) => 8 + idx).map((hour) => {
+            const rowStart = `${hour.toString().padStart(2, '0')}:00`
+            const rowEnd = `${(hour + 1).toString().padStart(2, '0')}:00`
+
+            return (
+              <div key={rowStart} className="grid grid-cols-8 gap-0.5 w-full">
+                {/* Kolumna z czasem */}
+                <div className="flex items-center justify-end pr-1.5 text-xs text-muted-foreground">
+                  {rowStart}
+                </div>
                 
-                if (!currentSlot) {
-                  // Poza godzinami pracy dla tego dnia
+                {/* Kolumny dla każdego dnia */}
+                {days.map((day) => {
+                  const dayTimeSlots = generateTimeSlots(day)
+                  const currentSlot = dayTimeSlots.find((s) => s.start === rowStart)
+                  
+                  if (!currentSlot) {
+                    // Poza godzinami pracy dla tego dnia
+                    return (
+                      <div 
+                        key={`${day}-${rowStart}`} 
+                        className="h-6 bg-muted/30 rounded cursor-not-allowed"
+                        title="Poza godzinami pracy"
+                      />
+                    )
+                  }
+
+                  // Normalizuj czas do formatu HH:MM (usuń sekundy jeśli są)
+                  const normalizeTime = (time: string) => time.substring(0, 5)
+                  
+                  const existingSlot = slots.find(
+                    (s) =>
+                      s.day === day &&
+                      normalizeTime(s.startTime) === currentSlot.start &&
+                      normalizeTime(s.endTime) === currentSlot.end
+                  )
+
+                  const isAvailable = existingSlot?.isAvailable ?? false
+
+                  const matched = bookedSlots.find(
+                    (b) => b.weekday === day && b.start_time.substring(0,5) === currentSlot.start && b.end_time.substring(0,5) === currentSlot.end && b.status === 'booked'
+                  )
+                  const isBooked = !!matched
+                  type BookedSlotWithAssignment = BookedSlot & {
+                    student_assignments?: {
+                      students?: { id: string; first_name: string; last_name: string } | null
+                      subjects?: { id: string; name: string } | null
+                      subject_levels?: { id: string; level_name: string } | null
+                    } | null
+                  }
+
+                  const bookedLabel = isBooked
+                    ? (() => {
+                        const slotWith: BookedSlotWithAssignment = matched as BookedSlotWithAssignment
+                        const stud = slotWith?.student_assignments?.students
+                        if (stud?.first_name || stud?.last_name) {
+                          const first = stud?.first_name ?? ''
+                          const last = stud?.last_name ?? ''
+                          return `${first} ${last}`.trim()
+                        }
+                        return ''
+                      })()
+                    : undefined
+
                   return (
-                    <div 
-                      key={`${day}-${timeSlot.start}`} 
-                      className="h-6 bg-muted/30 rounded cursor-not-allowed"
-                      title="Poza godzinami pracy"
+                    <DayColumn
+                      key={`${day}-${currentSlot.start}`}
+                      day={day}
+                      startTime={currentSlot.start}
+                      endTime={currentSlot.end}
+                      isAvailable={isAvailable}
+                      isBooked={isBooked}
+                      bookedLabel={bookedLabel}
+                      isEditing={isEditing}
+                      onToggle={onSlotToggle}
                     />
                   )
-                }
-
-                // Normalizuj czas do formatu HH:MM (usuń sekundy jeśli są)
-                const normalizeTime = (time: string) => time.substring(0, 5)
-                
-                const existingSlot = slots.find(
-                  (s) =>
-                    s.day === day &&
-                    normalizeTime(s.startTime) === currentSlot.start &&
-                    normalizeTime(s.endTime) === currentSlot.end
-                )
-
-                const isAvailable = existingSlot?.isAvailable ?? false
-
-                const matched = bookedSlots.find(
-                  (b) => b.weekday === day && b.start_time.substring(0,5) === currentSlot.start && b.end_time.substring(0,5) === currentSlot.end && b.status === 'booked'
-                )
-                const isBooked = !!matched
-                type BookedSlotWithAssignment = BookedSlot & {
-                  student_assignments?: {
-                    students?: { id: string; first_name: string; last_name: string } | null
-                    subjects?: { id: string; name: string } | null
-                    subject_levels?: { id: string; level_name: string } | null
-                  } | null
-                }
-
-                const bookedLabel = isBooked
-                  ? (() => {
-                      const slotWith: BookedSlotWithAssignment = matched as BookedSlotWithAssignment
-                      const stud = slotWith?.student_assignments?.students
-                      if (stud?.last_name) return String(stud.last_name)
-                      return ''
-                    })()
-                  : undefined
-
-                return (
-                  <DayColumn
-                    key={`${day}-${currentSlot.start}`}
-                    day={day}
-                    startTime={currentSlot.start}
-                    endTime={currentSlot.end}
-                    isAvailable={isAvailable}
-                    isBooked={isBooked}
-                    bookedLabel={bookedLabel}
-                    isEditing={isEditing}
-                    onToggle={onSlotToggle}
-                  />
-                )
-              })}
-            </div>
-          ))}
+                })}
+              </div>
+            )
+          })}
         </div>
 
         {/* Legenda */}

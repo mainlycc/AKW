@@ -176,7 +176,7 @@ export function AvailabilityCalendar({ tutorId, initialAvailability, initialBook
               Zielone sloty = dostępny, szare = niedostępny.
             </p>
             <p>
-              <strong>Godziny pracy:</strong> Pn-Pt: 8:00-21:00, Sb-Nd: 8:00-21:00.
+              <strong>Godziny pracy:</strong> Pn-Pt: 13:00-21:00, Sb-Nd: 8:00-21:00.
               Domyślnie graf zawiera dostępności Pn-Pt: 14:00-21:00, Sb-Nd: 9:00-14:00.
             </p>
           </div>

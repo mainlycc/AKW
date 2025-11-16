@@ -505,6 +505,15 @@ function PublicSlotGrid({ rangeStart, slotMap, onSelect }: PublicSlotGridProps) 
 
   const allTimeSlots = useMemo(() => generateTimeSlots(), [])
 
+  const isWithinPublicBookingHours = (weekday: DayOfWeek, start: string) => {
+    // Pn–Pt: 13:00–21:00, Sb–Nd: 08:00–21:00
+    const hour = parseInt(start.slice(0, 2), 10)
+    const isWeekend = weekday === 6 || weekday === 7
+    const startHour = isWeekend ? 8 : 13
+    const endHour = 21
+    return hour >= startHour && hour < endHour
+  }
+
   return (
     <div className="overflow-x-auto">
       <div className="min-w-max">
@@ -530,6 +539,18 @@ function PublicSlotGrid({ rangeStart, slotMap, onSelect }: PublicSlotGridProps) 
               </div>
 
               {daysToDisplay.map((day) => {
+                // Ukryj interakcję poza dozwolonymi godzinami dla danego dnia
+                const withinHours = isWithinPublicBookingHours(day.weekday, timeSlot.start)
+                if (!withinHours) {
+                  return (
+                    <div
+                      key={`${day.isoDate}-${timeSlot.start}`}
+                      className="h-6 rounded border-2 border-border bg-muted cursor-not-allowed"
+                      title="Poza godzinami pracy"
+                    />
+                  )
+                }
+
                 const key = `${day.isoDate}-${timeSlot.start}`
                 const slot = slotMap.get(key)
                 const isAvailable = !!slot

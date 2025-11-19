@@ -4,6 +4,8 @@ export type AssignmentStatus = 'active' | 'completed' | 'cancelled'
 
 export type InvitationStatus = 'pending' | 'accepted' | 'expired'
 
+export type SessionStatus = 'scheduled' | 'completed' | 'cancelled'
+
 export interface Profile {
   id: string
   role: UserRole
@@ -62,6 +64,7 @@ export interface TutoringSession {
   session_date: string
   duration_minutes: number
   notes: string | null
+  status: SessionStatus
   created_by: string
   created_at: string
   updated_at: string

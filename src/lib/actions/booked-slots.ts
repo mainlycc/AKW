@@ -90,7 +90,9 @@ export async function createBookedSlot(
   })
   if (error) throw error
 
+  // Revaliduj kalendarz dostępności i kalendarz lekcji
   revalidatePath('/dashboard/kalendarz')
+  revalidatePath('/dashboard/kalendarz-lekcji')
 }
 
 export async function cancelBookedSlot(slotId: string) {
@@ -100,7 +102,31 @@ export async function cancelBookedSlot(slotId: string) {
     .update({ status: 'cancelled' })
     .eq('id', slotId)
   if (error) throw error
+  
+  // Revaliduj kalendarz dostępności i kalendarz lekcji
   revalidatePath('/dashboard/kalendarz')
+  revalidatePath('/dashboard/kalendarz-lekcji')
+}
+
+// Funkcja pomocnicza: generuje sesje dla wszystkich aktywnych booked_slots
+// Przydatne gdy migracja została zastosowana po utworzeniu booked_slots
+export async function generateSessionsForAllBookedSlots(
+  startDate?: string,
+  endDate?: string
+): Promise<number> {
+  const supabase = await createClient()
+  
+  const { data, error } = await supabase.rpc('generate_sessions_for_all_booked_slots', {
+    p_start_date: startDate || new Date().toISOString().split('T')[0],
+    p_end_date: endDate || new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+  })
+  
+  if (error) throw error
+  
+  // Revaliduj kalendarz lekcji
+  revalidatePath('/dashboard/kalendarz-lekcji')
+  
+  return data || 0
 }
 
 

@@ -17,6 +17,7 @@ import {
   IconCalendarTime,
   IconCalendarCheck,
   IconCalendarPlus,
+  IconBell,
 } from "@tabler/icons-react"
 
 import { NavMain } from "@/components/nav-main"
@@ -92,6 +93,11 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
       icon: IconCalendar,
     },
     {
+      title: "Kalendarz lekcji",
+      url: "/dashboard/kalendarz-lekcji",
+      icon: IconCalendarTime,
+    },
+    {
       title: "Raporty",
       url: "/dashboard/raporty",
       icon: IconFileReport,
@@ -100,6 +106,11 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
       title: "Raporty tutorów",
       url: "/dashboard/raporty-tutorow",
       icon: IconClockDollar,
+    },
+    {
+      title: "Powiadomienia",
+      url: "/dashboard/powiadomienia",
+      icon: IconBell,
     },
   ]
 
@@ -115,9 +126,14 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
       icon: IconUserCircle,
     },
     {
-      title: "Kalendarz",
+      title: "Grafik",
       url: "/dashboard/kalendarz",
       icon: IconCalendarTime,
+    },
+    {
+      title: "Kalendarz lekcji",
+      url: "/dashboard/kalendarz-lekcji",
+      icon: IconCalendarCheck,
     },
     {
       title: "Moi Uczniowie",
@@ -138,6 +154,11 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
       title: "Moje raporty",
       url: "/dashboard/moje-raporty",
       icon: IconReceipt,
+    },
+    {
+      title: "Powiadomienia",
+      url: "/dashboard/powiadomienia",
+      icon: IconBell,
     },
   ]
 

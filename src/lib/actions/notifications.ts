@@ -14,6 +14,7 @@ export type NotificationType =
   | 'report_approved'
   | 'report_paid'
   | 'session_created'
+  | 'session_confirmation_required'
 
 export interface Notification {
   id: string

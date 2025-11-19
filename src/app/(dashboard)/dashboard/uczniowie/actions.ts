@@ -3,10 +3,18 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 
-export async function createStudent(data: {
-  first_name: string
-  last_name: string
-}) {
+export async function createStudent(
+  data: {
+    first_name: string
+    last_name: string
+  },
+  parentData?: {
+    first_name: string
+    last_name: string
+    email: string
+    phone: string
+  }
+) {
   const supabase = await createClient()
 
   const { data: student, error } = await supabase
@@ -29,6 +37,12 @@ export async function createStudentWithAssignment(
     first_name: string
     last_name: string
     subject_level_id: string
+    parent?: {
+      first_name: string
+      last_name: string
+      email: string
+      phone: string
+    }
   },
   tutorId: string
 ) {

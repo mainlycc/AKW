@@ -12,6 +12,15 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+  PaginationEllipsis,
+} from '@/components/ui/pagination'
 import { IconPlus, IconCopy, IconX, IconCheck } from '@tabler/icons-react'
 import { toast } from 'sonner'
 import type { TutorInvitation } from '@/lib/types/database.types'
@@ -33,6 +42,8 @@ interface InvitationsManagementProps {
   invitations: TutorInvitation[]
 }
 
+const ITEMS_PER_PAGE = 20
+
 export function InvitationsManagement({ invitations }: InvitationsManagementProps) {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false)
@@ -40,7 +51,14 @@ export function InvitationsManagement({ invitations }: InvitationsManagementProp
   const [isProcessing, setIsProcessing] = useState(false)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [isBulkProcessing, setIsBulkProcessing] = useState(false)
+  const [currentPage, setCurrentPage] = useState(1)
   const router = useRouter()
+
+  // Paginacja
+  const totalPages = Math.ceil(invitations.length / ITEMS_PER_PAGE)
+  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE
+  const endIndex = startIndex + ITEMS_PER_PAGE
+  const paginatedInvitations = invitations.slice(startIndex, endIndex)
 
   const getInvitationUrl = (token: string) => {
     if (typeof window !== 'undefined') {
@@ -106,12 +124,17 @@ export function InvitationsManagement({ invitations }: InvitationsManagementProp
     return new Date(expiresAt) < new Date()
   }
 
-  const allIds = invitations.map((i) => i.id)
-  const isAllSelected = selectedIds.length > 0 && selectedIds.length === allIds.length
-  const isSomeSelected = selectedIds.length > 0 && selectedIds.length < allIds.length
+  const allIds = paginatedInvitations.map((i) => i.id)
+  const isAllSelected = selectedIds.length > 0 && selectedIds.length === allIds.length && allIds.every(id => selectedIds.includes(id))
+  const isSomeSelected = selectedIds.length > 0 && allIds.some(id => selectedIds.includes(id)) && !isAllSelected
 
   const toggleSelectAll = (checked: boolean) => {
-    setSelectedIds(checked ? allIds : [])
+    if (checked) {
+      const newSelected = [...new Set([...selectedIds, ...allIds])]
+      setSelectedIds(newSelected)
+    } else {
+      setSelectedIds(selectedIds.filter(id => !allIds.includes(id)))
+    }
   }
 
   const toggleSelectOne = (id: string, checked: boolean) => {
@@ -202,7 +225,7 @@ export function InvitationsManagement({ invitations }: InvitationsManagementProp
                   </TableCell>
                 </TableRow>
               ) : (
-                invitations.map((invitation) => (
+                paginatedInvitations.map((invitation) => (
                   <TableRow key={invitation.id}>
                     <TableCell>
                       <Checkbox
@@ -255,6 +278,75 @@ export function InvitationsManagement({ invitations }: InvitationsManagementProp
             </TableBody>
           </Table>
         </div>
+
+        {invitations.length > 0 && totalPages > 1 && (
+          <Pagination>
+            <PaginationContent>
+              <PaginationItem>
+                <PaginationPrevious 
+                  href="#"
+                  onClick={(e) => {
+                    e.preventDefault()
+                    if (currentPage > 1) {
+                      setCurrentPage(currentPage - 1)
+                      window.scrollTo({ top: 0, behavior: 'smooth' })
+                    }
+                  }}
+                  className={currentPage === 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
+                />
+              </PaginationItem>
+              
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
+                if (
+                  page === 1 ||
+                  page === totalPages ||
+                  (page >= currentPage - 1 && page <= currentPage + 1)
+                ) {
+                  return (
+                    <PaginationItem key={page}>
+                      <PaginationLink
+                        href="#"
+                        onClick={(e) => {
+                          e.preventDefault()
+                          setCurrentPage(page)
+                          window.scrollTo({ top: 0, behavior: 'smooth' })
+                        }}
+                        isActive={currentPage === page}
+                        className="cursor-pointer"
+                      >
+                        {page}
+                      </PaginationLink>
+                    </PaginationItem>
+                  )
+                } else if (
+                  page === currentPage - 2 ||
+                  page === currentPage + 2
+                ) {
+                  return (
+                    <PaginationItem key={page}>
+                      <PaginationEllipsis />
+                    </PaginationItem>
+                  )
+                }
+                return null
+              })}
+              
+              <PaginationItem>
+                <PaginationNext
+                  href="#"
+                  onClick={(e) => {
+                    e.preventDefault()
+                    if (currentPage < totalPages) {
+                      setCurrentPage(currentPage + 1)
+                      window.scrollTo({ top: 0, behavior: 'smooth' })
+                    }
+                  }}
+                  className={currentPage === totalPages ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
+                />
+              </PaginationItem>
+            </PaginationContent>
+          </Pagination>
+        )}
       </div>
 
       <InvitationDialog open={dialogOpen} onOpenChange={setDialogOpen} />

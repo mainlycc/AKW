@@ -15,6 +15,8 @@ const pageTitles: Record<string, string> = {
   '/dashboard/raporty': 'Raporty godzin',
   '/dashboard/moje-raporty': 'Moje raporty',
   '/dashboard/raporty-tutorow': 'Raporty tutorów',
+  '/dashboard/powiadomienia': 'Powiadomienia',
+  '/dashboard/zaproszenia': 'Zaproszenia',
 }
 
 export function PageHeader() {

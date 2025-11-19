@@ -71,6 +71,7 @@ export function NotificationsList({ initialNotifications }: NotificationsListPro
       case 'report_paid':
         return '/dashboard/moje-raporty'
       case 'session_created':
+      case 'session_confirmation_required':
         return '/dashboard/sesje'
       default:
         return '/dashboard/powiadomienia'
@@ -88,6 +89,7 @@ export function NotificationsList({ initialNotifications }: NotificationsListPro
       report_approved: 'Raport',
       report_paid: 'Raport',
       session_created: 'Sesja',
+      session_confirmation_required: 'Sesja',
     }
     return labels[type] || 'Powiadomienie'
   }

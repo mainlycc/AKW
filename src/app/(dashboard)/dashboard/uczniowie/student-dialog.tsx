@@ -24,7 +24,7 @@ import {
 import { Student } from "@/lib/types/database.types"
 import { createStudent, updateStudent, deleteStudent, createStudentWithAssignment, updateStudentSubjects } from "./actions"
 import { createStudentNote } from "@/lib/actions/student-notes"
-import { linkParentToStudent, unlinkParentFromStudent } from "@/lib/actions/parents"
+import { linkParentToStudent, unlinkParentFromStudent, createParent } from "@/lib/actions/parents"
 import { IconTrash, IconPlus } from "@tabler/icons-react"
 import { format } from "date-fns"
 import { pl } from "date-fns/locale"
@@ -107,6 +107,12 @@ export function StudentDialog({
     first_name: '',
     last_name: '',
   })
+  const [parentData, setParentData] = useState({
+    first_name: '',
+    last_name: '',
+    email: '',
+    phone: '',
+  })
   const [selectedSubjectLevels, setSelectedSubjectLevels] = useState<Set<string>>(new Set())
   const [selectedParentId, setSelectedParentId] = useState<string>('')
   const [newNote, setNewNote] = useState('')
@@ -127,6 +133,12 @@ export function StudentDialog({
           first_name: '',
           last_name: '',
         })
+        setParentData({
+          first_name: '',
+          last_name: '',
+          email: '',
+          phone: '',
+        })
         setSelectedSubjectLevels(new Set())
         setTutorSelectedLevel('')
       }
@@ -140,6 +152,8 @@ export function StudentDialog({
     setLoading(true)
 
     try {
+      let newStudentId: string | undefined
+
       if (isTutor && !student) {
         // Tutor creating new student
         if (!tutorSelectedLevel) {
@@ -147,14 +161,21 @@ export function StudentDialog({
           setLoading(false)
           return
         }
-        await createStudentWithAssignment(
+        const result = await createStudentWithAssignment(
           {
             first_name: formData.first_name,
             last_name: formData.last_name,
             subject_level_id: tutorSelectedLevel,
+            parent: parentData.email || parentData.first_name || parentData.last_name ? {
+              first_name: parentData.first_name,
+              last_name: parentData.last_name,
+              email: parentData.email,
+              phone: parentData.phone || '',
+            } : undefined,
           },
           tutorId!
         )
+        newStudentId = result.id
       } else if (student) {
         // Updating existing student
         await updateStudent(student.id, formData)
@@ -165,8 +186,48 @@ export function StudentDialog({
         }
       } else {
         // Admin creating new student
-        await createStudent(formData)
+        const result = await createStudent(
+          formData,
+          parentData.email || parentData.first_name || parentData.last_name ? {
+            first_name: parentData.first_name,
+            last_name: parentData.last_name,
+            email: parentData.email,
+            phone: parentData.phone || '',
+          } : undefined
+        )
+        newStudentId = result.id
+        
+        // Update subjects (only for admin)
+        if (selectedSubjectLevels.size > 0) {
+          await updateStudentSubjects(result.id, Array.from(selectedSubjectLevels))
+        }
       }
+
+      // Create parent if data provided (for both new and existing students)
+      const studentId = student?.id || newStudentId
+      if (studentId && (parentData.email || parentData.first_name || parentData.last_name)) {
+        if (!parentData.email) {
+          alert('Email rodzica jest wymagany')
+          setLoading(false)
+          return
+        }
+        
+        try {
+          const parent = await createParent({
+            first_name: parentData.first_name || 'Rodzic',
+            last_name: parentData.last_name || formData.last_name,
+            email: parentData.email,
+            phone: parentData.phone || '',
+            parent_type: 'other',
+          })
+          
+          await linkParentToStudent(parent.id, studentId, !student) // isPrimary = true dla nowego ucznia
+        } catch (error) {
+          console.error('Error creating parent:', error)
+          alert('Błąd podczas tworzenia rodzica. Uczeń został zapisany.')
+        }
+      }
+
       onClose()
     } catch (error) {
       console.error('Error saving student:', error)
@@ -295,39 +356,95 @@ export function StudentDialog({
           </div>
 
           {/* Rodzice */}
-          {student && (
-            <div className="space-y-4 border-t pt-4">
-              <h3 className="font-semibold text-sm">Rodzice</h3>
-              
-              {studentParents.length > 0 ? (
-                <div className="space-y-2">
-                  {studentParents.map((sp) => (
-                    <div key={sp.id} className="flex items-center justify-between p-2 border rounded">
-                      <div>
-                        <p className="font-medium">
-                          {sp.parents.first_name} {sp.parents.last_name}
-                          {sp.is_primary && <Badge variant="secondary" className="ml-2">Główny</Badge>}
-                        </p>
-                        <p className="text-sm text-muted-foreground">{sp.parents.email}</p>
-                      </div>
-                      {!isTutor && (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleRemoveParent(sp.parents.id)}
-                        >
-                          <IconTrash className="h-4 w-4" />
-                        </Button>
-                      )}
+          <div className="space-y-4 border-t pt-4">
+            <h3 className="font-semibold text-sm">Rodzice</h3>
+            
+            {/* Lista przypisanych rodziców - tylko dla istniejącego ucznia */}
+            {student && studentParents.length > 0 && (
+              <div className="space-y-2">
+                {studentParents.map((sp) => (
+                  <div key={sp.id} className="flex items-center justify-between p-2 border rounded">
+                    <div>
+                      <p className="font-medium">
+                        {sp.parents.first_name} {sp.parents.last_name}
+                        {sp.is_primary && <Badge variant="secondary" className="ml-2">Główny</Badge>}
+                      </p>
+                      <p className="text-sm text-muted-foreground">{sp.parents.email}</p>
                     </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground">Brak przypisanych rodziców</p>
-              )}
+                    {!isTutor && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleRemoveParent(sp.parents.id)}
+                      >
+                        <IconTrash className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
 
-              {!isTutor && availableParents.length > 0 && (
+            {/* Dodaj nowego rodzica */}
+            <div className="space-y-4">
+              <h4 className="text-sm font-medium text-muted-foreground">
+                {student ? 'Dodaj nowego rodzica' : 'Dane rodzica (opcjonalnie)'}
+              </h4>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="parent_first_name">Imię rodzica</Label>
+                  <Input
+                    id="parent_first_name"
+                    type="text"
+                    value={parentData.first_name}
+                    onChange={(e) => setParentData({ ...parentData, first_name: e.target.value })}
+                    disabled={loading || deleting}
+                    placeholder="Imię"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="parent_last_name">Nazwisko rodzica</Label>
+                  <Input
+                    id="parent_last_name"
+                    type="text"
+                    value={parentData.last_name}
+                    onChange={(e) => setParentData({ ...parentData, last_name: e.target.value })}
+                    disabled={loading || deleting}
+                    placeholder="Nazwisko"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="parent_email">Email rodzica</Label>
+                  <Input
+                    id="parent_email"
+                    type="email"
+                    value={parentData.email}
+                    onChange={(e) => setParentData({ ...parentData, email: e.target.value })}
+                    disabled={loading || deleting}
+                    placeholder="email@example.com"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="parent_phone">Telefon rodzica</Label>
+                  <Input
+                    id="parent_phone"
+                    type="tel"
+                    value={parentData.phone}
+                    onChange={(e) => setParentData({ ...parentData, phone: e.target.value })}
+                    disabled={loading || deleting}
+                    placeholder="+48 123 456 789"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Wybierz istniejącego rodzica - tylko dla istniejącego ucznia i admina */}
+            {student && !isTutor && availableParents.length > 0 && (
+              <div className="space-y-2">
+                <h4 className="text-sm font-medium text-muted-foreground">Lub wybierz istniejącego rodzica</h4>
                 <div className="flex gap-2">
                   <Select value={selectedParentId} onValueChange={setSelectedParentId}>
                     <SelectTrigger>
@@ -342,13 +459,13 @@ export function StudentDialog({
                     </SelectContent>
                   </Select>
                   <Button type="button" onClick={handleAddParent} disabled={!selectedParentId}>
-                    <IconPlus className="h-4 w-4 mr-2" />
+                    <IconPlus className="mr-2 h-4 w-4" />
                     Dodaj
                   </Button>
                 </div>
-              )}
-            </div>
-          )}
+              </div>
+            )}
+          </div>
 
           {/* Przedmioty i poziomy */}
           {isTutor && !student ? (
@@ -368,8 +485,8 @@ export function StudentDialog({
                 </SelectContent>
               </Select>
             </div>
-          ) : student && !isTutor ? (
-            // Admin editing - checkboxes
+          ) : !isTutor ? (
+            // Admin - checkboxes (both adding and editing)
             <div className="space-y-4 border-t pt-4">
               <h3 className="font-semibold text-sm">Przedmioty i poziomy</h3>
               <div className="space-y-3 max-h-60 overflow-y-auto">
@@ -402,7 +519,7 @@ export function StudentDialog({
             </div>
           ) : null}
 
-          {/* Notatki */}
+          {/* Notatki - tylko dla istniejącego ucznia */}
           {student && (
             <div className="space-y-4 border-t pt-4">
               <h3 className="font-semibold text-sm">Notatki</h3>

@@ -574,7 +574,7 @@ export async function bookPublicSlot(payload: PublicBookingPayload) {
       const timeRange = `${startTime.substring(0, 5)}-${endTime.substring(0, 5)}`
       const studentFullName = `${firstName} ${lastName}`
 
-      await sendBookingConfirmationEmail({
+      const emailResult = await sendBookingConfirmationEmail({
         to: email,
         studentName: studentFullName,
         tutorName: tutorData.data.full_name,
@@ -584,9 +584,32 @@ export async function bookPublicSlot(payload: PublicBookingPayload) {
         time: timeRange,
         duration: SLOT_DURATION_MINUTES,
       })
+
+      if (!emailResult.success) {
+        // Szczegółowe logowanie błędów dla debugowania na Vercel
+        console.error('Booking confirmation email failed:', {
+          error: emailResult.error,
+          hasResendKey: !!process.env.RESEND_API_KEY,
+          resendKeyPrefix: process.env.RESEND_API_KEY?.substring(0, 3) || 'N/A',
+          email: email,
+          environment: process.env.NODE_ENV,
+          vercel: !!process.env.VERCEL,
+        })
+      } else {
+        console.log('Booking confirmation email sent successfully:', {
+          messageId: emailResult.messageId,
+          email: email,
+        })
+      }
     } catch (emailError) {
       // Logujemy błąd, ale nie przerywamy procesu rezerwacji
-      console.error('Failed to send booking confirmation email:', emailError)
+      console.error('Failed to send booking confirmation email (exception):', {
+        error: emailError instanceof Error ? emailError.message : String(emailError),
+        stack: emailError instanceof Error ? emailError.stack : undefined,
+        hasResendKey: !!process.env.RESEND_API_KEY,
+        environment: process.env.NODE_ENV,
+        vercel: !!process.env.VERCEL,
+      })
     }
   } else {
     console.error('Failed to fetch booking data for email:', {

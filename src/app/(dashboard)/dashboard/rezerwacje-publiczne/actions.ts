@@ -4,8 +4,10 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createNotification } from '@/lib/actions/notifications'
+import { sendFinalBookingConfirmationEmail } from '@/lib/email/send'
 import { format, parseISO } from 'date-fns'
 import { pl } from 'date-fns/locale'
+import { SLOT_DURATION_MINUTES } from '@/lib/types/availability.types'
 
 type BookingStatus = 'pending' | 'confirmed' | 'cancelled'
 
@@ -16,7 +18,7 @@ export async function updateBookingStatus(bookingId: string, status: BookingStat
   const { data: booking, error: fetchError } = await supabase
     .from('public_booking_requests')
     .select(
-      'assignment_id, booked_slot_id, tutor_id, request_date, weekday, start_time, end_time, student_first_name, student_last_name, subject_id, subject_level_id'
+      'assignment_id, booked_slot_id, tutor_id, request_date, weekday, start_time, end_time, student_first_name, student_last_name, contact_email, subject_id, subject_level_id'
     )
     .eq('id', bookingId)
     .maybeSingle()
@@ -140,11 +142,11 @@ export async function updateBookingStatus(bookingId: string, status: BookingStat
     }
   }
 
-  // Powiadomienie dla tutora o zmianie statusu rezerwacji
+  // Powiadomienie dla tutora i email dla osoby rezerwującej o zmianie statusu rezerwacji
   try {
     if (booking.tutor_id && (status === 'confirmed' || status === 'cancelled')) {
-      // Pobierz dane potrzebne do powiadomienia
-      const [subjectData, levelData] = await Promise.all([
+      // Pobierz dane potrzebne do powiadomienia i emaila
+      const [subjectData, levelData, tutorData] = await Promise.all([
         booking.subject_id
           ? admin
               .from('subjects')
@@ -159,6 +161,11 @@ export async function updateBookingStatus(bookingId: string, status: BookingStat
               .eq('id', booking.subject_level_id)
               .maybeSingle()
           : Promise.resolve({ data: null }),
+        admin
+          .from('profiles')
+          .select('full_name')
+          .eq('id', booking.tutor_id)
+          .single(),
       ])
 
       const formattedDate = format(parseISO(booking.request_date), 'd MMMM yyyy', { locale: pl })
@@ -169,6 +176,7 @@ export async function updateBookingStatus(bookingId: string, status: BookingStat
         : ''
 
       if (status === 'confirmed') {
+        // Powiadomienie dla tutora
         await createNotification({
           userId: booking.tutor_id,
           type: 'public_booking_confirmed',
@@ -181,6 +189,55 @@ export async function updateBookingStatus(bookingId: string, status: BookingStat
             time: timeRange,
           },
         })
+
+        // Wyślij email z ostatecznym potwierdzeniem do osoby, która zarezerwowała
+        if (
+          booking.contact_email &&
+          tutorData.data &&
+          subjectData.data &&
+          levelData.data
+        ) {
+          try {
+            const emailResult = await sendFinalBookingConfirmationEmail({
+              to: booking.contact_email,
+              studentName: studentName,
+              tutorName: tutorData.data.full_name,
+              subject: subjectData.data.name,
+              level: levelData.data.level_name,
+              date: formattedDate,
+              time: timeRange,
+              duration: SLOT_DURATION_MINUTES,
+            })
+
+            if (!emailResult.success) {
+              console.error('Final booking confirmation email failed:', {
+                error: emailResult.error,
+                email: booking.contact_email,
+                bookingId: bookingId,
+              })
+            } else {
+              console.log('Final booking confirmation email sent successfully:', {
+                messageId: emailResult.messageId,
+                email: booking.contact_email,
+                bookingId: bookingId,
+              })
+            }
+          } catch (emailError) {
+            // Logujemy błąd, ale nie przerywamy procesu
+            console.error('Failed to send final booking confirmation email:', {
+              error: emailError instanceof Error ? emailError.message : String(emailError),
+              email: booking.contact_email,
+              bookingId: bookingId,
+            })
+          }
+        } else {
+          console.error('Missing data for final booking confirmation email:', {
+            hasEmail: !!booking.contact_email,
+            hasTutor: !!tutorData.data,
+            hasSubject: !!subjectData.data,
+            hasLevel: !!levelData.data,
+          })
+        }
       } else if (status === 'cancelled') {
         await createNotification({
           userId: booking.tutor_id,
@@ -198,7 +255,7 @@ export async function updateBookingStatus(bookingId: string, status: BookingStat
     }
   } catch (notificationError) {
     // Logujemy błąd, ale nie przerywamy procesu
-    console.error('Failed to create notification:', notificationError)
+    console.error('Failed to create notification or send email:', notificationError)
   }
 
   revalidatePath('/dashboard/rezerwacje-publiczne')

@@ -173,7 +173,7 @@ BEGIN
     PERFORM generate_sessions_for_booked_slot(
       NEW.id,
       CURRENT_DATE,
-      CURRENT_DATE + INTERVAL '3 months'
+      (CURRENT_DATE + INTERVAL '3 months')::DATE
     );
   END IF;
   

@@ -169,7 +169,7 @@ export function PublicBookingPage({ subjects }: PublicBookingPageProps) {
     startBookingTransition(async () => {
       try {
         await bookPublicSlot(payload)
-        toast.success('Udało się dokonać wstępnej rezerwacji! Sprawdź swoją skrzynkę email - wysłaliśmy potwierdzenie.')
+        toast.success('Dokonałeś wstępnej rejestracji! Sprawdź swoją skrzynkę email - wysłaliśmy potwierdzenie.')
         setBooking(null)
         setFormData({
           studentFirstName: '',

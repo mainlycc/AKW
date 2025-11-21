@@ -160,6 +160,26 @@ Aplikacja będzie dostępna na [http://localhost:3000](http://localhost:3000)
 - Sprawdź middleware.ts
 - Zrestartuj serwer
 
+## 8. Konfiguracja Stripe (opcjonalne - dla płatności online)
+
+Jeśli chcesz używać płatności online przez Stripe:
+
+1. Zainstaluj pakiety:
+   ```bash
+   pnpm add stripe @stripe/stripe-js
+   ```
+
+2. Skonfiguruj Stripe zgodnie z instrukcjami w `dokumentacja/STRIPE_SETUP.md`
+
+3. Dodaj zmienne środowiskowe do `.env.local`:
+   ```env
+   STRIPE_SECRET_KEY=sk_test_...
+   NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_...
+   STRIPE_WEBHOOK_SECRET=whsec_...
+   ```
+
+**Szczegółowe instrukcje znajdziesz w pliku `dokumentacja/STRIPE_SETUP.md`.**
+
 ## Następne kroki
 
 Po skonfigurowaniu podstawowej aplikacji możesz:
@@ -168,6 +188,7 @@ Po skonfigurowaniu podstawowej aplikacji możesz:
 - Dodać więcej przedmiotów i poziomów
 - Zaprosić tutorów (stwórz dla nich konta)
 - Rozpocząć dodawanie rzeczywistych danych
+- Skonfigurować płatności online przez Stripe
 
 ## Kontakt i wsparcie
 

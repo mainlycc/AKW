@@ -18,6 +18,9 @@ import {
   IconCalendarCheck,
   IconCalendarPlus,
   IconBell,
+  IconCreditCard,
+  IconHistory,
+  type Icon,
 } from "@tabler/icons-react"
 
 import { NavMain } from "@/components/nav-main"
@@ -40,81 +43,128 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   }
 }
 
+type NavItem = {
+  title: string
+  url: string
+  icon?: Icon
+}
+
+type NavGroup = {
+  title: string
+  items: NavItem[]
+}
+
 export function AppSidebar({ user, ...props }: AppSidebarProps) {
-  const adminNavItems = [
+  const dashboardItem: NavItem = {
+    title: "Dashboard",
+    url: "/dashboard",
+    icon: IconDashboard,
+  }
+
+  const adminNavGroups: NavGroup[] = [
     {
-      title: "Dashboard",
-      url: "/dashboard",
-      icon: IconDashboard,
+      title: "Użytkownicy",
+      items: [
+        {
+          title: "Uczniowie",
+          url: "/dashboard/uczniowie",
+          icon: IconUsers,
+        },
+        {
+          title: "Rodzice",
+          url: "/dashboard/rodzice",
+          icon: IconUsersGroup,
+        },
+        {
+          title: "Tutorzy",
+          url: "/dashboard/tutorzy",
+          icon: IconSchool,
+        },
+        {
+          title: "Zaproszenia",
+          url: "/dashboard/zaproszenia",
+          icon: IconMailPlus,
+        },
+      ],
     },
     {
-      title: "Uczniowie",
-      url: "/dashboard/uczniowie",
-      icon: IconUsers,
+      title: "Nauczanie",
+      items: [
+        {
+          title: "Przedmioty",
+          url: "/dashboard/przedmioty",
+          icon: IconBook,
+        },
+        {
+          title: "Przypisania",
+          url: "/dashboard/przypisania",
+          icon: IconUserPlus,
+        },
+        {
+          title: "Dostępność tutorów",
+          url: "/dashboard/dostepnosc-tutorow",
+          icon: IconCalendarCheck,
+        },
+      ],
     },
     {
-      title: "Rodzice",
-      url: "/dashboard/rodzice",
-      icon: IconUsersGroup,
+      title: "Lekcje",
+      items: [
+        {
+          title: "Sesje",
+          url: "/dashboard/sesje",
+          icon: IconCalendar,
+        },
+        {
+          title: "Kalendarz lekcji",
+          url: "/dashboard/kalendarz-lekcji",
+          icon: IconCalendarTime,
+        },
+        {
+          title: "Publiczne rezerwacje",
+          url: "/dashboard/rezerwacje-publiczne",
+          icon: IconCalendarPlus,
+        },
+        {
+          title: "Raporty sesji",
+          url: "/dashboard/raporty",
+          icon: IconFileReport,
+        },
+      ],
     },
     {
-      title: "Tutorzy",
-      url: "/dashboard/tutorzy",
-      icon: IconSchool,
+      title: "Rozliczenia & Płatności",
+      items: [
+        {
+          title: "Raporty tutorów",
+          url: "/dashboard/raporty-tutorow",
+          icon: IconClockDollar,
+        },
+        {
+          title: "Rozliczenia miesięczne",
+          url: "/dashboard/billing",
+          icon: IconCreditCard,
+        },
+        {
+          title: "Historia płatności",
+          url: "/dashboard/payments",
+          icon: IconHistory,
+        },
+      ],
     },
     {
-      title: "Zaproszenia",
-      url: "/dashboard/zaproszenia",
-      icon: IconMailPlus,
-    },
-    {
-      title: "Dostępność tutorów",
-      url: "/dashboard/dostepnosc-tutorow",
-      icon: IconCalendarCheck,
-    },
-    {
-      title: "Publiczne rezerwacje",
-      url: "/dashboard/rezerwacje-publiczne",
-      icon: IconCalendarPlus,
-    },
-    {
-      title: "Przedmioty",
-      url: "/dashboard/przedmioty",
-      icon: IconBook,
-    },
-    {
-      title: "Przypisania",
-      url: "/dashboard/przypisania",
-      icon: IconUserPlus,
-    },
-    {
-      title: "Sesje",
-      url: "/dashboard/sesje",
-      icon: IconCalendar,
-    },
-    {
-      title: "Kalendarz lekcji",
-      url: "/dashboard/kalendarz-lekcji",
-      icon: IconCalendarTime,
-    },
-    {
-      title: "Raporty",
-      url: "/dashboard/raporty",
-      icon: IconFileReport,
-    },
-    {
-      title: "Raporty tutorów",
-      url: "/dashboard/raporty-tutorow",
-      icon: IconClockDollar,
-    },
-    {
-      title: "Powiadomienia",
-      url: "/dashboard/powiadomienia",
-      icon: IconBell,
+      title: "System",
+      items: [
+        {
+          title: "Powiadomienia",
+          url: "/dashboard/powiadomienia",
+          icon: IconBell,
+        },
+      ],
     },
   ]
 
-  const tutorNavItems = [
+  const tutorNavItems: NavItem[] = [
     {
       title: "Dashboard",
       url: "/dashboard",
@@ -162,8 +212,6 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
     },
   ]
 
-  const navItems = user.role === 'admin' ? adminNavItems : tutorNavItems
-
   return (
     <Sidebar collapsible="offcanvas" {...props}>
       <SidebarHeader>
@@ -182,7 +230,11 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
         </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
-        <NavMain items={navItems} />
+        {user.role === 'admin' ? (
+          <NavMain dashboardItem={dashboardItem} groups={adminNavGroups} />
+        ) : (
+          <NavMain items={tutorNavItems} />
+        )}
       </SidebarContent>
       <SidebarFooter>
         <NavUser user={user} />

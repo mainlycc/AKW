@@ -40,6 +40,7 @@ export interface Student {
   parent_email: string
   parent_phone: string | null
   notes: string | null
+  hourly_rate: number | null
   created_at: string
   updated_at: string
 }

@@ -106,6 +106,7 @@ export function StudentDialog({
   const [formData, setFormData] = useState({
     first_name: '',
     last_name: '',
+    hourly_rate: 50,
   })
   const [parentData, setParentData] = useState({
     first_name: '',
@@ -126,12 +127,14 @@ export function StudentDialog({
         setFormData({
           first_name: student.first_name,
           last_name: student.last_name,
+          hourly_rate: student.hourly_rate ?? 50,
         })
         setSelectedSubjectLevels(new Set(studentSubjects))
       } else {
         setFormData({
           first_name: '',
           last_name: '',
+          hourly_rate: 50,
         })
         setParentData({
           first_name: '',
@@ -165,6 +168,7 @@ export function StudentDialog({
           {
             first_name: formData.first_name,
             last_name: formData.last_name,
+            hourly_rate: formData.hourly_rate,
             subject_level_id: tutorSelectedLevel,
             parent: parentData.email || parentData.first_name || parentData.last_name ? {
               first_name: parentData.first_name,
@@ -348,6 +352,21 @@ export function StudentDialog({
                   id="last_name"
                   value={formData.last_name}
                   onChange={(e) => setFormData({ ...formData, last_name: e.target.value })}
+                  required
+                  disabled={loading || deleting}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="hourly_rate">Stawka godzinowa (PLN)</Label>
+                <Input
+                  id="hourly_rate"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={formData.hourly_rate}
+                  onChange={(e) => setFormData({ ...formData, hourly_rate: parseFloat(e.target.value) || 50 })}
                   required
                   disabled={loading || deleting}
                 />

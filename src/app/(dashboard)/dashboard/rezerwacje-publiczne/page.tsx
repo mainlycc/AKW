@@ -3,6 +3,8 @@ import { getUserProfile } from '@/lib/actions/auth'
 import { createClient } from '@/lib/supabase/server'
 import { PublicBookingsTable } from './public-bookings-table'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Separator } from '@/components/ui/separator'
+import { CheckCircle2, Mail, Clock, AlertCircle } from 'lucide-react'
 
 export default async function PublicBookingsPage() {
   const profile = await getUserProfile()
@@ -81,17 +83,146 @@ export default async function PublicBookingsPage() {
         </p>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Lista zgłoszeń</CardTitle>
-          <CardDescription>
-            Potwierdź lub anuluj rezerwacje wysłane przez gości. Status <strong>Pending</strong> oznacza oczekiwanie na decyzję.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <PublicBookingsTable bookings={data} />
-        </CardContent>
-      </Card>
+      <div className="grid gap-6 lg:grid-cols-[1fr_400px]">
+        {/* Tabela rezerwacji */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Lista zgłoszeń</CardTitle>
+            <CardDescription>
+              Potwierdź lub anuluj rezerwacje wysłane przez gości. Status <strong>Pending</strong> oznacza oczekiwanie na decyzję.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <PublicBookingsTable bookings={data} />
+          </CardContent>
+        </Card>
+
+        {/* Instrukcja procesu rezerwacji */}
+        <Card className="lg:sticky lg:top-4 lg:h-fit">
+          <CardHeader>
+            <CardTitle className="text-lg">Proces rezerwacji</CardTitle>
+            <CardDescription>
+              Instrukcja krok po kroku z opisem emaili
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Krok 1 */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-semibold">
+                  1
+                </div>
+                <h4 className="text-sm font-semibold">Wypełnienie formularza</h4>
+              </div>
+              <p className="text-xs text-muted-foreground ml-8">
+                Wybór przedmiotu, poziomu, terminu i wprowadzenie danych ucznia.
+              </p>
+            </div>
+
+            <Separator />
+
+            {/* Krok 2 - Pierwszy mail */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-semibold">
+                  2
+                </div>
+                <div className="flex items-center gap-2">
+                  <Mail className="h-4 w-4 text-blue-600" />
+                  <h4 className="text-sm font-semibold">Pierwszy email</h4>
+                </div>
+              </div>
+              <div className="ml-8 space-y-2">
+                <p className="text-xs text-muted-foreground">
+                  Otrzymywany natychmiast po wysłaniu formularza.
+                </p>
+                <div className="p-2 bg-blue-50 border border-blue-200 rounded-md space-y-1">
+                  <div className="flex items-start gap-2">
+                    <span className="text-xs font-semibold min-w-[60px]">Status:</span>
+                    <span className="flex items-center gap-1 text-xs">
+                      <Clock className="h-3 w-3 text-amber-600" />
+                      <span className="text-amber-700 font-medium">Oczekuje na potwierdzenie</span>
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Zawiera szczegóły rezerwacji i informację o oczekiwaniu na weryfikację przez administratora.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* Krok 3 */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-semibold">
+                  3
+                </div>
+                <h4 className="text-sm font-semibold">Weryfikacja przez admina</h4>
+              </div>
+              <p className="text-xs text-muted-foreground ml-8">
+                Administrator sprawdza dostępność i zatwierdza rezerwację w tym panelu.
+              </p>
+            </div>
+
+            <Separator />
+
+            {/* Krok 4 - Drugi mail */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-semibold">
+                  4
+                </div>
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="h-4 w-4 text-green-600" />
+                  <h4 className="text-sm font-semibold">Drugi email</h4>
+                </div>
+              </div>
+              <div className="ml-8 space-y-2">
+                <p className="text-xs text-muted-foreground">
+                  Otrzymywany po zatwierdzeniu rezerwacji przez administratora.
+                </p>
+                <div className="p-2 bg-green-50 border border-green-200 rounded-md space-y-1">
+                  <div className="flex items-start gap-2">
+                    <span className="text-xs font-semibold min-w-[60px]">Status:</span>
+                    <span className="flex items-center gap-1 text-xs">
+                      <CheckCircle2 className="h-3 w-3 text-green-600" />
+                      <span className="text-green-700 font-medium">Potwierdzona i zaakceptowana</span>
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Potwierdza, że rezerwacja jest oficjalnie zatwierdzona i slot został zablokowany.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* Podsumowanie */}
+            <div className="space-y-2 pt-2">
+              <h4 className="text-sm font-semibold">Podsumowanie</h4>
+              <div className="space-y-2 text-xs">
+                <div className="flex items-start gap-2">
+                  <Mail className="h-3 w-3 text-blue-600 mt-0.5" />
+                  <div>
+                    <p className="font-medium">Email 1:</p>
+                    <p className="text-muted-foreground">Potwierdzenie otrzymania - Status: &apos;Oczekuje&apos;</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-2">
+                  <CheckCircle2 className="h-3 w-3 text-green-600 mt-0.5" />
+                  <div>
+                    <p className="font-medium">Email 2:</p>
+                    <p className="text-muted-foreground">Finalne potwierdzenie - Status: &apos;Potwierdzona&apos;</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   )
 }

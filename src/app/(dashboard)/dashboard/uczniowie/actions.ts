@@ -8,6 +8,7 @@ export async function createStudent(
   data: {
     first_name: string
     last_name: string
+    hourly_rate?: number
   },
   parentData?: {
     first_name: string
@@ -23,6 +24,7 @@ export async function createStudent(
     .insert({
       first_name: data.first_name,
       last_name: data.last_name,
+      hourly_rate: data.hourly_rate ?? 50.00,
     })
     .select()
     .single()
@@ -38,6 +40,7 @@ export async function createStudentWithAssignment(
     first_name: string
     last_name: string
     subject_level_id: string
+    hourly_rate?: number
     parent?: {
       first_name: string
       last_name: string
@@ -55,6 +58,7 @@ export async function createStudentWithAssignment(
     .insert({
       first_name: data.first_name,
       last_name: data.last_name,
+      hourly_rate: data.hourly_rate ?? 50.00,
     })
     .select()
     .single()
@@ -102,16 +106,27 @@ export async function updateStudent(
   data: {
     first_name: string
     last_name: string
+    hourly_rate?: number
   }
 ) {
   const supabase = await createClient()
 
+  const updateData: {
+    first_name: string
+    last_name: string
+    hourly_rate?: number
+  } = {
+    first_name: data.first_name,
+    last_name: data.last_name,
+  }
+
+  if (data.hourly_rate !== undefined) {
+    updateData.hourly_rate = data.hourly_rate
+  }
+
   const { error } = await supabase
     .from('students')
-    .update({
-      first_name: data.first_name,
-      last_name: data.last_name,
-    })
+    .update(updateData)
     .eq('id', id)
 
   if (error) throw error

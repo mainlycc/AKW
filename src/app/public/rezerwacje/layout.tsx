@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { ThemeToggle } from '@/components/theme-toggle'
 
 export default function PublicBookingLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -8,8 +9,9 @@ export default function PublicBookingLayout({ children }: { children: React.Reac
           <Link href="/" className="text-lg font-semibold">
             Akademia Wiedzy
           </Link>
-          <nav className="text-sm text-muted-foreground">
-            <Link href="/login" className="hover:text-foreground">
+          <nav className="flex items-center gap-4">
+            <ThemeToggle />
+            <Link href="/login" className="text-sm text-muted-foreground hover:text-foreground">
               Zaloguj się
             </Link>
           </nav>

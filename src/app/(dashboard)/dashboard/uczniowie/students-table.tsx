@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import {
   Table,
   TableBody,
@@ -14,10 +14,21 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
 import { Student } from "@/lib/types/database.types"
 import { StudentDialog } from "./student-dialog"
+import { GroupMessageDialog } from "./group-message-dialog"
+import { TutorGroupMessageDialog } from "./tutor-group-message-dialog"
 import { deleteStudent } from "./actions"
-import { IconPlus, IconTrash } from "@tabler/icons-react"
+import { IconPlus, IconTrash, IconMail, IconArrowUp, IconArrowDown, IconArrowsSort } from "@tabler/icons-react"
 import { Input } from "@/components/ui/input"
 import { ConfirmDialog } from "@/components/confirm-dialog"
+import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination"
 
 interface StudentParent {
   id: string
@@ -48,10 +59,21 @@ interface StudentSubject {
   subject_levels: { level_name: string } | null
 }
 
+interface StudentAssignment {
+  id: string
+  tutor_id: string
+  status: string
+  profiles?: {
+    id: string
+    full_name: string
+  } | null
+}
+
 interface StudentExtended extends Student {
   student_parents?: StudentParent[]
   student_notes?: StudentNote[]
   student_subjects?: StudentSubject[]
+  student_assignments?: StudentAssignment[]
 }
 
 interface StudentsTableProps {
@@ -64,6 +86,8 @@ interface StudentsTableProps {
   tutorSubjectLevels?: { subject_level_id: string; subjects: { id: string; name: string } | null; subject_levels: { id: string; level_name: string } | null }[]
   currentUserId?: string
 }
+
+const ITEMS_PER_PAGE = 50
 
 export function StudentsTable({
   students,
@@ -80,12 +104,101 @@ export function StudentsTable({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false)
   const [confirmDialogContent, setConfirmDialogContent] = useState<{ title: string; description: string; onConfirm: () => void }>({ title: '', description: '', onConfirm: () => {} })
+  const [groupMessageDialogOpen, setGroupMessageDialogOpen] = useState(false)
+  const [tutorGroupMessageDialogOpen, setTutorGroupMessageDialogOpen] = useState(false)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [sortBy, setSortBy] = useState<'subjects' | 'tutors' | null>(null)
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
 
   const filteredStudents = students.filter(
     (student) =>
       student.first_name.toLowerCase().includes(search.toLowerCase()) ||
       student.last_name.toLowerCase().includes(search.toLowerCase())
   )
+
+  // Sortowanie po przedmiotach lub tutorach
+  const sortedStudents = [...filteredStudents].sort((a, b) => {
+    if (sortBy === 'subjects') {
+      const aSubjects = (a.student_subjects || [])
+        .map(ss => ss.subjects?.name || '')
+        .filter(Boolean)
+        .sort()
+        .join(', ')
+      
+      const bSubjects = (b.student_subjects || [])
+        .map(ss => ss.subjects?.name || '')
+        .filter(Boolean)
+        .sort()
+        .join(', ')
+      
+      if (!aSubjects && !bSubjects) return 0
+      if (!aSubjects) return 1
+      if (!bSubjects) return -1
+      
+      const comparison = aSubjects.localeCompare(bSubjects, 'pl', { sensitivity: 'base' })
+      return sortDirection === 'asc' ? comparison : -comparison
+    }
+    
+    if (sortBy === 'tutors') {
+      const aTutors = (a.student_assignments || [])
+        .filter(sa => sa.status === 'active' && sa.profiles)
+        .map(sa => sa.profiles?.full_name || '')
+        .filter(Boolean)
+        .sort()
+        .join(', ')
+      
+      const bTutors = (b.student_assignments || [])
+        .filter(sa => sa.status === 'active' && sa.profiles)
+        .map(sa => sa.profiles?.full_name || '')
+        .filter(Boolean)
+        .sort()
+        .join(', ')
+      
+      if (!aTutors && !bTutors) return 0
+      if (!aTutors) return 1
+      if (!bTutors) return -1
+      
+      const comparison = aTutors.localeCompare(bTutors, 'pl', { sensitivity: 'base' })
+      return sortDirection === 'asc' ? comparison : -comparison
+    }
+    
+    return 0
+  })
+
+  // Paginacja
+  const totalPages = Math.ceil(sortedStudents.length / ITEMS_PER_PAGE)
+  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE
+  const endIndex = startIndex + ITEMS_PER_PAGE
+  const paginatedStudents = sortedStudents.slice(startIndex, endIndex)
+
+  const handleSortBySubjects = () => {
+    if (sortBy === 'subjects') {
+      // Zmień kierunek sortowania
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
+    } else {
+      // Ustaw sortowanie po przedmiotach
+      setSortBy('subjects')
+      setSortDirection('asc')
+    }
+    setCurrentPage(1) // Resetuj stronę przy sortowaniu
+  }
+
+  const handleSortByTutors = () => {
+    if (sortBy === 'tutors') {
+      // Zmień kierunek sortowania
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
+    } else {
+      // Ustaw sortowanie po tutorach
+      setSortBy('tutors')
+      setSortDirection('asc')
+    }
+    setCurrentPage(1) // Resetuj stronę przy sortowaniu
+  }
+
+  // Resetuj stronę gdy zmienia się wyszukiwanie lub sortowanie
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [search, sortBy, sortDirection])
 
   const handleRowClick = (student: StudentExtended) => {
     setEditingStudent(student)
@@ -120,10 +233,19 @@ export function StudentsTable({
   }
 
   const toggleSelectAll = () => {
-    if (selectedIds.size === filteredStudents.length) {
-      setSelectedIds(new Set())
+    const currentPageIds = new Set(paginatedStudents.map(s => s.id))
+    const allCurrentPageSelected = paginatedStudents.every(s => selectedIds.has(s.id))
+    
+    if (allCurrentPageSelected) {
+      // Odznacz wszystkie z aktualnej strony
+      const newSelected = new Set(selectedIds)
+      currentPageIds.forEach(id => newSelected.delete(id))
+      setSelectedIds(newSelected)
     } else {
-      setSelectedIds(new Set(filteredStudents.map(s => s.id)))
+      // Zaznacz wszystkie z aktualnej strony
+      const newSelected = new Set(selectedIds)
+      currentPageIds.forEach(id => newSelected.add(id))
+      setSelectedIds(newSelected)
     }
   }
 
@@ -147,21 +269,45 @@ export function StudentsTable({
             onChange={(e) => setSearch(e.target.value)}
             className="max-w-sm"
           />
-          {selectedIds.size > 0 && (
+          {isTutor ? (
             <Button 
-              variant="destructive" 
+              variant="outline" 
               size="sm"
-              onClick={handleDeleteSelected}
+              onClick={() => setTutorGroupMessageDialogOpen(true)}
+              disabled={students.length === 0}
             >
-              <IconTrash className="mr-2 h-4 w-4" />
-              Usuń zaznaczone ({selectedIds.size})
+              <IconMail className="mr-2 h-4 w-4" />
+              Wyślij do wszystkich uczniów {students.length > 0 && `(${students.length})`}
             </Button>
+          ) : (
+            <>
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => setGroupMessageDialogOpen(true)}
+                disabled={selectedIds.size === 0}
+              >
+                <IconMail className="mr-2 h-4 w-4" />
+                Wyślij wiadomość grupową {selectedIds.size > 0 && `(${selectedIds.size})`}
+              </Button>
+              <Button 
+                variant="destructive" 
+                size="sm"
+                onClick={handleDeleteSelected}
+                disabled={selectedIds.size === 0}
+              >
+                <IconTrash className="mr-2 h-4 w-4" />
+                Usuń zaznaczone {selectedIds.size > 0 && `(${selectedIds.size})`}
+              </Button>
+            </>
           )}
         </div>
-        <Button onClick={handleAdd}>
-          <IconPlus className="mr-2 h-4 w-4" />
-          Dodaj ucznia
-        </Button>
+        {!isTutor && (
+          <Button onClick={handleAdd}>
+            <IconPlus className="mr-2 h-4 w-4" />
+            Dodaj ucznia
+          </Button>
+        )}
       </div>
 
       <div className="rounded-md border">
@@ -170,30 +316,73 @@ export function StudentsTable({
             <TableRow>
               <TableHead className="w-12">
                 <Checkbox
-                  checked={selectedIds.size === filteredStudents.length && filteredStudents.length > 0}
+                  checked={paginatedStudents.length > 0 && paginatedStudents.every(s => selectedIds.has(s.id))}
                   onCheckedChange={toggleSelectAll}
                 />
               </TableHead>
-              <TableHead>Imię</TableHead>
-              <TableHead>Nazwisko</TableHead>
+              <TableHead>Imię i nazwisko</TableHead>
               <TableHead>Rodzice</TableHead>
-              <TableHead>Przedmioty</TableHead>
-              <TableHead>Ostatnia notatka</TableHead>
+              <TableHead>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleSortBySubjects()
+                  }}
+                  className="flex items-center gap-1 hover:text-foreground transition-colors"
+                >
+                  Przedmioty
+                  {sortBy === 'subjects' ? (
+                    sortDirection === 'asc' ? (
+                      <IconArrowUp className="h-4 w-4" />
+                    ) : (
+                      <IconArrowDown className="h-4 w-4" />
+                    )
+                  ) : (
+                    <IconArrowsSort className="h-4 w-4 opacity-50" />
+                  )}
+                </button>
+              </TableHead>
+              {!isTutor && (
+                <TableHead>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleSortByTutors()
+                    }}
+                    className="flex items-center gap-1 hover:text-foreground transition-colors"
+                  >
+                    Tutor
+                    {sortBy === 'tutors' ? (
+                      sortDirection === 'asc' ? (
+                        <IconArrowUp className="h-4 w-4" />
+                      ) : (
+                        <IconArrowDown className="h-4 w-4" />
+                      )
+                    ) : (
+                      <IconArrowsSort className="h-4 w-4 opacity-50" />
+                    )}
+                  </button>
+                </TableHead>
+              )}
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredStudents.length === 0 ? (
+            {paginatedStudents.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center text-muted-foreground">
+                <TableCell colSpan={isTutor ? 4 : 5} className="text-center text-muted-foreground">
                   Brak uczniów do wyświetlenia
                 </TableCell>
               </TableRow>
             ) : (
-              filteredStudents.map((student) => {
+              paginatedStudents.map((student) => {
                 const parents = student.student_parents || []
                 const subjects = student.student_subjects || []
-                const notes = student.student_notes || []
-                const lastNote = notes.length > 0 ? notes[0] : null
+                const assignments = student.student_assignments || []
+                const activeTutors = assignments
+                  .filter(sa => sa.status === 'active' && sa.profiles)
+                  .map(sa => sa.profiles?.full_name || '')
+                  .filter(Boolean)
+                  .filter((value, index, self) => self.indexOf(value) === index) // unique
 
                 return (
                   <TableRow 
@@ -207,8 +396,9 @@ export function StudentsTable({
                         onCheckedChange={() => toggleSelectOne(student.id)}
                       />
                     </TableCell>
-                    <TableCell className="font-medium">{student.first_name}</TableCell>
-                    <TableCell>{student.last_name}</TableCell>
+                    <TableCell className="font-medium">
+                      {student.first_name} {student.last_name}
+                    </TableCell>
                     <TableCell>
                       {parents.length > 0 ? (
                         <div className="flex flex-wrap gap-1">
@@ -231,9 +421,19 @@ export function StudentsTable({
                         </div>
                       ) : '-'}
                     </TableCell>
-                    <TableCell className="max-w-xs truncate text-sm">
-                      {lastNote ? lastNote.content : '-'}
-                    </TableCell>
+                    {!isTutor && (
+                      <TableCell>
+                        {activeTutors.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {activeTutors.map((tutorName, idx) => (
+                              <Badge key={idx} variant="outline" className="text-xs">
+                                {tutorName}
+                              </Badge>
+                            ))}
+                          </div>
+                        ) : '-'}
+                      </TableCell>
+                    )}
                   </TableRow>
                 )
               })
@@ -241,6 +441,75 @@ export function StudentsTable({
           </TableBody>
         </Table>
       </div>
+
+      {filteredStudents.length > 0 && totalPages > 1 && (
+        <Pagination>
+          <PaginationContent>
+            <PaginationItem>
+              <PaginationPrevious 
+                href="#"
+                onClick={(e) => {
+                  e.preventDefault()
+                  if (currentPage > 1) {
+                    setCurrentPage(currentPage - 1)
+                    window.scrollTo({ top: 0, behavior: 'smooth' })
+                  }
+                }}
+                className={currentPage === 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
+              />
+            </PaginationItem>
+            
+            {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
+              if (
+                page === 1 ||
+                page === totalPages ||
+                (page >= currentPage - 1 && page <= currentPage + 1)
+              ) {
+                return (
+                  <PaginationItem key={page}>
+                    <PaginationLink
+                      href="#"
+                      onClick={(e) => {
+                        e.preventDefault()
+                        setCurrentPage(page)
+                        window.scrollTo({ top: 0, behavior: 'smooth' })
+                      }}
+                      isActive={currentPage === page}
+                      className="cursor-pointer"
+                    >
+                      {page}
+                    </PaginationLink>
+                  </PaginationItem>
+                )
+              } else if (
+                page === currentPage - 2 ||
+                page === currentPage + 2
+              ) {
+                return (
+                  <PaginationItem key={page}>
+                    <PaginationEllipsis />
+                  </PaginationItem>
+                )
+              }
+              return null
+            })}
+            
+            <PaginationItem>
+              <PaginationNext 
+                href="#"
+                onClick={(e) => {
+                  e.preventDefault()
+                  if (currentPage < totalPages) {
+                    setCurrentPage(currentPage + 1)
+                    window.scrollTo({ top: 0, behavior: 'smooth' })
+                  }
+                }}
+                className={currentPage === totalPages ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
+              />
+            </PaginationItem>
+          </PaginationContent>
+        </Pagination>
+      )}
 
       <StudentDialog
         open={dialogOpen}
@@ -266,6 +535,21 @@ export function StudentsTable({
         confirmText="Usuń"
         cancelText="Anuluj"
       />
+
+      {isTutor && tutorId ? (
+        <TutorGroupMessageDialog
+          open={tutorGroupMessageDialogOpen}
+          onOpenChange={setTutorGroupMessageDialogOpen}
+          tutorId={tutorId}
+          studentsCount={students.length}
+        />
+      ) : (
+        <GroupMessageDialog
+          open={groupMessageDialogOpen}
+          onOpenChange={setGroupMessageDialogOpen}
+          selectedStudents={filteredStudents.filter(s => selectedIds.has(s.id))}
+        />
+      )}
     </div>
   )
 }

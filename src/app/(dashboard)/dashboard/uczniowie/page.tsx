@@ -79,6 +79,15 @@ export default async function StudentsPage() {
           subject_levels (
             level_name
           )
+        ),
+        student_assignments (
+          id,
+          tutor_id,
+          status,
+          profiles!student_assignments_tutor_id_fkey (
+            id,
+            full_name
+          )
         )
       `)
       .order('created_at', { ascending: false })

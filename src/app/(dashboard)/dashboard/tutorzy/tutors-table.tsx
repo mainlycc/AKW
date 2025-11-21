@@ -14,8 +14,9 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { TutorDetailDialog } from "./tutor-detail-dialog"
+import { GroupMessageDialog } from "./group-message-dialog"
 import { deleteTutor } from "./actions"
-import { IconTrash } from "@tabler/icons-react"
+import { IconTrash, IconMail } from "@tabler/icons-react"
 import { ConfirmDialog } from "@/components/confirm-dialog"
 
 interface TutorWithStats {
@@ -51,6 +52,7 @@ export function TutorsTable({ tutors, tutorSubjects }: TutorsTableProps) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false)
   const [confirmDialogContent, setConfirmDialogContent] = useState<{ title: string; description: string; onConfirm: () => void }>({ title: '', description: '', onConfirm: () => {} })
+  const [groupMessageDialogOpen, setGroupMessageDialogOpen] = useState(false)
 
   const filteredTutors = tutors.filter(
     (tutor) =>
@@ -153,16 +155,24 @@ export function TutorsTable({ tutors, tutorSubjects }: TutorsTableProps) {
             onChange={(e) => setSearch(e.target.value)}
             className="max-w-sm"
           />
-          {selectedIds.size > 0 && (
-            <Button 
-              variant="destructive" 
-              size="sm"
-              onClick={handleDeleteSelected}
-            >
-              <IconTrash className="mr-2 h-4 w-4" />
-              Usuń zaznaczone ({selectedIds.size})
-            </Button>
-          )}
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={() => setGroupMessageDialogOpen(true)}
+            disabled={selectedIds.size === 0}
+          >
+            <IconMail className="mr-2 h-4 w-4" />
+            Wyślij wiadomość grupową {selectedIds.size > 0 && `(${selectedIds.size})`}
+          </Button>
+          <Button 
+            variant="destructive" 
+            size="sm"
+            onClick={handleDeleteSelected}
+            disabled={selectedIds.size === 0}
+          >
+            <IconTrash className="mr-2 h-4 w-4" />
+            Usuń zaznaczone {selectedIds.size > 0 && `(${selectedIds.size})`}
+          </Button>
         </div>
       </div>
 
@@ -235,6 +245,12 @@ export function TutorsTable({ tutors, tutorSubjects }: TutorsTableProps) {
         onConfirm={confirmDialogContent.onConfirm}
         confirmText="Usuń"
         cancelText="Anuluj"
+      />
+
+      <GroupMessageDialog
+        open={groupMessageDialogOpen}
+        onOpenChange={setGroupMessageDialogOpen}
+        selectedTutors={filteredTutors.filter(t => selectedIds.has(t.id))}
       />
     </div>
   )

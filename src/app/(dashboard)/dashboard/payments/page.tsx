@@ -54,7 +54,6 @@ export default async function PaymentsPage({
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-2xl font-bold">Historia płatności</h1>
         <p className="text-muted-foreground">
           Przegląd wszystkich płatności z możliwością edycji i eksportu
         </p>

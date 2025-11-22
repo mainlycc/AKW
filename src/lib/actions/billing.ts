@@ -43,10 +43,10 @@ export interface StudentBillingWithParent extends StudentBilling {
     subject_name: string
     level_name: string
   }
-  tutor?: {
+  tutors?: Array<{
     id: string
     full_name: string
-  }
+  }>
   hours_this_month: number
   total_hours: number
 }
@@ -350,6 +350,31 @@ export async function getStudentBillings(
     }
   }
 
+  // Get active assignments to get all tutors (even if they don't have completed sessions yet)
+  const { data: assignmentsData } = await supabase
+    .from('student_assignments')
+    .select(
+      `
+      student_id,
+      tutor_id,
+      status,
+      profiles!student_assignments_tutor_id_fkey (
+        id,
+        full_name
+      ),
+      subjects (
+        id,
+        name
+      ),
+      subject_levels (
+        id,
+        level_name
+      )
+    `
+    )
+    .in('student_id', studentIds)
+    .eq('status', 'active')
+
   // Get sessions data for all students to calculate hours and get tutor/category info
   const startDate = `${year}-${String(month).padStart(2, '0')}-01`
   const endDate = month === 12 
@@ -387,9 +412,41 @@ export async function getStudentBillings(
   // Create maps for quick lookup
   const hoursThisMonthMap = new Map<string, number>()
   const totalHoursMap = new Map<string, number>()
-  const tutorMap = new Map<string, { id: string; full_name: string }>()
-  const categoryMap = new Map<string, { subject_name: string; level_name: string }>()
+  const tutorMap = new Map<string, Map<string, string>>() // Store tutor ID -> tutor name mapping
+  const categoryMap = new Map<string, Set<string>>() // Store unique categories
 
+  // First, collect tutors and categories from active assignments (like in students table)
+  if (assignmentsData) {
+    for (const assignment of assignmentsData) {
+      const studentId = assignment.student_id
+      
+      // Collect tutors
+      if (assignment.tutor_id && assignment.profiles) {
+        const tutor = Array.isArray(assignment.profiles) ? assignment.profiles[0] : assignment.profiles
+        if (tutor && tutor.id && tutor.full_name) {
+          if (!tutorMap.has(studentId)) {
+            tutorMap.set(studentId, new Map())
+          }
+          tutorMap.get(studentId)!.set(tutor.id, tutor.full_name)
+        }
+      }
+      
+      // Collect categories from active assignments
+      if (assignment.subjects && assignment.subject_levels) {
+        const subject = Array.isArray(assignment.subjects) ? assignment.subjects[0] : assignment.subjects
+        const level = Array.isArray(assignment.subject_levels) ? assignment.subject_levels[0] : assignment.subject_levels
+        
+        if (subject?.name && level?.level_name) {
+          if (!categoryMap.has(studentId)) {
+            categoryMap.set(studentId, new Set())
+          }
+          categoryMap.get(studentId)!.add(`${subject.name} - ${level.level_name}`)
+        }
+      }
+    }
+  }
+
+  // Then, process sessions to calculate hours and also add tutors from sessions
   if (sessionsData) {
     for (const session of sessionsData) {
       const studentId = session.student_id
@@ -397,29 +454,29 @@ export async function getStudentBillings(
       const sessionDate = new Date(session.session_date || '')
       const isThisMonth = sessionDate >= new Date(startDate) && sessionDate < new Date(endDate)
 
-      // Calculate hours this month
+      // Calculate hours this month - sum all hours from all tutors
       if (isThisMonth) {
         const current = hoursThisMonthMap.get(studentId) || 0
         hoursThisMonthMap.set(studentId, current + hours)
       }
 
-      // Calculate total hours
+      // Calculate total hours - sum all hours from all tutors
       const totalCurrent = totalHoursMap.get(studentId) || 0
       totalHoursMap.set(studentId, totalCurrent + hours)
 
-      // Get tutor info (use first tutor found for this student)
-      if (session.tutor_id && session.profiles && !tutorMap.has(studentId)) {
+      // Collect tutors from sessions (in case they're not in active assignments)
+      if (session.tutor_id && session.profiles) {
         const tutor = Array.isArray(session.profiles) ? session.profiles[0] : session.profiles
         if (tutor && tutor.id && tutor.full_name) {
-          tutorMap.set(studentId, {
-            id: tutor.id,
-            full_name: tutor.full_name,
-          })
+          if (!tutorMap.has(studentId)) {
+            tutorMap.set(studentId, new Map())
+          }
+          tutorMap.get(studentId)!.set(tutor.id, tutor.full_name)
         }
       }
 
-      // Get category info (use first category found for this student)
-      if (session.student_assignments && !categoryMap.has(studentId)) {
+      // Collect all categories for this student
+      if (session.student_assignments) {
         const assignment = Array.isArray(session.student_assignments) 
           ? session.student_assignments[0] 
           : session.student_assignments
@@ -429,13 +486,52 @@ export async function getStudentBillings(
           const level = Array.isArray(assignment.subject_levels) ? assignment.subject_levels[0] : assignment.subject_levels
           
           if (subject?.name && level?.level_name) {
-            categoryMap.set(studentId, {
-              subject_name: subject.name,
-              level_name: level.level_name,
-            })
+            if (!categoryMap.has(studentId)) {
+              categoryMap.set(studentId, new Set())
+            }
+            categoryMap.get(studentId)!.add(`${subject.name} - ${level.level_name}`)
           }
         }
       }
+    }
+  }
+
+  // Convert tutor maps to display format - collect all tutors with their IDs
+  const tutorDisplayMap = new Map<string, Array<{ id: string; full_name: string }>>()
+  for (const [studentId, tutorIdNameMap] of tutorMap.entries()) {
+    const tutorsList: Array<{ id: string; full_name: string }> = []
+    
+    // Convert map to array
+    for (const [tutorId, tutorName] of tutorIdNameMap.entries()) {
+      tutorsList.push({
+        id: tutorId,
+        full_name: tutorName
+      })
+    }
+    
+    // Sort by name for consistency
+    tutorsList.sort((a, b) => a.full_name.localeCompare(b.full_name, 'pl', { sensitivity: 'base' }))
+    
+    tutorDisplayMap.set(studentId, tutorsList)
+  }
+
+  // Convert category sets to display format
+  const categoryDisplayMap = new Map<string, { subject_name: string; level_name: string }>()
+  for (const [studentId, categories] of categoryMap.entries()) {
+    const categoriesArray = Array.from(categories)
+    if (categoriesArray.length === 1) {
+      // Single category
+      const [subjectName, levelName] = categoriesArray[0].split(' - ')
+      categoryDisplayMap.set(studentId, {
+        subject_name: subjectName,
+        level_name: levelName
+      })
+    } else {
+      // Multiple categories - show "Wiele przedmiotów (X)"
+      categoryDisplayMap.set(studentId, {
+        subject_name: `Wiele przedmiotów (${categoriesArray.length})`,
+        level_name: ''
+      })
     }
   }
 
@@ -463,8 +559,8 @@ export async function getStudentBillings(
             phone: parent.phone,
           }
         : undefined,
-      category: categoryMap.get(studentBilling.student_id),
-      tutor: tutorMap.get(studentBilling.student_id),
+      category: categoryDisplayMap.get(studentBilling.student_id),
+      tutors: tutorDisplayMap.get(studentBilling.student_id) || [],
       hours_this_month: hoursThisMonthMap.get(studentBilling.student_id) || 0,
       total_hours: totalHoursMap.get(studentBilling.student_id) || 0,
     })

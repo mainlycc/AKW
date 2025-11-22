@@ -10,6 +10,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Input } from '@/components/ui/input'
 import {
   Select,
   SelectContent,
@@ -93,6 +94,7 @@ export function BillingTable({
   const router = useRouter()
   const [recalculating, setRecalculating] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
+  const [search, setSearch] = useState('')
   const [sortBy, setSortBy] = useState<'subject' | 'tutor' | 'status' | null>(null)
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -104,9 +106,37 @@ export function BillingTable({
     (_, i) => currentDate.getFullYear() - 2 + i
   )
 
+  // Filtrowanie po wyszukiwaniu
+  const filteredBillings = useMemo(() => {
+    if (!search.trim()) {
+      return billings
+    }
+    
+    const searchLower = search.toLowerCase()
+    return billings.filter((billing) => {
+      const studentName = `${billing.students.first_name} ${billing.students.last_name}`.toLowerCase()
+      const parentName = billing.parent 
+        ? `${billing.parent.first_name} ${billing.parent.last_name}`.toLowerCase()
+        : ''
+      const parentEmail = billing.parent?.email?.toLowerCase() || ''
+      const subjectName = billing.category?.subject_name?.toLowerCase() || ''
+      const tutorNames = billing.tutors && billing.tutors.length > 0
+        ? billing.tutors.map(t => t.full_name.toLowerCase()).join(' ')
+        : ''
+      
+      return (
+        studentName.includes(searchLower) ||
+        parentName.includes(searchLower) ||
+        parentEmail.includes(searchLower) ||
+        subjectName.includes(searchLower) ||
+        tutorNames.includes(searchLower)
+      )
+    })
+  }, [billings, search])
+
   // Sortowanie
   const sortedBillings = useMemo(() => {
-    const sorted = [...billings].sort((a, b) => {
+    const sorted = [...filteredBillings].sort((a, b) => {
       if (sortBy === 'subject') {
         const aSubject = a.category?.subject_name || ''
         const bSubject = b.category?.subject_name || ''
@@ -118,12 +148,16 @@ export function BillingTable({
       }
       
       if (sortBy === 'tutor') {
-        const aTutor = a.tutor?.full_name || ''
-        const bTutor = b.tutor?.full_name || ''
-        if (!aTutor && !bTutor) return 0
-        if (!aTutor) return 1
-        if (!bTutor) return -1
-        const comparison = aTutor.localeCompare(bTutor, 'pl', { sensitivity: 'base' })
+        const aTutors = a.tutors && a.tutors.length > 0 
+          ? a.tutors.map(t => t.full_name).join(', ')
+          : ''
+        const bTutors = b.tutors && b.tutors.length > 0
+          ? b.tutors.map(t => t.full_name).join(', ')
+          : ''
+        if (!aTutors && !bTutors) return 0
+        if (!aTutors) return 1
+        if (!bTutors) return -1
+        const comparison = aTutors.localeCompare(bTutors, 'pl', { sensitivity: 'base' })
         return sortDirection === 'asc' ? comparison : -comparison
       }
       
@@ -142,7 +176,7 @@ export function BillingTable({
       return 0
     })
     return sorted
-  }, [billings, sortBy, sortDirection])
+  }, [filteredBillings, sortBy, sortDirection])
 
   // Calculate pagination
   const totalPages = Math.ceil(sortedBillings.length / ITEMS_PER_PAGE)
@@ -155,7 +189,7 @@ export function BillingTable({
   // Reset to page 1 when billings change (e.g., when month/year changes)
   useEffect(() => {
     setCurrentPage(1)
-  }, [currentMonth, currentYear, sortBy, sortDirection])
+  }, [currentMonth, currentYear, sortBy, sortDirection, search])
 
   const handleSortBySubject = () => {
     if (sortBy === 'subject') {
@@ -304,7 +338,13 @@ export function BillingTable({
     <div className="space-y-4">
       {/* Filters and Actions */}
       <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4 flex-1">
+          <Input
+            placeholder="Szukaj po uczniu, rodzicu, przedmiocie lub tutorze..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="max-w-sm"
+          />
           <Button
             onClick={handleRecalculate}
             disabled={recalculating}
@@ -333,7 +373,7 @@ export function BillingTable({
             Wyślij przypomnienie {selectedIds.size > 0 && `(${selectedIds.size})`}
           </Button>
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-2 gap-4 flex-shrink-0">
           <div className="space-y-2">
             <label className="text-sm font-medium">Miesiąc</label>
             <Select
@@ -454,10 +494,12 @@ export function BillingTable({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {billings.length === 0 ? (
+            {filteredBillings.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={11} className="text-center text-muted-foreground">
-                  Brak rozliczeń dla wybranego okresu
+                  {billings.length === 0 
+                    ? 'Brak rozliczeń dla wybranego okresu'
+                    : 'Brak wyników wyszukiwania'}
                 </TableCell>
               </TableRow>
             ) : (
@@ -485,8 +527,14 @@ export function BillingTable({
                     )}
                   </TableCell>
                   <TableCell>
-                    {billing.tutor ? (
-                      <span className="font-medium">{billing.tutor.full_name}</span>
+                    {billing.tutors && billing.tutors.length > 0 ? (
+                      <div className="flex flex-wrap gap-1">
+                        {billing.tutors.map((tutor, idx) => (
+                          <Badge key={idx} variant="outline" className="text-xs">
+                            {tutor.full_name}
+                          </Badge>
+                        ))}
+                      </div>
                     ) : (
                       <span className="text-muted-foreground">-</span>
                     )}
@@ -581,12 +629,13 @@ export function BillingTable({
       </div>
 
       {/* Pagination */}
-      {billings.length > ITEMS_PER_PAGE && (
+      {filteredBillings.length > ITEMS_PER_PAGE && (
         <div className="flex items-center justify-between">
           <div className="text-sm text-muted-foreground">
             Wyświetlanie {(currentPage - 1) * ITEMS_PER_PAGE + 1}-
             {Math.min(currentPage * ITEMS_PER_PAGE, sortedBillings.length)} z{' '}
             {sortedBillings.length} rekordów
+            {search && ` (z ${billings.length} wszystkich)`}
           </div>
           <Pagination>
             <PaginationContent>

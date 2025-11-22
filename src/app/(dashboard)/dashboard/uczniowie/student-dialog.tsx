@@ -235,7 +235,8 @@ export function StudentDialog({
       onClose()
     } catch (error) {
       console.error('Error saving student:', error)
-      alert('Błąd podczas zapisywania ucznia')
+      const errorMessage = error instanceof Error ? error.message : 'Błąd podczas zapisywania ucznia'
+      alert(errorMessage)
     } finally {
       setLoading(false)
     }

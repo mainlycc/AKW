@@ -15,7 +15,6 @@ export default async function NotificationsPage() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Powiadomienia</h1>
           <p className="text-sm text-muted-foreground">
             Zarządzaj swoimi powiadomieniami
           </p>

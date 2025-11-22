@@ -77,7 +77,6 @@ export default async function PublicBookingsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-semibold">Publiczne rezerwacje</h1>
         <p className="text-muted-foreground">
           Zarządzaj zgłoszeniami wysłanymi przez formularz publiczny. Zatwierdzenie aktywuje przypisanie i blokuje slot.
         </p>

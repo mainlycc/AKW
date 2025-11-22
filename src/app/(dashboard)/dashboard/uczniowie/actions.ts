@@ -4,6 +4,40 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { sendGroupMessageEmail } from '@/lib/email/send'
 
+/**
+ * Check if a student with the same first and last name already exists
+ */
+export async function checkStudentExists(
+  first_name: string,
+  last_name: string,
+  excludeId?: string
+): Promise<{ exists: boolean; student?: { id: string; first_name: string; last_name: string } }> {
+  const supabase = await createClient()
+
+  let query = supabase
+    .from('students')
+    .select('id, first_name, last_name')
+    .eq('first_name', first_name.trim())
+    .eq('last_name', last_name.trim())
+    .limit(1)
+
+  if (excludeId) {
+    query = query.neq('id', excludeId)
+  }
+
+  const { data, error } = await query.single()
+
+  if (error) {
+    // If no rows found, student doesn't exist
+    if (error.code === 'PGRST116') {
+      return { exists: false }
+    }
+    throw error
+  }
+
+  return { exists: true, student: data || undefined }
+}
+
 export async function createStudent(
   data: {
     first_name: string
@@ -19,11 +53,24 @@ export async function createStudent(
 ) {
   const supabase = await createClient()
 
+  // Check if student already exists
+  const { exists, student: existingStudent } = await checkStudentExists(
+    data.first_name,
+    data.last_name
+  )
+
+  if (exists && existingStudent) {
+    throw new Error(
+      `Uczeń o imieniu "${data.first_name} ${data.last_name}" już istnieje w systemie. ` +
+      `Jeśli to ta sama osoba, edytuj istniejącego ucznia zamiast tworzyć nowego.`
+    )
+  }
+
   const { data: student, error } = await supabase
     .from('students')
     .insert({
-      first_name: data.first_name,
-      last_name: data.last_name,
+      first_name: data.first_name.trim(),
+      last_name: data.last_name.trim(),
       hourly_rate: data.hourly_rate ?? 50.00,
     })
     .select()
@@ -52,12 +99,83 @@ export async function createStudentWithAssignment(
 ) {
   const supabase = await createClient()
 
-  // Create student
+  // Check if student already exists
+  const { exists, student: existingStudent } = await checkStudentExists(
+    data.first_name,
+    data.last_name
+  )
+
+  if (exists && existingStudent) {
+    // If student exists, use existing student instead of creating new one
+    // Check if assignment already exists
+    const { data: level } = await supabase
+      .from('subject_levels')
+      .select('subject_id')
+      .eq('id', data.subject_level_id)
+      .single()
+
+    if (!level) throw new Error('Subject level not found')
+
+    // Check if assignment already exists
+    const { data: existingAssignment } = await supabase
+      .from('student_assignments')
+      .select('id')
+      .eq('student_id', existingStudent.id)
+      .eq('tutor_id', tutorId)
+      .eq('subject_id', level.subject_id)
+      .eq('subject_level_id', data.subject_level_id)
+      .eq('status', 'active')
+      .single()
+
+    if (existingAssignment) {
+      throw new Error(
+        `Uczeń "${data.first_name} ${data.last_name}" już istnieje i ma aktywne przypisanie do tego tutora i przedmiotu.`
+      )
+    }
+
+    // Create assignment for existing student
+    const { error: assignmentError } = await supabase
+      .from('student_assignments')
+      .insert({
+        student_id: existingStudent.id,
+        tutor_id: tutorId,
+        subject_id: level.subject_id,
+        subject_level_id: data.subject_level_id,
+        assigned_by: tutorId,
+        status: 'active',
+      })
+
+    if (assignmentError) throw assignmentError
+
+    // Create student_subject entry if not exists
+    const { data: existingSubject } = await supabase
+      .from('student_subjects')
+      .select('id')
+      .eq('student_id', existingStudent.id)
+      .eq('subject_id', level.subject_id)
+      .eq('subject_level_id', data.subject_level_id)
+      .single()
+
+    if (!existingSubject) {
+      await supabase
+        .from('student_subjects')
+        .insert({
+          student_id: existingStudent.id,
+          subject_id: level.subject_id,
+          subject_level_id: data.subject_level_id,
+        })
+    }
+
+    revalidatePath('/dashboard/uczniowie')
+    return existingStudent
+  }
+
+  // Create new student
   const { data: student, error: studentError } = await supabase
     .from('students')
     .insert({
-      first_name: data.first_name,
-      last_name: data.last_name,
+      first_name: data.first_name.trim(),
+      last_name: data.last_name.trim(),
       hourly_rate: data.hourly_rate ?? 50.00,
     })
     .select()
@@ -111,13 +229,27 @@ export async function updateStudent(
 ) {
   const supabase = await createClient()
 
+  // Check if another student with the same name exists (excluding current student)
+  const { exists, student: existingStudent } = await checkStudentExists(
+    data.first_name,
+    data.last_name,
+    id
+  )
+
+  if (exists && existingStudent) {
+    throw new Error(
+      `Uczeń o imieniu "${data.first_name} ${data.last_name}" już istnieje w systemie. ` +
+      `Nie można zmienić nazwy na istniejącą.`
+    )
+  }
+
   const updateData: {
     first_name: string
     last_name: string
     hourly_rate?: number
   } = {
-    first_name: data.first_name,
-    last_name: data.last_name,
+    first_name: data.first_name.trim(),
+    last_name: data.last_name.trim(),
   }
 
   if (data.hourly_rate !== undefined) {

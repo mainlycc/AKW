@@ -115,7 +115,6 @@ export default async function BillingPage({
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-2xl font-bold">Rozliczenia miesięczne</h1>
         <p className="text-muted-foreground">
           Przegląd należności i płatności dla wybranego okresu
         </p>

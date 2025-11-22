@@ -125,7 +125,6 @@ export default async function NewPaymentPage({
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-2xl font-bold">Dodaj płatność</h1>
         <p className="text-muted-foreground">
           Zarejestruj nową płatność dla wybranego ucznia
         </p>

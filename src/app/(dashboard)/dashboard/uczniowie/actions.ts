@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { sendGroupMessageEmail } from '@/lib/email/send'
+import { linkParentToStudent as linkParentToStudentLib, unlinkParentFromStudent as unlinkParentFromStudentLib, createParent } from '@/lib/actions/parents'
 
 /**
  * Check if a student with the same first and last name already exists
@@ -77,6 +78,33 @@ export async function createStudent(
     .single()
 
   if (error) throw error
+
+  // Create and link parent if parentData is provided
+  if (parentData && (parentData.email || parentData.first_name || parentData.last_name)) {
+    if (!parentData.email) {
+      console.warn('[createStudent] Parent email is required, skipping parent creation')
+    } else {
+      try {
+        const parent = await createParent({
+          first_name: parentData.first_name || 'Rodzic',
+          last_name: parentData.last_name || data.last_name,
+          email: parentData.email,
+          phone: parentData.phone || '',
+          parent_type: 'other',
+        })
+
+        const linkResult = await linkParentToStudentAction(parent.id, student.id, true)
+        if (!linkResult.success) {
+          console.error('[createStudent] Error linking parent to student:', linkResult.message)
+          // Don't throw - student was already created, just log the error
+        }
+      } catch (error) {
+        console.error('[createStudent] Error creating/linking parent:', error)
+        // Don't throw - student was already created, just log the error
+        // The error might be that parent already exists, which is fine
+      }
+    }
+  }
 
   revalidatePath('/dashboard/uczniowie')
   return student
@@ -166,6 +194,32 @@ export async function createStudentWithAssignment(
         })
     }
 
+    // Create and link parent if parent data is provided (for existing student)
+    if (data.parent && (data.parent.email || data.parent.first_name || data.parent.last_name)) {
+      if (!data.parent.email) {
+        console.warn('[createStudentWithAssignment] Parent email is required, skipping parent creation')
+      } else {
+        try {
+          const parent = await createParent({
+            first_name: data.parent.first_name || 'Rodzic',
+            last_name: data.parent.last_name || data.last_name,
+            email: data.parent.email,
+            phone: data.parent.phone || '',
+            parent_type: 'other',
+          })
+
+          const linkResult = await linkParentToStudentAction(parent.id, existingStudent.id, true)
+          if (!linkResult.success) {
+            console.error('[createStudentWithAssignment] Error linking parent to existing student:', linkResult.message)
+            // Don't throw - assignment was already created, just log the error
+          }
+        } catch (error) {
+          console.error('[createStudentWithAssignment] Error creating/linking parent for existing student:', error)
+          // Don't throw - assignment was already created, just log the error
+        }
+      }
+    }
+
     revalidatePath('/dashboard/uczniowie')
     return existingStudent
   }
@@ -214,6 +268,33 @@ export async function createStudentWithAssignment(
       subject_id: level.subject_id,
       subject_level_id: data.subject_level_id,
     })
+
+  // Create and link parent if parent data is provided (for new student)
+  if (data.parent && (data.parent.email || data.parent.first_name || data.parent.last_name)) {
+    if (!data.parent.email) {
+      console.warn('[createStudentWithAssignment] Parent email is required, skipping parent creation')
+    } else {
+      try {
+        const parent = await createParent({
+          first_name: data.parent.first_name || 'Rodzic',
+          last_name: data.parent.last_name || data.last_name,
+          email: data.parent.email,
+          phone: data.parent.phone || '',
+          parent_type: 'other',
+        })
+
+        const linkResult = await linkParentToStudentAction(parent.id, student.id, true)
+        if (!linkResult.success) {
+          console.error('[createStudentWithAssignment] Error linking parent to new student:', linkResult.message)
+          // Don't throw - student was already created, just log the error
+        }
+      } catch (error) {
+        console.error('[createStudentWithAssignment] Error creating/linking parent for new student:', error)
+        // Don't throw - student was already created, just log the error
+        // The error might be that parent already exists, which is fine
+      }
+    }
+  }
 
   revalidatePath('/dashboard/uczniowie')
   return student
@@ -328,26 +409,15 @@ export async function sendGroupMessage(
     return { success: false, error: 'Treść wiadomości nie może być pusta' }
   }
 
-  // Pobierz uczniów z głównymi rodzicami
+  // Najpierw pobierz uczniów
   const { data: students, error: studentsError } = await supabase
     .from('students')
     .select(`
       id,
       first_name,
-      last_name,
-      student_parents!inner (
-        id,
-        is_primary,
-        parents (
-          id,
-          first_name,
-          last_name,
-          email
-        )
-      )
+      last_name
     `)
     .in('id', selectedStudentIds)
-    .eq('student_parents.is_primary', true)
 
   if (studentsError) {
     console.error('Error fetching students:', studentsError)
@@ -355,7 +425,30 @@ export async function sendGroupMessage(
   }
 
   if (!students || students.length === 0) {
-    return { success: false, error: 'Nie znaleziono uczniów z przypisanymi głównymi rodzicami' }
+    return { success: false, error: 'Nie znaleziono zaznaczonych uczniów' }
+  }
+
+  const studentIds = students.map(s => s.id)
+
+  // Pobierz wszystkich rodziców dla tych uczniów (nie tylko głównych)
+  const { data: parentData, error: parentError } = await supabase
+    .from('student_parents')
+    .select(`
+      student_id,
+      is_primary,
+      parents (
+        id,
+        first_name,
+        last_name,
+        email
+      )
+    `)
+    .in('student_id', studentIds)
+    .order('is_primary', { ascending: false }) // Główni rodzice najpierw
+
+  if (parentError) {
+    console.error('Error fetching parents:', parentError)
+    return { success: false, error: 'Nie udało się pobrać danych rodziców' }
   }
 
   // Zgrupuj uczniów według rodzica
@@ -366,38 +459,78 @@ export async function sendGroupMessage(
     studentNames: string[]
   }>()
 
-  for (const student of students) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const studentParents = (student as any).student_parents as Array<{
+  // Utwórz mapę student_id -> student dla szybkiego wyszukiwania
+  const studentMap = new Map(students.map(s => [s.id, s]))
+
+  // Utwórz mapę student_id -> lista rodziców z emailami
+  const studentParentsMap = new Map<string, Array<{
+    id: string
+    is_primary: boolean
+    parent: {
       id: string
-      is_primary: boolean
-      parents: {
+      first_name: string
+      last_name: string
+      email: string
+    }
+  }>>()
+
+  // Przetwórz dane rodziców - zgrupuj według student_id
+  if (parentData) {
+    for (const sp of parentData) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const parent = (sp as any).parents as {
         id: string
         first_name: string
         last_name: string
         email: string
       } | null
-    }> | null | undefined
 
-    if (!studentParents || studentParents.length === 0) continue
+      if (!parent || !parent.email || !parent.email.trim()) continue
 
-    const primaryParent = studentParents.find(sp => sp?.is_primary && sp?.parents)
-    if (!primaryParent || !primaryParent.parents) continue
+      if (!studentParentsMap.has(sp.student_id)) {
+        studentParentsMap.set(sp.student_id, [])
+      }
 
-    const parent = primaryParent.parents
-    if (!parent || !parent.email || !parent.email.trim()) continue
+      studentParentsMap.get(sp.student_id)!.push({
+        id: sp.student_id,
+        is_primary: sp.is_primary,
+        parent: {
+          id: parent.id,
+          first_name: parent.first_name,
+          last_name: parent.last_name,
+          email: parent.email,
+        },
+      })
+    }
+  }
+
+  // Dla każdego ucznia wybierz rodzica: najpierw głównego z emailem, jeśli nie ma - pierwszego dostępnego z emailem
+  for (const student of students) {
+    const parents = studentParentsMap.get(student.id) || []
+    
+    if (parents.length === 0) continue
+
+    // Najpierw szukaj głównego rodzica z emailem
+    let selectedParent = parents.find(p => p.is_primary && p.parent.email && p.parent.email.trim())
+    
+    // Jeśli nie ma głównego z emailem, użyj pierwszego dostępnego z emailem
+    if (!selectedParent) {
+      selectedParent = parents.find(p => p.parent.email && p.parent.email.trim())
+    }
+
+    if (!selectedParent) continue
 
     const studentName = `${student.first_name} ${student.last_name}`
-    const parentKey = parent.id
+    const parentKey = selectedParent.parent.id
 
     if (parentStudentMap.has(parentKey)) {
       const existing = parentStudentMap.get(parentKey)!
       existing.studentNames.push(studentName)
     } else {
       parentStudentMap.set(parentKey, {
-        parentId: parent.id,
-        parentName: `${parent.first_name} ${parent.last_name}`,
-        parentEmail: parent.email,
+        parentId: selectedParent.parent.id,
+        parentName: `${selectedParent.parent.first_name} ${selectedParent.parent.last_name}`,
+        parentEmail: selectedParent.parent.email,
         studentNames: [studentName],
       })
     }
@@ -490,5 +623,129 @@ export async function sendGroupMessageToAllMyStudents(
 
   // Użyj istniejącej funkcji sendGroupMessage
   return await sendGroupMessage(studentIds, message)
+}
+
+/**
+ * Link parent to student - wrapper action
+ */
+export async function linkParentToStudentAction(
+  parentId: string,
+  studentId: string,
+  isPrimary: boolean = false
+): Promise<{ success: boolean; message?: string }> {
+  // Validate inputs
+  if (!parentId || typeof parentId !== 'string' || parentId.trim() === '') {
+    return { success: false, message: 'Nieprawidłowy ID rodzica' }
+  }
+  if (!studentId || typeof studentId !== 'string' || studentId.trim() === '') {
+    return { success: false, message: 'Nieprawidłowy ID ucznia' }
+  }
+  
+  try {
+    console.log('[linkParentToStudentAction] Starting with params:', { parentId, studentId, isPrimary })
+    
+    let result: { success: boolean; message?: string }
+    try {
+      result = await linkParentToStudentLib(parentId.trim(), studentId.trim(), Boolean(isPrimary))
+    } catch (innerError) {
+      console.error('[linkParentToStudentAction] Error calling linkParentToStudentLib:', innerError)
+      const errorMessage = innerError instanceof Error 
+        ? innerError.message 
+        : 'Błąd podczas wywoływania funkcji linkowania'
+      return { success: false, message: errorMessage }
+    }
+    
+    console.log('[linkParentToStudentAction] Result:', result)
+    
+    // Ensure we always return a valid object with consistent structure
+    if (!result || typeof result !== 'object' || typeof result.success !== 'boolean') {
+      console.error('[linkParentToStudentAction] Invalid result format:', result)
+      return { success: false, message: 'Nieprawidłowa odpowiedź z serwera' }
+    }
+    
+    // Revalidate paths only on success
+    if (result.success === true) {
+      try {
+        revalidatePath('/dashboard/uczniowie')
+        revalidatePath('/dashboard/rodzice')
+      } catch (revalidateError) {
+        // Log but don't fail if revalidation fails
+        console.error('[linkParentToStudentAction] Error revalidating paths:', revalidateError)
+      }
+    }
+    
+    // Ensure consistent return format - don't include message if it's undefined
+    // Use JSON.parse/stringify to ensure proper serialization
+    const response: { success: boolean; message?: string } = {
+      success: result.success,
+    }
+    if (result.message) {
+      response.message = result.message
+    }
+    
+    // Ensure proper serialization for Next.js server actions
+    try {
+      return JSON.parse(JSON.stringify(response))
+    } catch (serializationError) {
+      console.error('[linkParentToStudentAction] Serialization error:', serializationError)
+      // Fallback to basic object if serialization fails
+      return { success: response.success, ...(response.message ? { message: String(response.message) } : {}) }
+    }
+  } catch (error) {
+    // Catch any unexpected errors and return a proper response
+    // Handle empty object errors (serialization issues)
+    const isEmptyObject = error && typeof error === 'object' && Object.keys(error).length === 0
+    
+    console.error('[linkParentToStudentAction] Unexpected error:', {
+      error,
+      isEmptyObject,
+      errorType: typeof error,
+      errorMessage: error instanceof Error ? error.message : String(error),
+      errorStack: error instanceof Error ? error.stack : undefined,
+    })
+    
+    let errorMessage = 'Nieoczekiwany błąd podczas przypisywania rodzica'
+    
+    if (isEmptyObject) {
+      errorMessage = 'Błąd serializacji odpowiedzi. Sprawdź logi serwera dla szczegółów.'
+    } else if (error instanceof Error) {
+      errorMessage = error.message || errorMessage
+    } else if (typeof error === 'string') {
+      errorMessage = error
+    } else if (error && typeof error === 'object') {
+      try {
+        const errorObj = error as Record<string, unknown>
+        if (errorObj.message && typeof errorObj.message === 'string') {
+          errorMessage = errorObj.message
+        } else {
+          errorMessage = JSON.stringify(errorObj)
+        }
+      } catch {
+        errorMessage = 'Nieznany błąd podczas przypisywania rodzica'
+      }
+    }
+    
+    // Always return a valid object - never throw
+    // Ensure proper serialization for Next.js server actions
+    try {
+      return JSON.parse(JSON.stringify({ success: false, message: errorMessage }))
+    } catch (serializationError) {
+      console.error('[linkParentToStudentAction] Serialization error in catch:', serializationError)
+      // Fallback to basic object if serialization fails
+      return { success: false, message: String(errorMessage) }
+    }
+  }
+}
+
+/**
+ * Unlink parent from student - wrapper action
+ */
+export async function unlinkParentFromStudentAction(
+  parentId: string,
+  studentId: string
+): Promise<void> {
+  await unlinkParentFromStudentLib(parentId, studentId)
+  revalidatePath('/dashboard/uczniowie')
+  revalidatePath('/dashboard/rodzice')
 }
 

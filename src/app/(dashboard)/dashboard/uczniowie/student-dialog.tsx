@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import {
   Dialog,
   DialogContent,
@@ -24,7 +25,7 @@ import {
 import { Student } from "@/lib/types/database.types"
 import { createStudent, updateStudent, deleteStudent, createStudentWithAssignment, updateStudentSubjects } from "./actions"
 import { createStudentNote } from "@/lib/actions/student-notes"
-import { linkParentToStudent, unlinkParentFromStudent, createParent } from "@/lib/actions/parents"
+import { linkParentToStudentAction, unlinkParentFromStudentAction } from "./actions"
 import { IconTrash, IconPlus } from "@tabler/icons-react"
 import { format } from "date-fns"
 import { pl } from "date-fns/locale"
@@ -101,6 +102,7 @@ export function StudentDialog({
   tutorSubjectLevels = [],
   currentUserId,
 }: StudentDialogProps) {
+  const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [formData, setFormData] = useState({
@@ -124,13 +126,21 @@ export function StudentDialog({
   useEffect(() => {
     if (open) {
       if (student) {
+        // Editing existing student - reset parent data (parents are added via handleAddParent)
         setFormData({
           first_name: student.first_name,
           last_name: student.last_name,
           hourly_rate: student.hourly_rate ?? 50,
         })
+        setParentData({
+          first_name: '',
+          last_name: '',
+          email: '',
+          phone: '',
+        })
         setSelectedSubjectLevels(new Set(studentSubjects))
       } else {
+        // Creating new student - allow parent data in form
         setFormData({
           first_name: '',
           last_name: '',
@@ -207,32 +217,11 @@ export function StudentDialog({
         }
       }
 
-      // Create parent if data provided (for both new and existing students)
-      const studentId = student?.id || newStudentId
-      if (studentId && (parentData.email || parentData.first_name || parentData.last_name)) {
-        if (!parentData.email) {
-          alert('Email rodzica jest wymagany')
-          setLoading(false)
-          return
-        }
-        
-        try {
-          const parent = await createParent({
-            first_name: parentData.first_name || 'Rodzic',
-            last_name: parentData.last_name || formData.last_name,
-            email: parentData.email,
-            phone: parentData.phone || '',
-            parent_type: 'other',
-          })
-          
-          await linkParentToStudent(parent.id, studentId, !student) // isPrimary = true dla nowego ucznia
-        } catch (error) {
-          console.error('Error creating parent:', error)
-          alert('Błąd podczas tworzenia rodzica. Uczeń został zapisany.')
-        }
-      }
+      // Parent creation and linking is now handled in server actions (createStudent and createStudentWithAssignment)
+      // No need to duplicate the logic here
 
       onClose()
+      router.refresh()
     } catch (error) {
       console.error('Error saving student:', error)
       const errorMessage = error instanceof Error ? error.message : 'Błąd podczas zapisywania ucznia'
@@ -277,12 +266,96 @@ export function StudentDialog({
   const handleAddParent = async () => {
     if (!student || !selectedParentId) return
     
+    // Validate inputs before calling
+    if (!selectedParentId || typeof selectedParentId !== 'string') {
+      alert('Nieprawidłowy ID rodzica')
+      return
+    }
+    if (!student.id || typeof student.id !== 'string') {
+      alert('Nieprawidłowy ID ucznia')
+      return
+    }
+    
     try {
-      await linkParentToStudent(selectedParentId, student.id)
-      setSelectedParentId('')
+      console.log('Linking parent to student:', {
+        parentId: selectedParentId,
+        studentId: student.id,
+      })
+      
+      let result: { success: boolean; message?: string }
+      try {
+        result = await linkParentToStudentAction(selectedParentId, student.id, false)
+      } catch (actionError) {
+        // Handle case where server action throws instead of returning
+        console.error('Server action threw error:', actionError)
+        const isEmptyObject = actionError && typeof actionError === 'object' && Object.keys(actionError).length === 0
+        if (isEmptyObject || !actionError) {
+          alert('Błąd serializacji odpowiedzi z serwera. Sprawdź konsolę serwera dla szczegółów.')
+        } else {
+          const errorMsg = actionError instanceof Error ? actionError.message : String(actionError)
+          alert(`Błąd podczas przypisywania rodzica: ${errorMsg}`)
+        }
+        return
+      }
+      
+      // Check if result is valid
+      if (!result || typeof result !== 'object' || typeof result.success !== 'boolean') {
+        console.error('Invalid result from linkParentToStudentAction:', result)
+        alert('Błąd podczas przypisywania rodzica: Nieprawidłowa odpowiedź z serwera')
+        return
+      }
+      
+      if (result.success) {
+        console.log('Parent linked successfully')
+        setSelectedParentId('')
+        // Refresh the page to show updated parent list
+        router.refresh()
+      } else {
+        console.error('Error linking parent:', result.message)
+        alert(`Błąd podczas przypisywania rodzica: ${result.message || 'Nieznany błąd'}`)
+      }
     } catch (error) {
-      console.error('Error linking parent:', error)
-      alert('Błąd podczas przypisywania rodzica')
+      // Handle serialization errors or other unexpected errors
+      // Check if error is an empty object (common serialization issue)
+      const isEmptyObject = error && typeof error === 'object' && Object.keys(error).length === 0
+      
+      console.error('Unexpected error linking parent:', {
+        error,
+        isEmptyObject,
+        errorType: typeof error,
+        errorMessage: error instanceof Error ? error.message : String(error),
+        errorStack: error instanceof Error ? error.stack : undefined,
+        errorStringified: isEmptyObject ? '{}' : JSON.stringify(error, Object.getOwnPropertyNames(error)),
+      })
+      
+      // Try to extract meaningful error message
+      let errorMessage = 'Nieoczekiwany błąd podczas przypisywania rodzica'
+      
+      if (isEmptyObject) {
+        // Empty object usually means serialization error - check server logs
+        errorMessage = 'Błąd serializacji odpowiedzi z serwera. Sprawdź konsolę serwera dla szczegółów.'
+      } else if (error instanceof Error) {
+        errorMessage = error.message || errorMessage
+      } else if (typeof error === 'string') {
+        errorMessage = error
+      } else if (error && typeof error === 'object') {
+        // Try to extract message from error object
+        const errorObj = error as Record<string, unknown>
+        if (errorObj.message && typeof errorObj.message === 'string') {
+          errorMessage = errorObj.message
+        } else if (errorObj.error && typeof errorObj.error === 'string') {
+          errorMessage = errorObj.error
+        } else if (Object.keys(errorObj).length > 0) {
+          // Only stringify if object has properties
+          try {
+            errorMessage = JSON.stringify(errorObj)
+          } catch {
+            errorMessage = 'Nieznany błąd podczas przypisywania rodzica'
+          }
+        }
+      }
+      
+      alert(`Błąd podczas przypisywania rodzica: ${errorMessage}`)
     }
   }
 
@@ -294,7 +367,7 @@ export function StudentDialog({
       description: 'Czy na pewno chcesz usunąć to przypisanie rodzica?',
       onConfirm: async () => {
         try {
-          await unlinkParentFromStudent(parentId, student.id)
+          await unlinkParentFromStudentAction(parentId, student.id)
         } catch (error) {
           console.error('Error unlinking parent:', error)
           alert('Błąd podczas usuwania przypisania rodzica')

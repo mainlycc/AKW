@@ -146,6 +146,11 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
           icon: IconCreditCard,
         },
         {
+          title: "Rozliczenia z raportów",
+          url: "/dashboard/billing-from-reports",
+          icon: IconReceipt,
+        },
+        {
           title: "Historia płatności",
           url: "/dashboard/payments",
           icon: IconHistory,

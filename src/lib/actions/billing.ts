@@ -39,6 +39,13 @@ export interface StudentBillingWithParent extends StudentBilling {
     email: string
     phone: string | null
   }
+  parents?: Array<{
+    id: string
+    first_name: string
+    last_name: string
+    email: string
+    phone: string | null
+  }>
   category?: {
     subject_name: string
     level_name: string
@@ -136,12 +143,16 @@ async function calculateBillingManually(
   const supabase = await createClient()
 
   // Get or create billing period
-  const { data: period } = await supabase
+  const { data: period, error: periodFetchError } = await supabase
     .from('billing_periods')
     .select('id')
     .eq('month', month)
     .eq('year', year)
-    .single()
+    .maybeSingle()
+
+  if (periodFetchError) {
+    throw new Error(`Failed to fetch billing period: ${periodFetchError.message}`)
+  }
 
   let periodId: string
   if (period) {
@@ -306,11 +317,13 @@ export async function getStudentBillings(
     return []
   }
 
+  // Get all parents, ordered by is_primary DESC so primary parents come first
   const { data: allParentData } = await supabase
     .from('student_parents')
     .select(
       `
       student_id,
+      is_primary,
       parents (
         id,
         first_name,
@@ -321,11 +334,13 @@ export async function getStudentBillings(
     `
     )
     .in('student_id', studentIds)
-    .eq('is_primary', true)
+    .order('is_primary', { ascending: false }) // Primary parents first
 
   // Create a map of student_id -> parent for quick lookup
+  // Prefer primary parents, but use first available if no primary
   type ParentDataItem = {
     student_id: string
+    is_primary: boolean
     parents: {
       id: string
       first_name: string
@@ -344,8 +359,12 @@ export async function getStudentBillings(
   const parentMap = new Map<string, ParentDataItem>()
   if (allParentData) {
     for (const item of allParentData) {
-      if (item.student_id && !parentMap.has(item.student_id)) {
-        parentMap.set(item.student_id, item as ParentDataItem)
+      if (item.student_id) {
+        const existing = parentMap.get(item.student_id)
+        // If no parent yet, or if this is primary and existing is not, use this one
+        if (!existing || (item.is_primary && !existing.is_primary)) {
+          parentMap.set(item.student_id, item as ParentDataItem)
+        }
       }
     }
   }
@@ -642,6 +661,628 @@ export async function recalculateBillingsForPeriod(
     }
     throw error
   }
+}
+
+/**
+ * Get student billings calculated from tutor reports for a specific period
+ */
+export async function getStudentBillingsFromReports(
+  month: number,
+  year: number
+): Promise<StudentBillingWithParent[]> {
+  const supabase = await createClient()
+  
+  // Check user authentication and role for debugging
+  const { data: { user } } = await supabase.auth.getUser()
+  if (user) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('id, role')
+      .eq('id', user.id)
+      .single()
+    console.log('[getStudentBillingsFromReports] User auth check:', {
+      userId: user.id,
+      userEmail: user.email,
+      profileRole: profile?.role,
+      hasProfile: !!profile,
+    })
+  } else {
+    console.warn('[getStudentBillingsFromReports] No authenticated user found!')
+  }
+
+  // Validate month and year
+  if (month < 1 || month > 12) {
+    throw new Error(`Invalid month: ${month}. Month must be between 1 and 12.`)
+  }
+  if (year < 2000 || year > 2100) {
+    throw new Error(`Invalid year: ${year}. Year must be between 2000 and 2100.`)
+  }
+
+  // Get or create billing period
+  const { data: period, error: periodFetchError } = await supabase
+    .from('billing_periods')
+    .select('id')
+    .eq('month', month)
+    .eq('year', year)
+    .maybeSingle()
+
+  if (periodFetchError) {
+    throw new Error(`Failed to fetch billing period: ${periodFetchError.message}`)
+  }
+
+  let periodId: string
+  if (period) {
+    periodId = period.id
+  } else {
+    const { data: newPeriod, error: periodError } = await supabase
+      .from('billing_periods')
+      .insert({ month, year })
+      .select('id')
+      .single()
+
+    if (periodError || !newPeriod) {
+      throw new Error(`Failed to create billing period: ${periodError?.message || 'Unknown error'}`)
+    }
+    periodId = newPeriod.id
+  }
+
+  // Get all approved reports for the month/year
+  // NOTE: We do NOT include student_parents here - we'll fetch the latest parent data separately
+  // This ensures we always show the most current parent assignments, not what was in the report
+  const { data: reports, error: reportsError } = await supabase
+    .from('monthly_reports')
+    .select(`
+      id,
+      tutor_id,
+      month,
+      year,
+      profiles!monthly_reports_tutor_id_fkey (
+        id,
+        full_name
+      ),
+      monthly_report_entries (
+        id,
+        student_id,
+        hours,
+        students (
+          id,
+          first_name,
+          last_name,
+          hourly_rate
+        )
+      )
+    `)
+    .eq('month', month)
+    .eq('year', year)
+    .in('status', ['approved', 'paid']) // Only approved or paid reports
+
+  if (reportsError) {
+    throw new Error(`Failed to fetch reports: ${reportsError.message}`)
+  }
+
+  if (!reports || reports.length === 0) {
+    return []
+  }
+
+  // Group entries by student_id and sum hours
+  const studentHoursMap = new Map<string, number>()
+  const studentTutorsMap = new Map<string, Map<string, string>>() // student_id -> tutor_id -> tutor_name
+  const studentDataMap = new Map<string, { 
+    first_name: string
+    last_name: string
+    hourly_rate: number
+  }>()
+
+  for (const report of reports) {
+    const tutor = Array.isArray(report.profiles) ? report.profiles[0] : report.profiles
+    const tutorId = tutor?.id || ''
+    const tutorName = tutor?.full_name || ''
+
+    const entries = report.monthly_report_entries || []
+    
+    for (const entry of entries) {
+      const studentId = entry.student_id
+      const hours = parseFloat(entry.hours?.toString() || '0')
+      
+      // Sum hours for this student
+      const currentHours = studentHoursMap.get(studentId) || 0
+      studentHoursMap.set(studentId, currentHours + hours)
+
+      // Collect tutors
+      if (tutorId && tutorName) {
+        if (!studentTutorsMap.has(studentId)) {
+          studentTutorsMap.set(studentId, new Map())
+        }
+        studentTutorsMap.get(studentId)!.set(tutorId, tutorName)
+      }
+
+      // Store student data (from first entry, hourly_rate should be same for all)
+      // NOTE: We do NOT store student_parents here - we'll fetch the latest parent data separately
+      if (!studentDataMap.has(studentId)) {
+        const student = Array.isArray(entry.students) ? entry.students[0] : entry.students
+        const hourlyRate = student?.hourly_rate 
+          ? parseFloat(student.hourly_rate.toString()) 
+          : 50 // default
+        
+        studentDataMap.set(studentId, {
+          first_name: student?.first_name || '',
+          last_name: student?.last_name || '',
+          hourly_rate: hourlyRate,
+        })
+      }
+    }
+  }
+
+  const studentIds = Array.from(studentHoursMap.keys())
+  
+  if (studentIds.length === 0) {
+    return []
+  }
+
+  // Get parents - Use EXACT same approach as getStudentBillings (line 321-337)
+  // Copy EXACTLY the same code that works in getStudentBillings
+  console.log('[getStudentBillingsFromReports] About to query student_parents (EXACT copy of getStudentBillings):', {
+    studentIdsCount: studentIds.length,
+    firstFewIds: studentIds.slice(0, 5),
+    blankaId: 'f720ee5e-9876-4234-bd48-00efb04c16b5',
+    blankaInList: studentIds.includes('f720ee5e-9876-4234-bd48-00efb04c16b5'),
+  })
+  
+  // Split into batches of 100 (Supabase limit for .in())
+  const BATCH_SIZE = 100
+  type ParentDataEntry = {
+    id: string
+    student_id: string
+    is_primary: boolean
+    parents: {
+      id: string
+      first_name: string
+      last_name: string
+      email: string
+      phone: string | null
+    } | null
+  }
+  
+  const allParentData: ParentDataEntry[] = []
+  
+  for (let i = 0; i < studentIds.length; i += BATCH_SIZE) {
+    const batch = studentIds.slice(i, i + BATCH_SIZE)
+    console.log(`[getStudentBillingsFromReports] Querying batch ${Math.floor(i / BATCH_SIZE) + 1} with ${batch.length} student IDs`)
+    
+    const { data: batchData, error: parentQueryError } = await supabase
+      .from('student_parents')
+      .select(
+        `
+        id,
+        student_id,
+        is_primary,
+        parents (
+          id,
+          first_name,
+          last_name,
+          email,
+          phone
+        )
+      `
+      )
+      .in('student_id', batch)
+      .order('is_primary', { ascending: false }) // Primary parents first
+
+    if (parentQueryError) {
+      console.error(`[getStudentBillingsFromReports] Error fetching student_parents batch ${Math.floor(i / BATCH_SIZE) + 1}:`, {
+        error: parentQueryError,
+        errorCode: parentQueryError.code,
+        errorMessage: parentQueryError.message,
+        errorDetails: parentQueryError.details,
+        errorHint: parentQueryError.hint,
+        batchSize: batch.length,
+        batchStart: i,
+      })
+    } else {
+      if (batchData) {
+        // Convert batchData to correct type - Supabase may return parents as array
+        type SupabaseBatchItem = {
+          id: string
+          student_id: string
+          is_primary: boolean
+          parents: {
+            id: string
+            first_name: string
+            last_name: string
+            email: string
+            phone: string | null
+          } | {
+            id: string
+            first_name: string
+            last_name: string
+            email: string
+            phone: string | null
+          }[] | null
+        }
+        const convertedBatch: ParentDataEntry[] = batchData.map((item: SupabaseBatchItem) => ({
+          id: item.id,
+          student_id: item.student_id,
+          is_primary: item.is_primary,
+          parents: Array.isArray(item.parents) 
+            ? (item.parents[0] || null)
+            : item.parents || null
+        }))
+        allParentData.push(...convertedBatch)
+        console.log(`[getStudentBillingsFromReports] Batch ${Math.floor(i / BATCH_SIZE) + 1} returned ${batchData.length} parent records`)
+      }
+    }
+  }
+  
+  console.log(`[getStudentBillingsFromReports] Total parent records fetched: ${allParentData.length}`)
+
+  console.log('[getStudentBillingsFromReports] Student_parents query result:', {
+    allParentDataCount: allParentData?.length || 0,
+    blankaKrykId: 'f720ee5e-9876-4234-bd48-00efb04c16b5',
+    blankaKrykParents: allParentData?.filter(sp => sp.student_id === 'f720ee5e-9876-4234-bd48-00efb04c16b5') || [],
+    blankaKrykParentsCount: allParentData?.filter(sp => sp.student_id === 'f720ee5e-9876-4234-bd48-00efb04c16b5').length || 0,
+    sampleParents: allParentData?.slice(0, 5).map(sp => ({
+      student_id: sp.student_id,
+      is_primary: sp.is_primary,
+      hasParent: !!sp.parents,
+      parentName: sp.parents ? `${sp.parents.first_name} ${sp.parents.last_name}` : null,
+      parentId: sp.parents?.id,
+    })) || [],
+  })
+
+  // Process studentsWithParents - EXACT same logic as /uczniowie students-table.tsx line 378
+  // const parents = student.student_parents || []
+  // Then extract parents from student_parents array
+
+  // Create parent maps - EXACT same logic as /uczniowie students-table.tsx
+  // In students-table.tsx: const parents = student.student_parents || []
+  // Then: parents.map(sp => sp.parents) to get all parents
+  type ParentData = {
+    id: string
+    first_name: string
+    last_name: string
+    email: string
+    phone: string | null
+  }
+
+  // Map for primary parent (for backward compatibility)
+  const parentMap = new Map<string, ParentData>()
+  // Map for all parents (for displaying all parents like in /uczniowie)
+  const allParentsMap = new Map<string, ParentData[]>()
+  
+  // Process allParentData - Group by student_id (same approach as getStudentBillings)
+  // Group by student_id
+  const parentsByStudent = new Map<string, typeof allParentData>()
+  for (const sp of allParentData) {
+    if (!parentsByStudent.has(sp.student_id)) {
+      parentsByStudent.set(sp.student_id, [])
+    }
+    parentsByStudent.get(sp.student_id)!.push(sp)
+  }
+
+  // Process each student's parents
+  for (const [studentId, studentParents] of parentsByStudent.entries()) {
+    console.log(`[getStudentBillingsFromReports] Processing student ${studentId}:`, {
+      studentId,
+      parentsCount: studentParents.length,
+      parents: studentParents.map(sp => ({
+        is_primary: sp.is_primary,
+        hasParent: !!sp.parents,
+        parentId: sp.parents?.id,
+        parentName: sp.parents ? `${sp.parents.first_name} ${sp.parents.last_name}` : null,
+      })),
+    })
+
+    // Extract all parents - upewnij się, że nie pomijamy żadnych rodziców
+    const allParents: ParentData[] = []
+    for (const sp of studentParents) {
+      // Sprawdź czy sp.parents istnieje i ma id (podstawowa walidacja)
+      if (sp.parents) {
+        // Jeśli parents ma id, dodaj go - nawet jeśli inne pola są puste
+        if (sp.parents.id) {
+          allParents.push({
+            id: sp.parents.id,
+            first_name: sp.parents.first_name || '',
+            last_name: sp.parents.last_name || '',
+            email: sp.parents.email || '',
+            phone: sp.parents.phone,
+          })
+        } else {
+          // Loguj przypadki, gdy parents istnieje, ale nie ma id
+          console.warn(`[getStudentBillingsFromReports] Parent without id for student ${studentId}:`, {
+            studentId,
+            hasParents: !!sp.parents,
+            parentData: sp.parents,
+          })
+        }
+      } else {
+        // Loguj przypadki, gdy sp.parents jest null
+        console.warn(`[getStudentBillingsFromReports] student_parents entry with null parents for student ${studentId}:`, {
+          studentId,
+          is_primary: sp.is_primary,
+          student_parent_id: sp.id,
+        })
+      }
+    }
+
+    // Zawsze ustaw allParentsMap, nawet jeśli jest puste - to pozwoli na debugowanie
+    allParentsMap.set(studentId, allParents)
+
+    if (allParents.length > 0) {
+      console.log(`[getStudentBillingsFromReports] Extracted parents for ${studentId}:`, {
+        studentId,
+        extractedCount: allParents.length,
+        extractedParents: allParents.map(p => `${p.first_name} ${p.last_name}`),
+      })
+
+      // Find primary parent with email for backward compatibility
+      // Najpierw szukaj głównego rodzica z emailem
+      const primaryParentWithEmail = studentParents.find(
+        sp => sp.is_primary && sp.parents && sp.parents.email && sp.parents.email.trim()
+      )
+      
+      if (primaryParentWithEmail && primaryParentWithEmail.parents) {
+        parentMap.set(studentId, {
+          id: primaryParentWithEmail.parents.id,
+          first_name: primaryParentWithEmail.parents.first_name || '',
+          last_name: primaryParentWithEmail.parents.last_name || '',
+          email: primaryParentWithEmail.parents.email || '',
+          phone: primaryParentWithEmail.parents.phone,
+        })
+      } else {
+        // Jeśli nie ma głównego z emailem, użyj pierwszego dostępnego rodzica z emailem
+        const parentWithEmail = allParents.find(p => p.email && p.email.trim())
+        if (parentWithEmail) {
+          parentMap.set(studentId, parentWithEmail)
+        } else if (allParents.length > 0) {
+          // Ostateczny fallback - pierwszy dostępny rodzic (nawet bez emaila)
+          parentMap.set(studentId, allParents[0])
+        }
+      }
+    } else {
+      console.log(`[getStudentBillingsFromReports] No valid parents extracted for student ${studentId}`, {
+        studentId,
+        studentParentsCount: studentParents.length,
+        studentParentsWithNull: studentParents.filter(sp => !sp.parents).length,
+        studentParentsWithId: studentParents.filter(sp => sp.parents && sp.parents.id).length,
+      })
+    }
+  }
+  
+  // NOTE: We do NOT use studentDataMap as fallback for parents
+  // We ONLY use the latest data from the separate query above
+  // This ensures we always show current parent assignments, not what was in old reports
+
+  console.log('[getStudentBillingsFromReports] Final parent maps:', {
+    parentMapSize: parentMap.size,
+    allParentsMapSize: allParentsMap.size,
+    parentMapKeys: Array.from(parentMap.keys()),
+    allParentsMapKeys: Array.from(allParentsMap.keys()),
+    sampleEntries: Array.from(parentMap.entries()).slice(0, 3),
+    sampleAllParentsEntries: Array.from(allParentsMap.entries()).slice(0, 3).map(([id, parents]) => ({
+      studentId: id,
+      parentsCount: parents.length,
+      parents: parents.map(p => `${p.first_name} ${p.last_name}`),
+    })),
+  })
+
+  // Get payments for the period
+  const { data: payments } = await supabase
+    .from('payments')
+    .select('student_id, amount')
+    .eq('billing_period_id', periodId)
+    .in('student_id', studentIds)
+
+  // Group payments by student_id
+  const paymentsMap = new Map<string, number>()
+  if (payments) {
+    for (const payment of payments) {
+      const current = paymentsMap.get(payment.student_id) || 0
+      paymentsMap.set(payment.student_id, current + parseFloat(payment.amount.toString()))
+    }
+  }
+
+  // Get active assignments to get categories (subjects)
+  const { data: assignmentsData } = await supabase
+    .from('student_assignments')
+    .select(`
+      student_id,
+      subjects (
+        id,
+        name
+      ),
+      subject_levels (
+        id,
+        level_name
+      )
+    `)
+    .in('student_id', studentIds)
+    .eq('status', 'active')
+
+  // Create category map
+  const categoryMap = new Map<string, Set<string>>()
+  if (assignmentsData) {
+    for (const assignment of assignmentsData) {
+      const studentId = assignment.student_id
+      const subject = Array.isArray(assignment.subjects) ? assignment.subjects[0] : assignment.subjects
+      const level = Array.isArray(assignment.subject_levels) ? assignment.subject_levels[0] : assignment.subject_levels
+      
+      if (subject?.name && level?.level_name) {
+        if (!categoryMap.has(studentId)) {
+          categoryMap.set(studentId, new Set())
+        }
+        categoryMap.get(studentId)!.add(`${subject.name} - ${level.level_name}`)
+      }
+    }
+  }
+
+  // Convert tutor maps to display format
+  const tutorDisplayMap = new Map<string, Array<{ id: string; full_name: string }>>()
+  for (const [studentId, tutorIdNameMap] of studentTutorsMap.entries()) {
+    const tutorsList: Array<{ id: string; full_name: string }> = []
+    for (const [tutorId, tutorName] of tutorIdNameMap.entries()) {
+      tutorsList.push({ id: tutorId, full_name: tutorName })
+    }
+    tutorsList.sort((a, b) => a.full_name.localeCompare(b.full_name, 'pl', { sensitivity: 'base' }))
+    tutorDisplayMap.set(studentId, tutorsList)
+  }
+
+  // Convert category sets to display format
+  const categoryDisplayMap = new Map<string, { subject_name: string; level_name: string }>()
+  for (const [studentId, categories] of categoryMap.entries()) {
+    const categoriesArray = Array.from(categories)
+    if (categoriesArray.length === 1) {
+      const [subjectName, levelName] = categoriesArray[0].split(' - ')
+      categoryDisplayMap.set(studentId, {
+        subject_name: subjectName,
+        level_name: levelName
+      })
+    } else {
+      categoryDisplayMap.set(studentId, {
+        subject_name: `Wiele przedmiotów (${categoriesArray.length})`,
+        level_name: ''
+      })
+    }
+  }
+
+  // Build billings array
+  const billingsWithParents: StudentBillingWithParent[] = []
+
+  for (const studentId of studentIds) {
+    const hours = studentHoursMap.get(studentId) || 0
+    const studentData = studentDataMap.get(studentId)
+    
+    if (!studentData) {
+      continue
+    }
+
+    const hourlyRate = studentData.hourly_rate
+    const totalDue = hours * hourlyRate
+    const totalPaid = paymentsMap.get(studentId) || 0
+    const balance = totalDue - totalPaid
+
+    let status: BillingStatus = 'unpaid'
+    if (totalDue === 0) {
+      status = 'unpaid'
+    } else if (balance <= 0) {
+      status = 'paid'
+    } else if (totalPaid > 0) {
+      status = 'partially_paid'
+    }
+
+    // Get parent from map (already processed to prefer primary) - for backward compatibility
+    const parent = parentMap.get(studentId)
+    // Get all parents - for displaying all parents like in /uczniowie
+    const allParents = allParentsMap.get(studentId) || []
+
+    // Create a temporary billing ID (we don't have actual student_billings record)
+    // We'll use a combination of student_id and period_id
+    const tempBillingId = `${studentId}-${periodId}`
+
+    billingsWithParents.push({
+      id: tempBillingId,
+      student_id: studentId,
+      billing_period_id: periodId,
+      total_due: totalDue,
+      total_paid: totalPaid,
+      balance: balance,
+      status: status,
+      students: {
+        id: studentId,
+        first_name: studentData.first_name,
+        last_name: studentData.last_name,
+      },
+      billing_periods: {
+        id: periodId,
+        month: month,
+        year: year,
+      },
+      parent: parent
+        ? {
+            id: parent.id,
+            first_name: parent.first_name,
+            last_name: parent.last_name,
+            email: parent.email,
+            phone: parent.phone,
+          }
+        : undefined,
+      // Zawsze zwracaj tablicę rodziców (nawet jeśli pusta) - to pozwoli na lepsze wyświetlanie w tabeli
+      parents: allParents,
+      category: categoryDisplayMap.get(studentId),
+      tutors: tutorDisplayMap.get(studentId) || [],
+      hours_this_month: hours,
+      total_hours: hours, // For reports, this is the same as hours_this_month
+    })
+  }
+
+  // Sort by student last name
+  billingsWithParents.sort((a, b) => 
+    a.students.last_name.localeCompare(b.students.last_name, 'pl', { sensitivity: 'base' })
+  )
+
+  // Debug logging - check final result
+  console.log('[getStudentBillingsFromReports] Final billings result:', {
+    totalBillings: billingsWithParents.length,
+    billingsWithParentCount: billingsWithParents.filter(b => b.parent).length,
+    billingsWithAllParentsCount: billingsWithParents.filter(b => b.parents && b.parents.length > 0).length,
+    billingsWithoutParentCount: billingsWithParents.filter(b => !b.parent && (!b.parents || b.parents.length === 0)).length,
+    // Check specific student "Blanka Kryk" if present
+    blankaKryk: billingsWithParents.find(b => 
+      b.students.first_name.toLowerCase().includes('blanka') && 
+      b.students.last_name.toLowerCase().includes('kryk')
+    ) ? {
+      student: `${billingsWithParents.find(b => 
+        b.students.first_name.toLowerCase().includes('blanka') && 
+        b.students.last_name.toLowerCase().includes('kryk')
+      )!.students.first_name} ${billingsWithParents.find(b => 
+        b.students.first_name.toLowerCase().includes('blanka') && 
+        b.students.last_name.toLowerCase().includes('kryk')
+      )!.students.last_name}`,
+      studentId: billingsWithParents.find(b => 
+        b.students.first_name.toLowerCase().includes('blanka') && 
+        b.students.last_name.toLowerCase().includes('kryk')
+      )!.student_id,
+      hasParent: !!billingsWithParents.find(b => 
+        b.students.first_name.toLowerCase().includes('blanka') && 
+        b.students.last_name.toLowerCase().includes('kryk')
+      )!.parent,
+      parent: billingsWithParents.find(b => 
+        b.students.first_name.toLowerCase().includes('blanka') && 
+        b.students.last_name.toLowerCase().includes('kryk')
+      )!.parent ? `${billingsWithParents.find(b => 
+        b.students.first_name.toLowerCase().includes('blanka') && 
+        b.students.last_name.toLowerCase().includes('kryk')
+      )!.parent!.first_name} ${billingsWithParents.find(b => 
+        b.students.first_name.toLowerCase().includes('blanka') && 
+        b.students.last_name.toLowerCase().includes('kryk')
+      )!.parent!.last_name}` : null,
+      hasAllParents: !!(billingsWithParents.find(b => 
+        b.students.first_name.toLowerCase().includes('blanka') && 
+        b.students.last_name.toLowerCase().includes('kryk')
+      )!.parents && billingsWithParents.find(b => 
+        b.students.first_name.toLowerCase().includes('blanka') && 
+        b.students.last_name.toLowerCase().includes('kryk')
+      )!.parents!.length > 0),
+      allParentsCount: billingsWithParents.find(b => 
+        b.students.first_name.toLowerCase().includes('blanka') && 
+        b.students.last_name.toLowerCase().includes('kryk')
+      )!.parents?.length || 0,
+      allParents: billingsWithParents.find(b => 
+        b.students.first_name.toLowerCase().includes('blanka') && 
+        b.students.last_name.toLowerCase().includes('kryk')
+      )!.parents?.map(p => `${p.first_name} ${p.last_name}`) || [],
+    } : null,
+    sampleBillings: billingsWithParents.slice(0, 5).map(b => ({
+      student: `${b.students.first_name} ${b.students.last_name}`,
+      studentId: b.student_id,
+      hasParent: !!b.parent,
+      parent: b.parent ? `${b.parent.first_name} ${b.parent.last_name}` : null,
+      hasAllParents: !!(b.parents && b.parents.length > 0),
+      allParentsCount: b.parents?.length || 0,
+      allParents: b.parents?.map(p => `${p.first_name} ${p.last_name}`) || [],
+    })),
+  })
+
+  return billingsWithParents
 }
 
 /**

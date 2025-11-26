@@ -1,6 +1,13 @@
 -- WARNING: This schema is for context only and is not meant to be run.
 -- Table order and constraints may not be valid for execution.
 
+CREATE TABLE public.billing_periods (
+  id uuid NOT NULL DEFAULT uuid_generate_v4(),
+  month integer NOT NULL CHECK (month >= 1 AND month <= 12),
+  year integer NOT NULL,
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT billing_periods_pkey PRIMARY KEY (id)
+);
 CREATE TABLE public.booked_slots (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   tutor_id uuid NOT NULL,
@@ -44,6 +51,18 @@ CREATE TABLE public.monthly_reports (
   CONSTRAINT monthly_reports_tutor_id_fkey FOREIGN KEY (tutor_id) REFERENCES public.profiles(id),
   CONSTRAINT monthly_reports_approved_by_fkey FOREIGN KEY (approved_by) REFERENCES public.profiles(id)
 );
+CREATE TABLE public.notifications (
+  id uuid NOT NULL DEFAULT uuid_generate_v4(),
+  user_id uuid NOT NULL,
+  type USER-DEFINED NOT NULL,
+  title text NOT NULL,
+  message text NOT NULL,
+  read_at timestamp with time zone,
+  metadata jsonb DEFAULT '{}'::jsonb,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT notifications_pkey PRIMARY KEY (id),
+  CONSTRAINT notifications_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.profiles(id)
+);
 CREATE TABLE public.parents (
   id uuid NOT NULL DEFAULT uuid_generate_v4(),
   first_name text NOT NULL,
@@ -54,6 +73,34 @@ CREATE TABLE public.parents (
   created_at timestamp with time zone DEFAULT now(),
   updated_at timestamp with time zone DEFAULT now(),
   CONSTRAINT parents_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.payment_reminders (
+  id uuid NOT NULL DEFAULT uuid_generate_v4(),
+  student_id uuid NOT NULL,
+  billing_period_id uuid NOT NULL,
+  reminder_date date NOT NULL,
+  sent_at timestamp with time zone,
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT payment_reminders_pkey PRIMARY KEY (id),
+  CONSTRAINT payment_reminders_student_id_fkey FOREIGN KEY (student_id) REFERENCES public.students(id),
+  CONSTRAINT payment_reminders_billing_period_id_fkey FOREIGN KEY (billing_period_id) REFERENCES public.billing_periods(id)
+);
+CREATE TABLE public.payments (
+  id uuid NOT NULL DEFAULT uuid_generate_v4(),
+  student_id uuid NOT NULL,
+  billing_period_id uuid NOT NULL,
+  amount numeric NOT NULL,
+  payment_method USER-DEFINED NOT NULL,
+  payment_date date NOT NULL DEFAULT CURRENT_DATE,
+  notes text,
+  stripe_payment_id text,
+  created_by uuid NOT NULL,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT payments_pkey PRIMARY KEY (id),
+  CONSTRAINT payments_student_id_fkey FOREIGN KEY (student_id) REFERENCES public.students(id),
+  CONSTRAINT payments_billing_period_id_fkey FOREIGN KEY (billing_period_id) REFERENCES public.billing_periods(id),
+  CONSTRAINT payments_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.profiles(id)
 );
 CREATE TABLE public.profiles (
   id uuid NOT NULL,
@@ -113,6 +160,20 @@ CREATE TABLE public.student_assignments (
   CONSTRAINT student_assignments_subject_level_id_fkey FOREIGN KEY (subject_level_id) REFERENCES public.subject_levels(id),
   CONSTRAINT student_assignments_assigned_by_fkey FOREIGN KEY (assigned_by) REFERENCES public.profiles(id)
 );
+CREATE TABLE public.student_billings (
+  id uuid NOT NULL DEFAULT uuid_generate_v4(),
+  student_id uuid NOT NULL,
+  billing_period_id uuid NOT NULL,
+  total_due numeric NOT NULL DEFAULT 0,
+  total_paid numeric NOT NULL DEFAULT 0,
+  balance numeric NOT NULL DEFAULT 0,
+  status USER-DEFINED NOT NULL DEFAULT 'unpaid'::billing_status,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT student_billings_pkey PRIMARY KEY (id),
+  CONSTRAINT student_billings_student_id_fkey FOREIGN KEY (student_id) REFERENCES public.students(id),
+  CONSTRAINT student_billings_billing_period_id_fkey FOREIGN KEY (billing_period_id) REFERENCES public.billing_periods(id)
+);
 CREATE TABLE public.student_notes (
   id uuid NOT NULL DEFAULT uuid_generate_v4(),
   student_id uuid NOT NULL,
@@ -153,6 +214,7 @@ CREATE TABLE public.students (
   notes text,
   created_at timestamp with time zone DEFAULT now(),
   updated_at timestamp with time zone DEFAULT now(),
+  hourly_rate numeric NOT NULL DEFAULT 50.00,
   CONSTRAINT students_pkey PRIMARY KEY (id)
 );
 CREATE TABLE public.subject_levels (
@@ -229,6 +291,7 @@ CREATE TABLE public.tutoring_sessions (
   created_by uuid NOT NULL,
   created_at timestamp with time zone DEFAULT now(),
   updated_at timestamp with time zone DEFAULT now(),
+  status USER-DEFINED NOT NULL DEFAULT 'scheduled'::session_status,
   CONSTRAINT tutoring_sessions_pkey PRIMARY KEY (id),
   CONSTRAINT tutoring_sessions_assignment_id_fkey FOREIGN KEY (assignment_id) REFERENCES public.student_assignments(id),
   CONSTRAINT tutoring_sessions_tutor_id_fkey FOREIGN KEY (tutor_id) REFERENCES public.profiles(id),

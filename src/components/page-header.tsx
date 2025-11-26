@@ -20,6 +20,7 @@ const pageTitles: Record<string, string> = {
   '/dashboard/moje-raporty': 'Moje raporty',
   '/dashboard/raporty-tutorow': 'Raporty tutorów',
   '/dashboard/billing': 'Rozliczenia miesięczne',
+  '/dashboard/billing-from-reports': 'Rozliczenia z raportów',
   '/dashboard/payments': 'Historia płatności',
   '/dashboard/payments/new': 'Dodaj płatność',
   '/dashboard/powiadomienia': 'Powiadomienia',

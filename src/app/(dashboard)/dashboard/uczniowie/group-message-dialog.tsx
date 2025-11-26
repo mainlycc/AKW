@@ -85,11 +85,19 @@ export function GroupMessageDialog({
     }
   }
 
-  // Sprawdź czy uczniowie mają głównych rodziców z emailami
+  // Sprawdź czy uczniowie mają rodziców z emailami (najpierw główny, jeśli nie ma - jakikolwiek z emailem)
   const studentsWithParents = selectedStudents.filter(student => {
     const parents = student.student_parents || []
-    const primaryParent = parents.find(sp => sp.is_primary && sp.parents)
-    return primaryParent && primaryParent.parents && primaryParent.parents.email && primaryParent.parents.email.trim()
+    
+    // Najpierw szukaj głównego rodzica z emailem
+    const primaryParent = parents.find(sp => sp.is_primary && sp.parents && sp.parents.email && sp.parents.email.trim())
+    
+    // Jeśli jest główny z emailem, użyj go
+    if (primaryParent) return true
+    
+    // Jeśli nie ma głównego z emailem, sprawdź czy jest jakikolwiek rodzic z emailem
+    const anyParentWithEmail = parents.find(sp => sp.parents && sp.parents.email && sp.parents.email.trim())
+    return !!anyParentWithEmail
   })
 
   const hasNoEmails = studentsWithParents.length === 0 && selectedStudents.length > 0

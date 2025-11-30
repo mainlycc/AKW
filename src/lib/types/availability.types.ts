@@ -59,7 +59,7 @@ export interface WorkingHours {
 }
 
 export const DEFAULT_WORKING_HOURS: WorkingHours = {
-  weekday: { start: '13:00', end: '21:00' },
+  weekday: { start: '08:00', end: '21:00' },
   weekend: { start: '08:00', end: '21:00' },
 }
 

@@ -302,12 +302,10 @@ export function StudentsTable({
             </>
           )}
         </div>
-        {!isTutor && (
-          <Button onClick={handleAdd}>
-            <IconPlus className="mr-2 h-4 w-4" />
-            Dodaj ucznia
-          </Button>
-        )}
+        <Button onClick={handleAdd}>
+          <IconPlus className="mr-2 h-4 w-4" />
+          Dodaj ucznia
+        </Button>
       </div>
 
       <div className="rounded-md border">

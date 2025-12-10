@@ -10,8 +10,23 @@ export async function sendReminderAction(
   studentId: string,
   billingPeriodId: string
 ) {
-  await sendPaymentReminder(studentId, billingPeriodId)
-  revalidatePath('/dashboard/billing-from-reports')
+  try {
+    console.log('[sendReminderAction] Called with:', {
+      studentId,
+      billingPeriodId,
+    })
+    await sendPaymentReminder(studentId, billingPeriodId)
+    console.log('[sendReminderAction] Reminder sent successfully')
+    revalidatePath('/dashboard/billing-from-reports')
+  } catch (error) {
+    console.error('[sendReminderAction] Error:', {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      studentId,
+      billingPeriodId,
+    })
+    throw error // Re-throw to let the UI handle it
+  }
 }
 
 export async function markBillingsAsPaidAction(billingIds: string[]) {

@@ -5,6 +5,7 @@ import { generateBookingConfirmationEmail, type BookingConfirmationEmailData } f
 import { generateFinalBookingConfirmationEmail, type FinalBookingConfirmationEmailData } from './templates/final-booking-confirmation-email'
 import { generateGroupMessageEmail, type GroupMessageEmailData } from './templates/group-message-email'
 import { generateTutorGroupMessageEmail, type TutorGroupMessageEmailData } from './templates/tutor-group-message-email'
+import { generatePaymentReminderEmail, type PaymentReminderEmailData } from './templates/payment-reminder-email'
 
 export interface SendInvitationEmailParams {
   to: string
@@ -373,6 +374,96 @@ export async function sendTutorGroupMessageEmail({
     return { success: true, messageId: data?.id }
   } catch (error) {
     console.error('Unexpected error sending tutor group message email:', {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      email: to,
+      environment: process.env.NODE_ENV,
+      vercel: !!process.env.VERCEL,
+    })
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Nieoczekiwany błąd podczas wysyłania emaila' 
+    }
+  }
+}
+
+export interface SendPaymentReminderEmailParams extends PaymentReminderEmailData {
+  to: string
+}
+
+export async function sendPaymentReminderEmail({
+  to,
+  parentName,
+  studentName,
+  month,
+  year,
+  totalDue,
+  totalPaid,
+  balance,
+  hours,
+}: SendPaymentReminderEmailParams): Promise<SendEmailResult> {
+  try {
+    const resendApiKey = process.env.RESEND_API_KEY
+    if (!resendApiKey) {
+      const errorMsg = 'RESEND_API_KEY is not set in environment variables'
+      console.error('Payment reminder email sending failed:', {
+        error: errorMsg,
+        environment: process.env.NODE_ENV,
+        vercel: !!process.env.VERCEL,
+        vercelEnv: process.env.VERCEL_ENV,
+        hasFromEmail: !!FROM_EMAIL,
+      })
+      return { success: false, error: errorMsg }
+    }
+
+    if (!resendApiKey.startsWith('re_')) {
+      const errorMsg = 'RESEND_API_KEY appears to be invalid (should start with "re_")'
+      console.error('Payment reminder email sending failed:', {
+        error: errorMsg,
+        keyPrefix: resendApiKey.substring(0, 5),
+        keyLength: resendApiKey.length,
+      })
+      return { success: false, error: errorMsg }
+    }
+
+    const resend = new Resend(resendApiKey)
+    const html = generatePaymentReminderEmail({
+      parentName,
+      studentName,
+      month,
+      year,
+      totalDue,
+      totalPaid,
+      balance,
+      hours,
+    })
+    
+    const { data, error } = await resend.emails.send({
+      from: FROM_EMAIL,
+      to: [to],
+      subject: `Przypomnienie o płatności - ${studentName} - Akademia Wiedzy`,
+      html,
+    })
+
+    if (error) {
+      console.error('Resend API error (payment reminder):', {
+        message: error.message,
+        name: error.name,
+        email: to,
+        fromEmail: FROM_EMAIL,
+      })
+      return { success: false, error: error.message }
+    }
+
+    console.log('Payment reminder email sent successfully:', {
+      messageId: data?.id,
+      email: to,
+      parentName,
+      studentName,
+    })
+    return { success: true, messageId: data?.id }
+  } catch (error) {
+    console.error('Unexpected error sending payment reminder email:', {
       error: error instanceof Error ? error.message : String(error),
       stack: error instanceof Error ? error.stack : undefined,
       email: to,

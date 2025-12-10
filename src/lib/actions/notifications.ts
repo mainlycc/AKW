@@ -33,6 +33,7 @@ export interface CreateNotificationParams {
   title: string
   message: string
   metadata?: Record<string, unknown>
+  skipRevalidate?: boolean
 }
 
 /**
@@ -58,9 +59,11 @@ export async function createNotification(params: CreateNotificationParams): Prom
     throw error
   }
 
-  // Revalidate notifications page and header
-  revalidatePath('/dashboard/powiadomienia')
-  revalidatePath('/dashboard', 'layout')
+  // Revalidate notifications page and header (skip during render)
+  if (!params.skipRevalidate) {
+    revalidatePath('/dashboard/powiadomienia')
+    revalidatePath('/dashboard', 'layout')
+  }
 
   return data.id
 }

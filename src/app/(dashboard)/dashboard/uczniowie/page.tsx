@@ -31,6 +31,61 @@ interface TutorSubjectLevel {
   subject_levels: { id: string; level_name: string } | null
 }
 
+interface StudentParent {
+  id: string
+  is_primary: boolean
+  parents: {
+    id: string
+    first_name: string
+    last_name: string
+    email: string
+    phone: string | null
+    parent_type: string
+  }
+}
+
+interface StudentNote {
+  id: string
+  content: string
+  created_at: string
+  profiles: {
+    id: string
+    full_name: string
+  }
+}
+
+interface StudentSubject {
+  subject_level_id: string
+  subjects: { name: string } | null
+  subject_levels: { level_name: string } | null
+}
+
+interface StudentAssignment {
+  id: string
+  tutor_id: string
+  status: string
+  profiles?: {
+    id: string
+    full_name: string
+  } | null
+}
+
+interface StudentWithRelations {
+  id: string
+  first_name: string
+  last_name: string
+  parent_email: string
+  parent_phone: string | null
+  notes: string | null
+  hourly_rate: number | null
+  created_at: string
+  updated_at: string
+  student_parents?: StudentParent[]
+  student_notes?: StudentNote[]
+  student_subjects?: StudentSubject[]
+  student_assignments?: StudentAssignment[]
+}
+
 export default async function StudentsPage() {
   const profile = await getUserProfile()
   const supabase = await createClient()
@@ -42,8 +97,7 @@ export default async function StudentsPage() {
   const isAdmin = profile.role === 'admin'
   const isTutor = profile.role === 'tutor'
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let students: any[] = []
+  let students: StudentWithRelations[] = []
 
   if (isAdmin) {
     const { data } = await supabase
@@ -140,6 +194,122 @@ export default async function StudentsPage() {
 
     students = data || []
   }
+
+  // Łączenie duplikatów uczniów (tych samych imię i nazwisko, ale różne student_id)
+  const mergeDuplicateStudents = (studentsList: StudentWithRelations[]): StudentWithRelations[] => {
+    // Tworzymy mapę po znormalizowanym imieniu i nazwisku
+    const normalizedNameMap = new Map<string, StudentWithRelations[]>()
+    
+    for (const student of studentsList) {
+      const normalizedName = `${student.first_name?.trim().toLowerCase() || ''} ${student.last_name?.trim().toLowerCase() || ''}`
+      if (!normalizedNameMap.has(normalizedName)) {
+        normalizedNameMap.set(normalizedName, [])
+      }
+      normalizedNameMap.get(normalizedName)!.push(student)
+    }
+    
+    // Łączymy duplikaty
+    const mergedStudents: StudentWithRelations[] = []
+    
+    for (const [, duplicates] of normalizedNameMap.entries()) {
+      if (duplicates.length === 1) {
+        // Brak duplikatów, dodajemy jak jest
+        mergedStudents.push(duplicates[0])
+      } else {
+        // Znaleziono duplikaty - łączymy je
+        // Sortujemy po dacie utworzenia (najstarszy pierwszy) - użyjemy go jako głównego
+        duplicates.sort((a, b) => {
+          const dateA = new Date(a.created_at || 0).getTime()
+          const dateB = new Date(b.created_at || 0).getTime()
+          return dateA - dateB
+        })
+        
+        const firstStudent = duplicates[0]
+        
+        // Łączymy rodziców (bez duplikatów)
+        const allParentsMap = new Map<string, StudentParent>()
+        for (const student of duplicates) {
+          if (student.student_parents && Array.isArray(student.student_parents)) {
+            for (const sp of student.student_parents) {
+              if (sp.parents && sp.parents.id) {
+                allParentsMap.set(sp.parents.id, sp)
+              }
+            }
+          }
+        }
+        const mergedParents = Array.from(allParentsMap.values())
+        
+        // Łączymy notatki (wszystkie)
+        const allNotes: StudentNote[] = []
+        for (const student of duplicates) {
+          if (student.student_notes && Array.isArray(student.student_notes)) {
+            allNotes.push(...student.student_notes)
+          }
+        }
+        // Sortujemy notatki po dacie (najnowsze pierwsze)
+        allNotes.sort((a, b) => {
+          const dateA = new Date(a.created_at || 0).getTime()
+          const dateB = new Date(b.created_at || 0).getTime()
+          return dateB - dateA
+        })
+        
+        // Łączymy przedmioty (bez duplikatów)
+        const allSubjectsMap = new Map<string, StudentSubject>()
+        for (const student of duplicates) {
+          if (student.student_subjects && Array.isArray(student.student_subjects)) {
+            for (const ss of student.student_subjects) {
+              if (ss.subject_level_id) {
+                allSubjectsMap.set(ss.subject_level_id, ss)
+              }
+            }
+          }
+        }
+        const mergedSubjects = Array.from(allSubjectsMap.values())
+        
+        // Łączymy przypisania (bez duplikatów - po id przypisania)
+        const allAssignmentsMap = new Map<string, StudentAssignment>()
+        for (const student of duplicates) {
+          if (student.student_assignments && Array.isArray(student.student_assignments)) {
+            for (const sa of student.student_assignments) {
+              if (sa.id) {
+                allAssignmentsMap.set(sa.id, sa)
+              }
+            }
+          }
+        }
+        const mergedAssignments = Array.from(allAssignmentsMap.values())
+        
+        // Wybieramy najwyższą stawkę godzinową
+        const maxHourlyRate = Math.max(
+          ...duplicates.map(s => parseFloat(s.hourly_rate?.toString() || '50'))
+        )
+        
+        // Wybieramy najnowszą datę aktualizacji
+        const latestUpdatedAt = duplicates.reduce((latest, student) => {
+          const studentDate = new Date(student.updated_at || 0).getTime()
+          const latestDate = new Date(latest || 0).getTime()
+          return studentDate > latestDate ? student.updated_at : latest
+        }, duplicates[0].updated_at)
+        
+        // Tworzymy połączony rekord
+        mergedStudents.push({
+          ...firstStudent,
+          id: firstStudent.id, // Używamy ID pierwszego (najstarszego) rekordu
+          hourly_rate: maxHourlyRate,
+          updated_at: latestUpdatedAt,
+          student_parents: mergedParents,
+          student_notes: allNotes,
+          student_subjects: mergedSubjects,
+          student_assignments: mergedAssignments,
+        })
+      }
+    }
+    
+    return mergedStudents
+  }
+  
+  // Łączymy duplikaty przed przekazaniem do tabeli
+  students = mergeDuplicateStudents(students)
 
   // Get all parents and subjects for dialog
   let allParents: Parent[] = []

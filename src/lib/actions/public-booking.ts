@@ -429,13 +429,13 @@ export async function bookPublicSlot(payload: PublicBookingPayload) {
     throw tutorSubjectError ?? new Error('Wybrany tutor nie prowadzi tego poziomu. Odśwież stronę i wybierz inny termin.')
   }
 
-  // Find or create student
+  // Find or create student - używamy tej samej logiki co w innych miejscach (sprawdzanie po imieniu i nazwisku)
+  // To zapobiega duplikatom uczniów
   const { data: existingStudent, error: fetchStudentError } = await admin
     .from('students')
     .select('id')
-    .eq('first_name', firstName)
-    .eq('last_name', lastName)
-    .eq('parent_email', email)
+    .eq('first_name', firstName.trim())
+    .eq('last_name', lastName.trim())
     .maybeSingle()
 
   if (fetchStudentError) {
@@ -450,11 +450,12 @@ export async function bookPublicSlot(payload: PublicBookingPayload) {
     const { data: newStudent, error: studentInsertError } = await admin
       .from('students')
       .insert({
-        first_name: firstName,
-        last_name: lastName,
+        first_name: firstName.trim(),
+        last_name: lastName.trim(),
         parent_email: email,
         parent_phone: phone,
         notes,
+        hourly_rate: 50.00, // Domyślna stawka godzinowa
       })
       .select('id')
       .single()

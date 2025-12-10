@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import {
   Table,
   TableBody,
@@ -19,7 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { ReportDetailDialog } from "./report-detail-dialog"
-import { approveReport, markAsPaid } from "./actions"
+import { approveReport, markAsPaid, autoApproveSubmittedReports } from "./actions"
 import { IconDownload, IconCheck, IconCurrencyDollar } from "@tabler/icons-react"
 import { ConfirmDialog } from "@/components/confirm-dialog"
 
@@ -76,6 +77,7 @@ const statusVariants: Record<string, "default" | "secondary" | "outline" | "dest
 const months = ['Styczeń', 'Luty', 'Marzec', 'Kwiecień', 'Maj', 'Czerwiec', 'Lipiec', 'Sierpień', 'Wrzesień', 'Październik', 'Listopad', 'Grudzień']
 
 export function ReportsManagement({ reports, tutors, adminId }: ReportsManagementProps) {
+  const router = useRouter()
   const [tutorFilter, setTutorFilter] = useState('all')
   const [monthFilter, setMonthFilter] = useState('all')
   const [yearFilter, setYearFilter] = useState('all')
@@ -84,6 +86,19 @@ export function ReportsManagement({ reports, tutors, adminId }: ReportsManagemen
   const [dialogOpen, setDialogOpen] = useState(false)
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false)
   const [confirmDialogContent, setConfirmDialogContent] = useState<{ title: string; description: string; onConfirm: () => void }>({ title: '', description: '', onConfirm: () => {} })
+
+  // Automatycznie zatwierdź wszystkie złożone raporty przy załadowaniu
+  useEffect(() => {
+    const autoApprove = async () => {
+      try {
+        await autoApproveSubmittedReports()
+        router.refresh()
+      } catch (error) {
+        console.error('Error auto-approving reports:', error)
+      }
+    }
+    autoApprove()
+  }, [router])
 
   const filteredReports = useMemo(() => {
     return reports.filter(report => {

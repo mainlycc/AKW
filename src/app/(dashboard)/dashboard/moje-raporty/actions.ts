@@ -27,6 +27,44 @@ export async function createOrUpdateReport(
     .eq('year', year)
     .single()
 
+  // Jeśli raport jest składany, automatycznie go zatwierdzamy
+  const shouldAutoApprove = status === 'submitted'
+  const finalStatus = shouldAutoApprove ? 'approved' : status
+
+  // Pobierz dane potrzebne do automatycznego zatwierdzania
+  let adminId: string | null = null
+  let hourlyRate: number = 0
+  let totalAmount: number = 0
+
+  if (shouldAutoApprove) {
+    try {
+      // Pobierz pierwszego admina
+      const admin = createAdminClient()
+      const { data: admins } = await admin
+        .from('profiles')
+        .select('id')
+        .eq('role', 'admin')
+        .limit(1)
+
+      if (admins && admins.length > 0) {
+        adminId = admins[0].id
+      }
+
+      // Pobierz stawkę godzinową tutora
+      const { data: tutorProfile } = await supabase
+        .from('profiles')
+        .select('hourly_rate')
+        .eq('id', tutorId)
+        .single()
+
+      hourlyRate = tutorProfile?.hourly_rate || 0
+      totalAmount = totalHours * hourlyRate
+    } catch (error) {
+      console.error('Failed to get admin or tutor rate:', error)
+      // Kontynuujemy bez automatycznego zatwierdzania jeśli nie udało się pobrać danych
+    }
+  }
+
   let reportId: string
 
   if (existing) {
@@ -35,8 +73,13 @@ export async function createOrUpdateReport(
       .from('monthly_reports')
       .update({
         total_hours: totalHours,
-        status,
+        status: finalStatus,
         submitted_at: status === 'submitted' ? new Date().toISOString() : null,
+        ...(shouldAutoApprove && adminId ? {
+          approved_at: new Date().toISOString(),
+          approved_by: adminId,
+          total_amount: totalAmount,
+        } : {}),
       })
       .eq('id', existing.id)
 
@@ -68,8 +111,13 @@ export async function createOrUpdateReport(
         month,
         year,
         total_hours: totalHours,
-        status,
+        status: finalStatus,
         submitted_at: status === 'submitted' ? new Date().toISOString() : null,
+        ...(shouldAutoApprove && adminId ? {
+          approved_at: new Date().toISOString(),
+          approved_by: adminId,
+          total_amount: totalAmount,
+        } : {}),
       })
       .select()
       .single()
@@ -91,52 +139,39 @@ export async function createOrUpdateReport(
     reportId = report.id
   }
 
-  // Powiadomienie dla adminów gdy raport jest wysłany
-  if (status === 'submitted') {
+  // Powiadomienie dla tutora o zatwierdzeniu raportu (gdy automatycznie zatwierdzony)
+  if (shouldAutoApprove && adminId) {
     try {
-      // Pobierz wszystkich adminów
-      const admin = createAdminClient()
-      const { data: admins } = await admin
-        .from('profiles')
-        .select('id')
-        .eq('role', 'admin')
+      const monthNames = [
+        'Styczeń',
+        'Luty',
+        'Marzec',
+        'Kwiecień',
+        'Maj',
+        'Czerwiec',
+        'Lipiec',
+        'Sierpień',
+        'Wrzesień',
+        'Październik',
+        'Listopad',
+        'Grudzień',
+      ]
+      const monthName = monthNames[month - 1] || month.toString()
 
-      if (admins && admins.length > 0) {
-        const monthNames = [
-          'Styczeń',
-          'Luty',
-          'Marzec',
-          'Kwiecień',
-          'Maj',
-          'Czerwiec',
-          'Lipiec',
-          'Sierpień',
-          'Wrzesień',
-          'Październik',
-          'Listopad',
-          'Grudzień',
-        ]
-        const monthName = monthNames[month - 1] || month.toString()
-
-        // Utwórz powiadomienia dla wszystkich adminów
-        await Promise.all(
-          admins.map((adminProfile) =>
-            createNotification({
-              userId: adminProfile.id,
-              type: 'report_submitted',
-              title: 'Nowy raport do zatwierdzenia',
-              message: `Tutor wysłał raport za ${monthName} ${year} (${totalHours.toFixed(1)} godzin)`,
-              metadata: {
-                report_id: reportId,
-                tutor_id: tutorId,
-                month,
-                year,
-                total_hours: totalHours,
-              },
-            })
-          )
-        )
-      }
+      await createNotification({
+        userId: tutorId,
+        type: 'report_approved',
+        title: 'Raport zatwierdzony',
+        message: `Twój raport za ${monthName} ${year} został automatycznie zatwierdzony. Kwota do wypłaty: ${totalAmount.toFixed(2)} zł`,
+        metadata: {
+          report_id: reportId,
+          month,
+          year,
+          total_hours: totalHours,
+          total_amount: totalAmount,
+        },
+        skipRevalidate: true,
+      })
     } catch (notificationError) {
       // Logujemy błąd, ale nie przerywamy procesu
       console.error('Failed to create notification:', notificationError)

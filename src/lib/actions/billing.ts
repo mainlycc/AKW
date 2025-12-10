@@ -50,6 +50,10 @@ export interface StudentBillingWithParent extends StudentBilling {
     subject_name: string
     level_name: string
   }
+  categories?: Array<{
+    subject_name: string
+    level_name: string
+  }>
   tutors?: Array<{
     id: string
     full_name: string
@@ -1126,22 +1130,23 @@ export async function getStudentBillingsFromReports(
     tutorDisplayMap.set(studentId, tutorsList)
   }
 
-  // Convert category sets to display format
-  const categoryDisplayMap = new Map<string, { subject_name: string; level_name: string }>()
+  // Convert category sets to display format - zwracamy listę wszystkich przedmiotów
+  const categoryDisplayMap = new Map<string, Array<{ subject_name: string; level_name: string }>>()
   for (const [studentId, categories] of categoryMap.entries()) {
     const categoriesArray = Array.from(categories)
-    if (categoriesArray.length === 1) {
-      const [subjectName, levelName] = categoriesArray[0].split(' - ')
-      categoryDisplayMap.set(studentId, {
+    const categoriesList: Array<{ subject_name: string; level_name: string }> = []
+    
+    for (const categoryString of categoriesArray) {
+      const [subjectName, levelName] = categoryString.split(' - ')
+      categoriesList.push({
         subject_name: subjectName,
         level_name: levelName
       })
-    } else {
-      categoryDisplayMap.set(studentId, {
-        subject_name: `Wiele przedmiotów (${categoriesArray.length})`,
-        level_name: ''
-      })
     }
+    
+    // Sortuj alfabetycznie po nazwie przedmiotu
+    categoriesList.sort((a, b) => a.subject_name.localeCompare(b.subject_name, 'pl', { sensitivity: 'base' }))
+    categoryDisplayMap.set(studentId, categoriesList)
   }
 
   // Build billings array
@@ -1207,71 +1212,180 @@ export async function getStudentBillingsFromReports(
         : undefined,
       // Zawsze zwracaj tablicę rodziców (nawet jeśli pusta) - to pozwoli na lepsze wyświetlanie w tabeli
       parents: allParents,
-      category: categoryDisplayMap.get(studentId),
+      categories: categoryDisplayMap.get(studentId) || [],
       tutors: tutorDisplayMap.get(studentId) || [],
       hours_this_month: hours,
       total_hours: hours, // For reports, this is the same as hours_this_month
     })
   }
 
+  // Łączenie duplikatów uczniów (tych samych imię i nazwisko, ale różne student_id)
+  // Tworzymy mapę po znormalizowanym imieniu i nazwisku
+  const normalizedNameMap = new Map<string, StudentBillingWithParent[]>()
+  
+  for (const billing of billingsWithParents) {
+    const normalizedName = `${billing.students.first_name.trim().toLowerCase()} ${billing.students.last_name.trim().toLowerCase()}`
+    if (!normalizedNameMap.has(normalizedName)) {
+      normalizedNameMap.set(normalizedName, [])
+    }
+    normalizedNameMap.get(normalizedName)!.push(billing)
+  }
+  
+  // Łączymy duplikaty
+  const mergedBillings: StudentBillingWithParent[] = []
+  
+  for (const [normalizedName, duplicates] of normalizedNameMap.entries()) {
+    if (duplicates.length === 1) {
+      // Brak duplikatów, dodajemy jak jest
+      mergedBillings.push(duplicates[0])
+    } else {
+      // Znaleziono duplikaty - łączymy je
+      const firstBilling = duplicates[0]
+      
+      // Sumujemy godziny
+      const totalHours = duplicates.reduce((sum, b) => sum + b.hours_this_month, 0)
+      
+      // Sumujemy płatności
+      const totalPaid = duplicates.reduce((sum, b) => sum + b.total_paid, 0)
+      
+      // Sumujemy należności
+      const totalDue = duplicates.reduce((sum, b) => sum + b.total_due, 0)
+      
+      // Obliczamy saldo
+      const balance = totalDue - totalPaid
+      
+      // Określamy status
+      let status: BillingStatus = 'unpaid'
+      if (totalDue === 0) {
+        status = 'unpaid'
+      } else if (balance <= 0) {
+        status = 'paid'
+      } else if (totalPaid > 0) {
+        status = 'partially_paid'
+      }
+      
+      // Łączymy tutorów (bez duplikatów)
+      const allTutors = new Map<string, { id: string; full_name: string }>()
+      for (const billing of duplicates) {
+        if (billing.tutors) {
+          for (const tutor of billing.tutors) {
+            allTutors.set(tutor.id, tutor)
+          }
+        }
+      }
+      const mergedTutors = Array.from(allTutors.values()).sort((a, b) => 
+        a.full_name.localeCompare(b.full_name, 'pl', { sensitivity: 'base' })
+      )
+      
+      // Łączymy kategorie/przedmioty (bez duplikatów)
+      const allCategories = new Map<string, { subject_name: string; level_name: string }>()
+      for (const billing of duplicates) {
+        if (billing.categories) {
+          for (const category of billing.categories) {
+            const categoryKey = `${category.subject_name} - ${category.level_name}`
+            allCategories.set(categoryKey, category)
+          }
+        }
+      }
+      const mergedCategories = Array.from(allCategories.values()).sort((a, b) => 
+        a.subject_name.localeCompare(b.subject_name, 'pl', { sensitivity: 'base' })
+      )
+      
+      // Łączymy rodziców (bez duplikatów)
+      const allParents = new Map<string, ParentData>()
+      for (const billing of duplicates) {
+        if (billing.parents) {
+          for (const parent of billing.parents) {
+            allParents.set(parent.id, parent)
+          }
+        }
+        // Również sprawdzamy parent (dla kompatybilności wstecznej)
+        if (billing.parent) {
+          allParents.set(billing.parent.id, billing.parent)
+        }
+      }
+      const mergedParents = Array.from(allParents.values())
+      
+      // Wybieramy głównego rodzica (pierwszy z email lub pierwszy dostępny)
+      const primaryParent = mergedParents.find(p => p.email && p.email.trim()) || mergedParents[0]
+      
+      // Tworzymy połączony billing
+      mergedBillings.push({
+        ...firstBilling,
+        id: `${firstBilling.student_id}-${periodId}-merged`, // Oznaczamy jako połączony
+        total_due: totalDue,
+        total_paid: totalPaid,
+        balance: balance,
+        status: status,
+        tutors: mergedTutors,
+        categories: mergedCategories,
+        parents: mergedParents,
+        parent: primaryParent,
+        hours_this_month: totalHours,
+        total_hours: totalHours,
+      })
+    }
+  }
+  
   // Sort by student last name
-  billingsWithParents.sort((a, b) => 
+  mergedBillings.sort((a, b) => 
     a.students.last_name.localeCompare(b.students.last_name, 'pl', { sensitivity: 'base' })
   )
 
   // Debug logging - check final result
   console.log('[getStudentBillingsFromReports] Final billings result:', {
-    totalBillings: billingsWithParents.length,
-    billingsWithParentCount: billingsWithParents.filter(b => b.parent).length,
-    billingsWithAllParentsCount: billingsWithParents.filter(b => b.parents && b.parents.length > 0).length,
-    billingsWithoutParentCount: billingsWithParents.filter(b => !b.parent && (!b.parents || b.parents.length === 0)).length,
+    totalBillings: mergedBillings.length,
+    originalBillingsCount: billingsWithParents.length,
+    billingsWithParentCount: mergedBillings.filter(b => b.parent).length,
+    billingsWithAllParentsCount: mergedBillings.filter(b => b.parents && b.parents.length > 0).length,
+    billingsWithoutParentCount: mergedBillings.filter(b => !b.parent && (!b.parents || b.parents.length === 0)).length,
     // Check specific student "Blanka Kryk" if present
-    blankaKryk: billingsWithParents.find(b => 
+    blankaKryk: mergedBillings.find(b => 
       b.students.first_name.toLowerCase().includes('blanka') && 
       b.students.last_name.toLowerCase().includes('kryk')
     ) ? {
-      student: `${billingsWithParents.find(b => 
+      student: `${mergedBillings.find(b => 
         b.students.first_name.toLowerCase().includes('blanka') && 
         b.students.last_name.toLowerCase().includes('kryk')
-      )!.students.first_name} ${billingsWithParents.find(b => 
+      )!.students.first_name} ${mergedBillings.find(b => 
         b.students.first_name.toLowerCase().includes('blanka') && 
         b.students.last_name.toLowerCase().includes('kryk')
       )!.students.last_name}`,
-      studentId: billingsWithParents.find(b => 
+      studentId: mergedBillings.find(b => 
         b.students.first_name.toLowerCase().includes('blanka') && 
         b.students.last_name.toLowerCase().includes('kryk')
       )!.student_id,
-      hasParent: !!billingsWithParents.find(b => 
+      hasParent: !!mergedBillings.find(b => 
         b.students.first_name.toLowerCase().includes('blanka') && 
         b.students.last_name.toLowerCase().includes('kryk')
       )!.parent,
-      parent: billingsWithParents.find(b => 
+      parent: mergedBillings.find(b => 
         b.students.first_name.toLowerCase().includes('blanka') && 
         b.students.last_name.toLowerCase().includes('kryk')
-      )!.parent ? `${billingsWithParents.find(b => 
+      )!.parent ? `${mergedBillings.find(b => 
         b.students.first_name.toLowerCase().includes('blanka') && 
         b.students.last_name.toLowerCase().includes('kryk')
-      )!.parent!.first_name} ${billingsWithParents.find(b => 
+      )!.parent!.first_name} ${mergedBillings.find(b => 
         b.students.first_name.toLowerCase().includes('blanka') && 
         b.students.last_name.toLowerCase().includes('kryk')
       )!.parent!.last_name}` : null,
-      hasAllParents: !!(billingsWithParents.find(b => 
+      hasAllParents: !!(mergedBillings.find(b => 
         b.students.first_name.toLowerCase().includes('blanka') && 
         b.students.last_name.toLowerCase().includes('kryk')
-      )!.parents && billingsWithParents.find(b => 
+      )!.parents && mergedBillings.find(b => 
         b.students.first_name.toLowerCase().includes('blanka') && 
         b.students.last_name.toLowerCase().includes('kryk')
       )!.parents!.length > 0),
-      allParentsCount: billingsWithParents.find(b => 
+      allParentsCount: mergedBillings.find(b => 
         b.students.first_name.toLowerCase().includes('blanka') && 
         b.students.last_name.toLowerCase().includes('kryk')
       )!.parents?.length || 0,
-      allParents: billingsWithParents.find(b => 
+      allParents: mergedBillings.find(b => 
         b.students.first_name.toLowerCase().includes('blanka') && 
         b.students.last_name.toLowerCase().includes('kryk')
       )!.parents?.map(p => `${p.first_name} ${p.last_name}`) || [],
     } : null,
-    sampleBillings: billingsWithParents.slice(0, 5).map(b => ({
+    sampleBillings: mergedBillings.slice(0, 5).map(b => ({
       student: `${b.students.first_name} ${b.students.last_name}`,
       studentId: b.student_id,
       hasParent: !!b.parent,
@@ -1282,7 +1396,7 @@ export async function getStudentBillingsFromReports(
     })),
   })
 
-  return billingsWithParents
+  return mergedBillings
 }
 
 /**
@@ -1294,18 +1408,220 @@ export async function sendPaymentReminder(
 ): Promise<void> {
   const supabase = await createClient()
 
-  // Create reminder record
-  const { error } = await supabase.from('payment_reminders').insert({
-    student_id: studentId,
-    billing_period_id: billingPeriodId,
-    reminder_date: new Date().toISOString().split('T')[0],
+  // Validate inputs
+  if (!studentId || !billingPeriodId) {
+    throw new Error('Student ID and Billing Period ID are required')
+  }
+
+  console.log('[sendPaymentReminder] Attempting to send reminder:', {
+    studentId,
+    billingPeriodId,
+    reminderDate: new Date().toISOString().split('T')[0],
   })
 
+  // Check if billing period exists
+  const { data: period, error: periodError } = await supabase
+    .from('billing_periods')
+    .select('id')
+    .eq('id', billingPeriodId)
+    .single()
+
+  if (periodError || !period) {
+    console.error('[sendPaymentReminder] Billing period not found:', {
+      billingPeriodId,
+      error: periodError,
+    })
+    throw new Error(`Billing period not found: ${periodError?.message || 'Unknown error'}`)
+  }
+
+  // Check if student exists
+  const { data: student, error: studentError } = await supabase
+    .from('students')
+    .select('id, first_name, last_name, hourly_rate')
+    .eq('id', studentId)
+    .single()
+
+  if (studentError || !student) {
+    console.error('[sendPaymentReminder] Student not found:', {
+      studentId,
+      error: studentError,
+    })
+    throw new Error(`Student not found: ${studentError?.message || 'Unknown error'}`)
+  }
+
+  // Create reminder record
+  const { data: reminder, error } = await supabase
+    .from('payment_reminders')
+    .insert({
+      student_id: studentId,
+      billing_period_id: billingPeriodId,
+      reminder_date: new Date().toISOString().split('T')[0],
+    })
+    .select()
+    .single()
+
   if (error) {
+    console.error('[sendPaymentReminder] Failed to create reminder record:', {
+      error: error.message,
+      errorCode: error.code,
+      errorDetails: error.details,
+      errorHint: error.hint,
+      studentId,
+      billingPeriodId,
+    })
     throw new Error(`Failed to send reminder: ${error.message}`)
   }
 
-  // TODO: Implement email sending logic here
-  // For now, we just create the reminder record
+  console.log('[sendPaymentReminder] Reminder created successfully:', {
+    reminderId: reminder?.id,
+    studentId,
+    studentName: `${student.first_name} ${student.last_name}`,
+  })
+
+  // Get period data
+  const { data: periodData } = await supabase
+    .from('billing_periods')
+    .select('month, year')
+    .eq('id', billingPeriodId)
+    .single()
+
+  if (!periodData) {
+    throw new Error('Billing period data not found')
+  }
+
+  const month = periodData.month
+  const year = periodData.year
+
+  // Get billing data (if exists)
+  const { data: billingData } = await supabase
+    .from('student_billings')
+    .select('total_due, total_paid, balance')
+    .eq('student_id', studentId)
+    .eq('billing_period_id', billingPeriodId)
+    .single()
+
+  let totalDue = 0
+  let totalPaid = 0
+  let balance = 0
+  let hours = 0
+
+  if (billingData) {
+    totalDue = parseFloat(billingData.total_due?.toString() || '0')
+    totalPaid = parseFloat(billingData.total_paid?.toString() || '0')
+    balance = parseFloat(billingData.balance?.toString() || '0')
+    // Calculate hours from total_due and hourly_rate
+    const hourlyRate = parseFloat(student.hourly_rate?.toString() || '50')
+    hours = hourlyRate > 0 ? totalDue / hourlyRate : 0
+  } else {
+    // If billing doesn't exist, get data from reports (for billing-from-reports)
+    const { data: reportsData } = await supabase
+      .from('monthly_reports')
+      .select(`
+        monthly_report_entries!inner (
+          hours,
+          student_id
+        )
+      `)
+      .eq('month', month)
+      .eq('year', year)
+      .in('status', ['approved', 'paid'])
+
+    if (reportsData) {
+      for (const report of reportsData) {
+        const entries = Array.isArray(report.monthly_report_entries) 
+          ? report.monthly_report_entries 
+          : [report.monthly_report_entries]
+        for (const entry of entries) {
+          if (entry && entry.student_id === studentId) {
+            hours += parseFloat(entry.hours?.toString() || '0')
+          }
+        }
+      }
+      const hourlyRate = parseFloat(student.hourly_rate?.toString() || '50')
+      totalDue = hours * hourlyRate
+    }
+
+    // Get payments
+    const { data: paymentsData } = await supabase
+      .from('payments')
+      .select('amount')
+      .eq('student_id', studentId)
+      .eq('billing_period_id', billingPeriodId)
+
+    if (paymentsData) {
+      for (const payment of paymentsData) {
+        totalPaid += parseFloat(payment.amount?.toString() || '0')
+      }
+    }
+    balance = totalDue - totalPaid
+  }
+
+  // Get parent email
+  const { data: parentData } = await supabase
+    .from('student_parents')
+    .select(`
+      is_primary,
+      parents (
+        id,
+        first_name,
+        last_name,
+        email
+      )
+    `)
+    .eq('student_id', studentId)
+    .order('is_primary', { ascending: false })
+    .limit(1)
+    .single()
+
+  if (parentData && parentData.parents) {
+    const parent = Array.isArray(parentData.parents) ? parentData.parents[0] : parentData.parents
+    if (parent && parent.email) {
+      // Send email
+      const { sendPaymentReminderEmail } = await import('@/lib/email/send')
+      const emailResult = await sendPaymentReminderEmail({
+        to: parent.email,
+        parentName: `${parent.first_name} ${parent.last_name}`,
+        studentName: `${student.first_name} ${student.last_name}`,
+        month,
+        year,
+        totalDue,
+        totalPaid,
+        balance,
+        hours,
+      })
+
+      if (emailResult.success) {
+        // Update reminder record with sent_at timestamp
+        await supabase
+          .from('payment_reminders')
+          .update({ sent_at: new Date().toISOString() })
+          .eq('id', reminder?.id)
+
+        console.log('[sendPaymentReminder] Email sent successfully:', {
+          reminderId: reminder?.id,
+          email: parent.email,
+          messageId: emailResult.messageId,
+        })
+      } else {
+        console.error('[sendPaymentReminder] Failed to send email:', {
+          reminderId: reminder?.id,
+          email: parent.email,
+          error: emailResult.error,
+        })
+        // Don't throw - reminder record was created, email failure is logged
+      }
+    } else {
+      console.warn('[sendPaymentReminder] No parent email found:', {
+        studentId,
+        hasParent: !!parent,
+        hasEmail: !!(parent && parent.email),
+      })
+    }
+  } else {
+    console.warn('[sendPaymentReminder] No parent found for student:', {
+      studentId,
+      hasParentData: !!parentData,
+    })
+  }
 }
 

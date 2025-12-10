@@ -18,7 +18,6 @@ import {
   IconCalendarCheck,
   IconCalendarPlus,
   IconBell,
-  IconCreditCard,
   IconHistory,
   type Icon,
 } from "@tabler/icons-react"
@@ -139,11 +138,6 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
           title: "Raporty tutorów",
           url: "/dashboard/raporty-tutorow",
           icon: IconClockDollar,
-        },
-        {
-          title: "Rozliczenia miesięczne",
-          url: "/dashboard/billing",
-          icon: IconCreditCard,
         },
         {
           title: "Rozliczenia z raportów",

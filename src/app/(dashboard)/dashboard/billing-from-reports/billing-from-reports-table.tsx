@@ -129,7 +129,9 @@ export function BillingFromReportsTable({
         .map(p => p.email?.toLowerCase() || '')
         .join(' ')
       
-      const subjectName = billing.category?.subject_name?.toLowerCase() || ''
+      const subjectNames = billing.categories && billing.categories.length > 0
+        ? billing.categories.map(c => c.subject_name.toLowerCase()).join(' ')
+        : ''
       const tutorNames = billing.tutors && billing.tutors.length > 0
         ? billing.tutors.map(t => t.full_name.toLowerCase()).join(' ')
         : ''
@@ -138,7 +140,7 @@ export function BillingFromReportsTable({
         studentName.includes(searchLower) ||
         parentNames.includes(searchLower) ||
         parentEmails.includes(searchLower) ||
-        subjectName.includes(searchLower) ||
+        subjectNames.includes(searchLower) ||
         tutorNames.includes(searchLower)
       )
     })
@@ -148,8 +150,8 @@ export function BillingFromReportsTable({
   const sortedBillings = useMemo(() => {
     const sorted = [...filteredBillings].sort((a, b) => {
       if (sortBy === 'subject') {
-        const aSubject = a.category?.subject_name || ''
-        const bSubject = b.category?.subject_name || ''
+        const aSubject = a.categories && a.categories.length > 0 ? a.categories[0].subject_name : ''
+        const bSubject = b.categories && b.categories.length > 0 ? b.categories[0].subject_name : ''
         if (!aSubject && !bSubject) return 0
         if (!aSubject) return 1
         if (!bSubject) return -1
@@ -253,10 +255,16 @@ export function BillingFromReportsTable({
     billingPeriodId: string
   ) => {
     try {
+      console.log('[handleSendReminder] Sending reminder:', {
+        studentId,
+        billingPeriodId,
+      })
       await sendReminderAction(studentId, billingPeriodId)
       toast.success('Przypomnienie wysłane')
-    } catch {
-      toast.error('Nie udało się wysłać przypomnienia')
+    } catch (error) {
+      console.error('[handleSendReminder] Error sending reminder:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Nieznany błąd'
+      toast.error(`Nie udało się wysłać przypomnienia: ${errorMessage}`)
     }
   }
 
@@ -538,12 +546,18 @@ export function BillingFromReportsTable({
                     {billing.students.first_name} {billing.students.last_name}
                   </TableCell>
                   <TableCell>
-                    {billing.category ? (
-                      <div>
-                        <div className="font-medium">{billing.category.subject_name}</div>
-                        <div className="text-sm text-muted-foreground">
-                          {billing.category.level_name}
-                        </div>
+                    {billing.categories && billing.categories.length > 0 ? (
+                      <div className="flex flex-col gap-1">
+                        {billing.categories.map((category, idx) => (
+                          <div key={idx}>
+                            <div className="font-medium text-sm">{category.subject_name}</div>
+                            {category.level_name && (
+                              <div className="text-xs text-muted-foreground">
+                                {category.level_name}
+                              </div>
+                            )}
+                          </div>
+                        ))}
                       </div>
                     ) : (
                       <span className="text-muted-foreground">-</span>
@@ -590,16 +604,16 @@ export function BillingFromReportsTable({
                     )}
                   </TableCell>
                   <TableCell className="text-right">
-                    {billing.hours_this_month.toFixed(2)} h
+                    {parseFloat(billing.hours_this_month.toFixed(2))}h
                   </TableCell>
                   <TableCell className="text-right">
-                    {billing.total_due.toFixed(2)} zł
+                    {parseFloat(billing.total_due.toFixed(2))}zł
                   </TableCell>
                   <TableCell className="text-right">
-                    {billing.total_paid.toFixed(2)} zł
+                    {parseFloat(billing.total_paid.toFixed(2))}zł
                   </TableCell>
                   <TableCell className="text-right font-medium">
-                    {billing.balance.toFixed(2)} zł
+                    {parseFloat(billing.balance.toFixed(2))}zł
                   </TableCell>
                   <TableCell>
                     <Badge

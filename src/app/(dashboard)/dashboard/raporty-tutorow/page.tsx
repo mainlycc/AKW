@@ -1,6 +1,7 @@
 import { getUserProfile } from "@/lib/actions/auth"
 import { createClient } from "@/lib/supabase/server"
 import { ReportsManagement } from "./reports-management"
+import { autoApproveSubmittedReports } from "./actions"
 
 interface MonthlyReport {
   id: string

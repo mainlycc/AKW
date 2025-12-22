@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from "react"
+import { useRouter } from "next/navigation"
 import {
   Table,
   TableBody,
@@ -13,11 +14,11 @@ import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { TutorDetailDialog } from "./tutor-detail-dialog"
 import { GroupMessageDialog } from "./group-message-dialog"
 import { deleteTutor } from "./actions"
-import { IconTrash, IconMail } from "@tabler/icons-react"
+import { IconTrash, IconMail, IconSearch } from "@tabler/icons-react"
 import { ConfirmDialog } from "@/components/confirm-dialog"
+import { formatHours } from "@/lib/utils"
 
 interface TutorWithStats {
   id: string
@@ -36,7 +37,7 @@ interface TutorSubjectLevel {
   id: string
   subject_id: string
   subject_level_id: string
-  subjects: { id: string; name: string } | null
+  subjects: { id: string; name: string; color?: string | null } | null
   subject_levels: { id: string; level_name: string; price_per_hour: number } | null
 }
 
@@ -46,28 +47,37 @@ interface TutorsTableProps {
 }
 
 export function TutorsTable({ tutors, tutorSubjects }: TutorsTableProps) {
+  const router = useRouter()
   const [search, setSearch] = useState("")
-  const [dialogOpen, setDialogOpen] = useState(false)
-  const [selectedTutor, setSelectedTutor] = useState<TutorWithStats | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false)
   const [confirmDialogContent, setConfirmDialogContent] = useState<{ title: string; description: string; onConfirm: () => void }>({ title: '', description: '', onConfirm: () => {} })
   const [groupMessageDialogOpen, setGroupMessageDialogOpen] = useState(false)
 
-  const filteredTutors = tutors.filter(
-    (tutor) =>
-      tutor.full_name.toLowerCase().includes(search.toLowerCase()) ||
-      tutor.email.toLowerCase().includes(search.toLowerCase())
-  )
+  const filteredTutors = tutors.filter((tutor) => {
+    if (!search.trim()) return true
+    
+    const searchLower = search.toLowerCase().trim()
+    const fullNameLower = tutor.full_name.toLowerCase()
+    const emailLower = tutor.email.toLowerCase()
+    
+    // Wyszukiwanie po pełnym imieniu i nazwisku
+    if (fullNameLower.includes(searchLower) || emailLower.includes(searchLower)) {
+      return true
+    }
+    
+    // Wyszukiwanie po osobnych słowach (imię lub nazwisko)
+    const nameWords = fullNameLower.split(/\s+/)
+    const searchWords = searchLower.split(/\s+/)
+    
+    // Sprawdź czy wszystkie słowa z wyszukiwania znajdują się w imieniu/nazwisku
+    return searchWords.every(word => 
+      nameWords.some(nameWord => nameWord.includes(word))
+    )
+  })
 
   const handleRowClick = (tutor: TutorWithStats) => {
-    setSelectedTutor(tutor)
-    setDialogOpen(true)
-  }
-
-  const handleDialogClose = () => {
-    setDialogOpen(false)
-    setSelectedTutor(null)
+    router.push(`/dashboard/tutorzy/${tutor.id}`)
   }
 
   const handleDeleteSelected = async () => {
@@ -140,7 +150,7 @@ export function TutorsTable({ tutors, tutorSubjects }: TutorsTableProps) {
             <CardTitle className="text-sm font-medium">Suma godzin</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{totalStats.totalHours.toFixed(2)}h</div>
+            <div className="text-2xl font-bold">{formatHours(totalStats.totalHours)}h</div>
             <p className="text-xs text-muted-foreground">Wszystkie przeprowadzone sesje</p>
           </CardContent>
         </Card>
@@ -149,12 +159,15 @@ export function TutorsTable({ tutors, tutorSubjects }: TutorsTableProps) {
       {/* Wyszukiwarka i przyciski */}
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-2">
-          <Input
-            placeholder="Szukaj tutora..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="max-w-sm"
-          />
+          <div className="relative max-w-sm">
+            <IconSearch className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Szukaj tutora..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-8"
+            />
+          </div>
           <Button 
             variant="outline" 
             size="sm"
@@ -222,20 +235,13 @@ export function TutorsTable({ tutors, tutorSubjects }: TutorsTableProps) {
                   </TableCell>
                   <TableCell className="text-right">{tutor.activeAssignments}</TableCell>
                   <TableCell className="text-right">{tutor.totalSessions}</TableCell>
-                  <TableCell className="text-right">{tutor.totalHours.toFixed(2)}h</TableCell>
+                  <TableCell className="text-right">{formatHours(tutor.totalHours)}h</TableCell>
                 </TableRow>
               ))
             )}
           </TableBody>
         </Table>
       </div>
-
-      <TutorDetailDialog
-        open={dialogOpen}
-        onClose={handleDialogClose}
-        tutor={selectedTutor}
-        tutorSubjects={selectedTutor ? tutorSubjects[selectedTutor.id] || [] : []}
-      />
 
       <ConfirmDialog
         open={confirmDialogOpen}

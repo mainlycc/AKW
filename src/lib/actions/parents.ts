@@ -78,7 +78,6 @@ export async function createParent(data: {
 
     if (existingParent) {
       // Parent already exists, return existing parent
-      revalidatePath('/dashboard/rodzice')
       // Return only serializable fields (no dates to avoid serialization issues)
       // Use JSON.parse/stringify to ensure full serialization
       return JSON.parse(JSON.stringify({
@@ -122,7 +121,6 @@ export async function createParent(data: {
         }
         
         if (existing) {
-          revalidatePath('/dashboard/rodzice')
           // Return only serializable fields (no dates to avoid serialization issues)
           // Use JSON.parse/stringify to ensure full serialization
           return JSON.parse(JSON.stringify({
@@ -148,7 +146,6 @@ export async function createParent(data: {
       throw new Error('Nie udało się utworzyć rodzica: Brak danych zwróconych z bazy')
     }
 
-    revalidatePath('/dashboard/rodzice')
     // Return only serializable fields (no dates to avoid serialization issues)
     // Use JSON.parse/stringify to ensure full serialization
     return JSON.parse(JSON.stringify({
@@ -204,8 +201,6 @@ export async function updateParent(
     .eq('id', parentId)
 
   if (error) throw error
-
-  revalidatePath('/dashboard/rodzice')
 }
 
 export async function deleteParent(parentId: string) {
@@ -217,8 +212,6 @@ export async function deleteParent(parentId: string) {
     .eq('id', parentId)
 
   if (error) throw error
-
-  revalidatePath('/dashboard/rodzice')
 }
 
 export async function linkParentToStudent(
@@ -331,7 +324,6 @@ export async function unlinkParentFromStudent(parentId: string, studentId: strin
   if (error) throw error
 
   revalidatePath('/dashboard/uczniowie')
-  revalidatePath('/dashboard/rodzice')
 }
 
 export async function getStudentParents(studentId: string) {

@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Subject } from "@/lib/types/database.types"
 import { createSubject, updateSubject } from "./actions"
+import { SUBJECT_COLOR_PALETTE, generateSubjectColor } from "@/lib/utils"
 
 interface SubjectDialogProps {
   open: boolean
@@ -26,6 +27,7 @@ export function SubjectDialog({ open, onClose, subject }: SubjectDialogProps) {
   const [formData, setFormData] = useState({
     name: '',
     description: '',
+    color: '',
   })
 
   useEffect(() => {
@@ -33,11 +35,13 @@ export function SubjectDialog({ open, onClose, subject }: SubjectDialogProps) {
       setFormData({
         name: subject.name,
         description: subject.description || '',
+        color: subject.color || generateSubjectColor(subject.name),
       })
     } else {
       setFormData({
         name: '',
         description: '',
+        color: '',
       })
     }
   }, [subject, open])
@@ -47,10 +51,19 @@ export function SubjectDialog({ open, onClose, subject }: SubjectDialogProps) {
     setLoading(true)
 
     try {
+      const colorToSave = formData.color || generateSubjectColor(formData.name)
       if (subject) {
-        await updateSubject(subject.id, formData)
+        await updateSubject(subject.id, {
+          name: formData.name,
+          description: formData.description,
+          color: colorToSave,
+        })
       } else {
-        await createSubject(formData)
+        await createSubject({
+          name: formData.name,
+          description: formData.description,
+          color: colorToSave,
+        })
       }
       onClose()
     } catch (error) {
@@ -59,6 +72,16 @@ export function SubjectDialog({ open, onClose, subject }: SubjectDialogProps) {
       setLoading(false)
     }
   }
+
+  // Aktualizuj kolor automatycznie gdy zmienia się nazwa (tylko dla nowych przedmiotów)
+  useEffect(() => {
+    if (!subject && formData.name && !formData.color) {
+      setFormData(prev => ({
+        ...prev,
+        color: generateSubjectColor(formData.name),
+      }))
+    }
+  }, [formData.name, subject])
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
@@ -93,6 +116,31 @@ export function SubjectDialog({ open, onClose, subject }: SubjectDialogProps) {
               disabled={loading}
               rows={3}
             />
+          </div>
+          <div className="space-y-2">
+            <Label>Kolor przedmiotu</Label>
+            <div className="flex flex-wrap gap-2">
+              {SUBJECT_COLOR_PALETTE.map((color) => (
+                <button
+                  key={color}
+                  type="button"
+                  onClick={() => setFormData({ ...formData, color })}
+                  className={`w-10 h-10 rounded-md border-2 transition-all ${
+                    formData.color === color
+                      ? 'border-foreground scale-110 ring-2 ring-ring'
+                      : 'border-border hover:scale-105'
+                  }`}
+                  style={{ backgroundColor: color }}
+                  disabled={loading}
+                  aria-label={`Wybierz kolor ${color}`}
+                />
+              ))}
+            </div>
+            {formData.name && (
+              <p className="text-xs text-muted-foreground">
+                Kolor zostanie automatycznie przypisany na podstawie nazwy, jeśli nie wybierzesz innego.
+              </p>
+            )}
           </div>
           <div className="flex justify-end gap-2">
             <Button type="button" variant="outline" onClick={onClose} disabled={loading}>

@@ -19,6 +19,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { createOrUpdateReport } from "./actions"
+import { formatHours } from "@/lib/utils"
 
 interface Student {
   id: string
@@ -198,7 +199,7 @@ export function ReportDialog({ open, onClose, tutorId, students, initialReport }
           {/* Podsumowanie */}
           <div className="flex items-center justify-between p-3 bg-muted rounded">
             <span className="font-semibold">Suma godzin:</span>
-            <span className="text-xl font-bold">{getTotalHours().toFixed(2)} h</span>
+            <span className="text-xl font-bold">{formatHours(getTotalHours())} h</span>
           </div>
 
           {/* Przyciski */}

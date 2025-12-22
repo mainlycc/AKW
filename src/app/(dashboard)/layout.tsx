@@ -1,7 +1,8 @@
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
 import { AppSidebar } from "@/components/app-sidebar"
 import { SiteHeader } from "@/components/site-header"
-import { getUserProfile } from "@/lib/actions/auth"
+import { Card } from "@/components/ui/card"
+import { getUserProfile, getUser } from "@/lib/actions/auth"
 import { redirect } from "next/navigation"
 
 export default async function DashboardLayout({
@@ -9,28 +10,42 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode
 }) {
-  const profile = await getUserProfile()
-
-  if (!profile) {
+  // Najpierw sprawdź czy użytkownik jest zalogowany (szybkie sprawdzenie)
+  const user = await getUser()
+  if (!user) {
     redirect('/login')
   }
 
-  const user = {
-    name: profile.full_name,
-    email: profile.email,
-    role: profile.role,
+  // Potem pobierz profil (może być null, ale użytkownik jest zalogowany)
+  let profile
+  try {
+    profile = await getUserProfile()
+  } catch (error) {
+    console.error('[DashboardLayout] Error fetching user profile:', error)
+    // Jeśli błąd, ale użytkownik jest zalogowany, użyj podstawowych danych
+    profile = null
+  }
+
+  // Jeśli profil nie istnieje, użyj podstawowych danych z user
+  const userData = {
+    name: profile?.full_name || user.email?.split('@')[0] || 'Użytkownik',
+    email: profile?.email || user.email || '',
+    role: profile?.role || 'tutor',
   }
 
   return (
     <SidebarProvider>
-      <AppSidebar user={user} />
+      <AppSidebar user={userData} />
       <SidebarInset>
-        <SiteHeader />
-        <div className="flex flex-1 flex-col gap-4 p-4 pt-4">
-          {children}
-        </div>
+        <Card className="m-4 flex flex-1 flex-col overflow-hidden py-0">
+          <SiteHeader />
+          <div className="flex flex-1 flex-col gap-4 p-4 pt-4">
+            {children}
+          </div>
+        </Card>
       </SidebarInset>
     </SidebarProvider>
   )
 }
+
 

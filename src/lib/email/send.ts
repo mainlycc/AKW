@@ -6,6 +6,7 @@ import { generateFinalBookingConfirmationEmail, type FinalBookingConfirmationEma
 import { generateGroupMessageEmail, type GroupMessageEmailData } from './templates/group-message-email'
 import { generateTutorGroupMessageEmail, type TutorGroupMessageEmailData } from './templates/tutor-group-message-email'
 import { generatePaymentReminderEmail, type PaymentReminderEmailData } from './templates/payment-reminder-email'
+import { generatePaymentLinkEmail, type PaymentLinkEmailData } from './templates/payment-link-email'
 
 export interface SendInvitationEmailParams {
   to: string
@@ -464,6 +465,98 @@ export async function sendPaymentReminderEmail({
     return { success: true, messageId: data?.id }
   } catch (error) {
     console.error('Unexpected error sending payment reminder email:', {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      email: to,
+      environment: process.env.NODE_ENV,
+      vercel: !!process.env.VERCEL,
+    })
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Nieoczekiwany błąd podczas wysyłania emaila' 
+    }
+  }
+}
+
+export interface SendPaymentLinkEmailParams extends PaymentLinkEmailData {
+  to: string
+}
+
+export async function sendPaymentLinkEmail({
+  to,
+  parentName,
+  studentName,
+  amount,
+  month,
+  year,
+  paymentUrl,
+}: SendPaymentLinkEmailParams): Promise<SendEmailResult> {
+  try {
+    const resendApiKey = process.env.RESEND_API_KEY
+    if (!resendApiKey) {
+      const errorMsg = 'RESEND_API_KEY is not set in environment variables'
+      console.error('Payment link email sending failed:', {
+        error: errorMsg,
+        environment: process.env.NODE_ENV,
+        vercel: !!process.env.VERCEL,
+        vercelEnv: process.env.VERCEL_ENV,
+        hasFromEmail: !!FROM_EMAIL,
+      })
+      return { success: false, error: errorMsg }
+    }
+
+    if (!resendApiKey.startsWith('re_')) {
+      const errorMsg = 'RESEND_API_KEY appears to be invalid (should start with "re_")'
+      console.error('Payment link email sending failed:', {
+        error: errorMsg,
+        keyPrefix: resendApiKey.substring(0, 5),
+        keyLength: resendApiKey.length,
+      })
+      return { success: false, error: errorMsg }
+    }
+
+    const resend = new Resend(resendApiKey)
+    const html = generatePaymentLinkEmail({
+      parentName,
+      studentName,
+      amount,
+      month,
+      year,
+      paymentUrl,
+    })
+    
+    const monthNames = [
+      'Styczeń', 'Luty', 'Marzec', 'Kwiecień', 'Maj', 'Czerwiec',
+      'Lipiec', 'Sierpień', 'Wrzesień', 'Październik', 'Listopad', 'Grudzień'
+    ]
+    const monthName = monthNames[month - 1] || `Miesiąc ${month}`
+    
+    const { data, error } = await resend.emails.send({
+      from: FROM_EMAIL,
+      to: [to],
+      subject: `Płatność za korepetycje - ${studentName} - ${monthName} ${year} - Akademia Wiedzy`,
+      html,
+    })
+
+    if (error) {
+      console.error('Resend API error (payment link):', {
+        message: error.message,
+        name: error.name,
+        email: to,
+        fromEmail: FROM_EMAIL,
+      })
+      return { success: false, error: error.message }
+    }
+
+    console.log('Payment link email sent successfully:', {
+      messageId: data?.id,
+      email: to,
+      parentName,
+      studentName,
+    })
+    return { success: true, messageId: data?.id }
+  } catch (error) {
+    console.error('Unexpected error sending payment link email:', {
       error: error instanceof Error ? error.message : String(error),
       stack: error instanceof Error ? error.stack : undefined,
       email: to,

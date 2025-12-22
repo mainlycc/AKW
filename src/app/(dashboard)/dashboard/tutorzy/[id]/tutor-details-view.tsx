@@ -1,0 +1,399 @@
+'use client'
+
+import { useMemo, useState } from "react"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+import { TimeSlotGrid } from "../../kalendarz/time-slot-grid"
+import type { TutorAvailabilityData } from "@/lib/types/availability.types"
+import type { BookedSlot } from "@/lib/actions/booked-slots"
+import { SLOT_DURATION_MINUTES } from "@/lib/types/availability.types"
+import { Button } from "@/components/ui/button"
+import {
+  IconArrowLeft,
+  IconDotsVertical,
+  IconPencil,
+} from "@tabler/icons-react"
+import { useRouter } from "next/navigation"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { TutorDetailDialog } from "../tutor-detail-dialog"
+
+interface Tutor {
+  id: string
+  full_name: string
+  email: string
+  phone: string | null
+  bio: string | null
+  hourly_rate: number | null
+  activeAssignments?: number
+  totalHours?: number
+  totalSessions?: number
+}
+
+interface StudentWithRelations {
+  id: string
+  first_name: string
+  last_name: string
+  parent_email: string
+  parent_phone: string | null
+  student_parents?: Array<{
+    id: string
+    is_primary: boolean
+    parents: {
+      id: string
+      first_name: string
+      last_name: string
+      email: string
+      phone: string | null
+    } | null
+  }>
+  student_assignments?: Array<{
+    id: string
+    status: string
+    subjects: {
+      id: string
+      name: string
+    } | null
+    subject_levels: {
+      id: string
+      level_name: string
+    } | null
+  }>
+}
+
+interface TutorSubjectLevel {
+  id: string
+  subject_id: string
+  subject_level_id: string
+  subjects: { id: string; name: string; color?: string | null } | null
+  subject_levels: { id: string; level_name: string; price_per_hour: number } | null
+}
+
+interface TutorDetailsViewProps {
+  tutor: Tutor
+  availability: TutorAvailabilityData | null
+  bookedSlots: BookedSlot[]
+  students: StudentWithRelations[]
+  tutorSubjects: TutorSubjectLevel[]
+}
+
+const formatDate = (dateString: string): string => {
+  const date = new Date(dateString)
+  return date.toLocaleDateString('pl-PL', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  })
+}
+
+export function TutorDetailsView({
+  tutor,
+  availability,
+  bookedSlots,
+  students,
+  tutorSubjects,
+}: TutorDetailsViewProps) {
+  const router = useRouter()
+  const [editDialogOpen, setEditDialogOpen] = useState(false)
+
+  // Pobierz podstawowe informacje o rodzicach (pierwszy główny rodzic)
+  const getPrimaryParentInfo = (student: StudentWithRelations) => {
+    const parents = student.student_parents || []
+    const primaryParent = parents.find(p => p.is_primary) || parents[0]
+    if (primaryParent?.parents) {
+      return {
+        email: primaryParent.parents.email,
+        phone: primaryParent.parents.phone,
+      }
+    }
+    return {
+      email: student.parent_email,
+      phone: student.parent_phone,
+    }
+  }
+
+  // Pobierz przedmioty ucznia
+  const getStudentSubjects = (student: StudentWithRelations) => {
+    const assignments = student.student_assignments || []
+    return assignments
+      .filter(a => a.subjects && a.subject_levels)
+      .map(a => `${a.subjects?.name} (${a.subject_levels?.level_name})`)
+      .join(', ')
+  }
+
+  // Formatuj przedmioty tutora do wyświetlenia
+  const formatTutorSubjects = () => {
+    if (!tutorSubjects || tutorSubjects.length === 0) {
+      return 'Brak przypisanych przedmiotów'
+    }
+
+    // Grupuj po przedmiotach
+    const subjectsMap = new Map<string, string[]>()
+    
+    tutorSubjects.forEach((ts) => {
+      // Obsługa relacji z Supabase - mogą być tablicami lub obiektami
+      const subject = Array.isArray(ts.subjects) ? ts.subjects[0] : ts.subjects
+      const level = Array.isArray(ts.subject_levels) ? ts.subject_levels[0] : ts.subject_levels
+      
+      if (subject && level) {
+        const subjectName = subject.name
+        const levelName = level.level_name
+        
+        if (!subjectsMap.has(subjectName)) {
+          subjectsMap.set(subjectName, [])
+        }
+        subjectsMap.get(subjectName)!.push(levelName)
+      }
+    })
+
+    // Formatuj: "Matematyka (Podstawowy, Rozszerzony), Fizyka (Podstawowy)"
+    return Array.from(subjectsMap.entries())
+      .map(([subject, levels]) => `${subject} (${levels.join(', ')})`)
+      .join(', ')
+  }
+
+  const availableSlotsCount = availability?.slots.filter(s => s.is_available).length || 0
+  const weeklyHours = (availableSlotsCount * SLOT_DURATION_MINUTES) / 60
+
+  const bookedHours = useMemo(() => {
+    const toMinutes = (time: string) => {
+      const [hours, minutes] = time.split(':').map(Number)
+      if (Number.isNaN(hours) || Number.isNaN(minutes)) return 0
+      return hours * 60 + minutes
+    }
+
+    const totalMinutes = bookedSlots.reduce((acc, slot) => {
+      const start = toMinutes(slot.start_time)
+      const end = toMinutes(slot.end_time)
+      if (end <= start) return acc
+      return acc + (end - start)
+    }, 0)
+
+    return totalMinutes / 60
+  }, [bookedSlots])
+
+  const activeAssignments = useMemo(
+    () =>
+      students.reduce(
+        (acc, student) => acc + (student.student_assignments?.length || 0),
+        0
+      ),
+    [students]
+  )
+
+  const tutorWithStats = useMemo(
+    () => ({
+      ...tutor,
+      activeAssignments,
+      totalSessions: bookedSlots.length,
+      totalHours: bookedHours,
+    }),
+    [activeAssignments, bookedHours, bookedSlots, tutor]
+  )
+
+  return (
+    <div className="space-y-6">
+      {/* Przycisk powrotu */}
+      <div>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => router.push('/dashboard/tutorzy')}
+          className="mb-4"
+        >
+          <IconArrowLeft className="mr-2 h-4 w-4" />
+          Powrót do listy tutorów
+        </Button>
+      </div>
+
+      {/* Informacje o tutorze */}
+      <Card>
+        <CardHeader className="flex flex-row items-start justify-between">
+          <CardTitle>Informacje o tutorze</CardTitle>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-9 w-9"
+                aria-label="Opcje tutora"
+              >
+                <IconDotsVertical className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => setEditDialogOpen(true)}>
+                <IconPencil className="mr-2 h-4 w-4" />
+                Edytuj
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div>
+              <p className="text-sm font-medium text-muted-foreground">Imię i nazwisko</p>
+              <p className="text-lg font-semibold">{tutor.full_name}</p>
+            </div>
+            <div>
+              <p className="text-sm font-medium text-muted-foreground">Email</p>
+              <p className="text-lg">{tutor.email}</p>
+            </div>
+            {tutor.phone && (
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">Telefon</p>
+                <p className="text-lg">{tutor.phone}</p>
+              </div>
+            )}
+            {tutor.hourly_rate && (
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">Stawka godzinowa</p>
+                <p className="text-lg">{tutor.hourly_rate.toFixed(2)} zł/h</p>
+              </div>
+            )}
+            {tutor.bio && (
+              <div className="md:col-span-2">
+                <p className="text-sm font-medium text-muted-foreground">Bio</p>
+                <p className="text-lg">{tutor.bio}</p>
+              </div>
+            )}
+            <div className="md:col-span-2">
+              <p className="text-sm font-medium text-muted-foreground">Przedmioty</p>
+              <p className="text-lg">{formatTutorSubjects()}</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Dostępność w tygodniu */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Dostępność w tygodniu</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {availability ? (
+            <div className="space-y-4">
+              {/* Info i statystyki */}
+              <div className="flex items-center justify-between flex-wrap gap-4">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <Badge variant="secondary">
+                      Wersja {availability.template.version}
+                    </Badge>
+                    <Badge variant="outline">
+                      Aktywna
+                    </Badge>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    Ostatnia aktualizacja: {formatDate(availability.template.updated_at)}
+                  </p>
+                </div>
+
+                {/* Statystyki */}
+                <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                  <span>
+                    Dostępne sloty:{' '}
+                    <strong className="text-foreground">
+                      {availableSlotsCount}
+                    </strong>
+                  </span>
+                  <span>•</span>
+                  <span>
+                    Godziny tygodniowo:{' '}
+                    <strong className="text-foreground">
+                      {weeklyHours.toFixed(0)}h
+                    </strong>
+                  </span>
+                </div>
+              </div>
+
+              {/* Kalendarz (read-only) */}
+              <div className="w-full overflow-x-auto">
+                <TimeSlotGrid
+                  slots={availability.slots.map((slot) => ({
+                    day: slot.day_of_week,
+                    startTime: slot.start_time,
+                    endTime: slot.end_time,
+                    isAvailable: slot.is_available,
+                  }))}
+                  onSlotToggle={() => {}} // Read-only
+                  isEditing={false}
+                  bookedSlots={bookedSlots}
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="py-8 text-center text-muted-foreground">
+              Brak danych o dostępności dla tego tutora
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Lista uczniów */}
+      <Card>
+        <CardHeader>
+          <CardTitle>
+            Uczniowie ({students.length})
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {students.length === 0 ? (
+            <div className="py-8 text-center text-muted-foreground">
+              Brak przypisanych uczniów
+            </div>
+          ) : (
+            <div className="rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Imię i nazwisko</TableHead>
+                    <TableHead>Email rodzica</TableHead>
+                    <TableHead>Telefon rodzica</TableHead>
+                    <TableHead>Przedmioty</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {students.map((student) => {
+                    const parentInfo = getPrimaryParentInfo(student)
+                    const subjects = getStudentSubjects(student)
+
+                    return (
+                      <TableRow key={student.id}>
+                        <TableCell className="font-medium">
+                          {student.first_name} {student.last_name}
+                        </TableCell>
+                        <TableCell>{parentInfo.email}</TableCell>
+                        <TableCell>{parentInfo.phone || '-'}</TableCell>
+                        <TableCell>{subjects || '-'}</TableCell>
+                      </TableRow>
+                    )
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+      <TutorDetailDialog
+        open={editDialogOpen}
+        onClose={() => setEditDialogOpen(false)}
+        tutor={tutorWithStats}
+        tutorSubjects={tutorSubjects}
+      />
+    </div>
+  )
+}
+

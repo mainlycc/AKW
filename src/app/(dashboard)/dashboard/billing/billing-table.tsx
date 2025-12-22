@@ -23,6 +23,7 @@ import type { StudentBillingWithParent, BillingStatus } from '@/lib/actions/bill
 import { sendReminderAction, recalculateBillingsAction, markBillingsAsPaidAction, sendGroupRemindersAction } from './actions'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
+import { formatHours } from '@/lib/utils'
 import { useState, useMemo, useEffect } from 'react'
 import React from 'react'
 import { PaymentDialog } from './payment-dialog'
@@ -559,7 +560,7 @@ export function BillingTable({
                     )}
                   </TableCell>
                   <TableCell className="text-right">
-                    {billing.hours_this_month.toFixed(2)} h
+                    {formatHours(billing.hours_this_month)} h
                   </TableCell>
                   <TableCell className="text-right">
                     {billing.total_due.toFixed(2)} zł

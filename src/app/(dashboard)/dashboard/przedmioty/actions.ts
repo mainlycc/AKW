@@ -2,9 +2,10 @@
 
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 
 // Subject actions
-export async function createSubject(data: { name: string; description: string }) {
+export async function createSubject(data: { name: string; description: string; color?: string }) {
   const supabase = await createClient()
 
   // Utwórz przedmiot
@@ -13,6 +14,7 @@ export async function createSubject(data: { name: string; description: string })
     .insert({
       name: data.name,
       description: data.description || null,
+      color: data.color || null,
     })
     .select()
     .single()
@@ -41,7 +43,7 @@ export async function createSubject(data: { name: string; description: string })
   revalidatePath('/dashboard/przedmioty')
 }
 
-export async function updateSubject(id: string, data: { name: string; description: string }) {
+export async function updateSubject(id: string, data: { name: string; description: string; color?: string }) {
   const supabase = await createClient()
 
   const { error } = await supabase
@@ -49,6 +51,7 @@ export async function updateSubject(id: string, data: { name: string; descriptio
     .update({
       name: data.name,
       description: data.description || null,
+      color: data.color || null,
     })
     .eq('id', id)
 
@@ -61,7 +64,30 @@ export async function updateSubject(id: string, data: { name: string; descriptio
 
 export async function deleteSubject(id: string) {
   const supabase = await createClient()
+  const admin = createAdminClient()
 
+  // Najpierw znajdź wszystkie przypisania związane z tym przedmiotem
+  const { data: assignments } = await admin
+    .from('student_assignments')
+    .select('id')
+    .eq('subject_id', id)
+
+  if (assignments && assignments.length > 0) {
+    const assignmentIds = assignments.map(a => a.id)
+
+    // Usuń wszystkie booked_slots powiązane z tymi przypisaniami
+    // Używamy admin client, aby ominąć RLS
+    const { error: slotsError } = await admin
+      .from('booked_slots')
+      .delete()
+      .in('student_assignment_id', assignmentIds)
+
+    if (slotsError) {
+      throw new Error(`Nie można usunąć powiązanych rezerwacji: ${slotsError.message}`)
+    }
+  }
+
+  // Teraz możemy bezpiecznie usunąć przedmiot
   const { error } = await supabase.from('subjects').delete().eq('id', id)
 
   if (error) {

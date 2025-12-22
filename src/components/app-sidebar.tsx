@@ -70,11 +70,6 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
           icon: IconUsers,
         },
         {
-          title: "Rodzice",
-          url: "/dashboard/rodzice",
-          icon: IconUsersGroup,
-        },
-        {
           title: "Tutorzy",
           url: "/dashboard/tutorzy",
           icon: IconSchool,
@@ -145,6 +140,16 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
           icon: IconReceipt,
         },
         {
+          title: "Deklaracje tutorów",
+          url: "/dashboard/deklaracje-tutorow",
+          icon: IconFileReport,
+        },
+        {
+          title: "Rozliczenia deklaracji",
+          url: "/dashboard/rozliczenia-deklaracji",
+          icon: IconReceipt,
+        },
+        {
           title: "Historia płatności",
           url: "/dashboard/payments",
           icon: IconHistory,
@@ -203,6 +208,11 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
       title: "Moje raporty",
       url: "/dashboard/moje-raporty",
       icon: IconReceipt,
+    },
+    {
+      title: "Moje deklaracje",
+      url: "/dashboard/moje-deklaracje",
+      icon: IconFileReport,
     },
     {
       title: "Powiadomienia",

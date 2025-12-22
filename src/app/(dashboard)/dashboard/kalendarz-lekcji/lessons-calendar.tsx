@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, getDay } from "date-fns"
 import { pl } from "date-fns/locale"
 import { Button } from "@/components/ui/button"
@@ -115,6 +115,23 @@ export function LessonsCalendar({ sessions, isAdmin = false }: LessonsCalendarPr
     setCurrentMonth(new Date())
   }
 
+  // Obsługa nawigacji klawiaturą
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // Ctrl/Cmd + strzałki do nawigacji po miesiącach
+      if ((event.ctrlKey || event.metaKey) && event.key === 'ArrowLeft') {
+        event.preventDefault()
+        setCurrentMonth(prev => subMonths(prev, 1))
+      } else if ((event.ctrlKey || event.metaKey) && event.key === 'ArrowRight') {
+        event.preventDefault()
+        setCurrentMonth(prev => addMonths(prev, 1))
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [])
+
   // Uzyskaj pierwszy dzień miesiąca i jego dzień tygodnia (0 = niedziela, 6 = sobota)
   // W Polsce tydzień zaczyna się od poniedziałku (1), więc przesuwamy
   const firstDayOfWeek = (getDay(monthStart) + 6) % 7 // Konwersja: niedziela (0) → 6, poniedziałek (1) → 0
@@ -152,30 +169,37 @@ export function LessonsCalendar({ sessions, isAdmin = false }: LessonsCalendarPr
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
-            <CardTitle>
+            <CardTitle className="text-xl font-semibold">
               {format(currentMonth, 'MMMM yyyy', { locale: pl })}
             </CardTitle>
             <div className="flex items-center gap-2">
               <Button
                 variant="outline"
-                size="sm"
+                size="default"
                 onClick={handlePreviousMonth}
+                className="min-w-[100px]"
+                title="Poprzedni miesiąc (Ctrl + ←)"
               >
-                <IconChevronLeft className="h-4 w-4" />
+                <IconChevronLeft className="h-4 w-4 mr-1" />
+                Poprzedni
               </Button>
               <Button
                 variant="outline"
-                size="sm"
+                size="default"
                 onClick={handleToday}
+                className="min-w-[80px]"
               >
                 Dzisiaj
               </Button>
               <Button
                 variant="outline"
-                size="sm"
+                size="default"
                 onClick={handleNextMonth}
+                className="min-w-[100px]"
+                title="Następny miesiąc (Ctrl + →)"
               >
-                <IconChevronRight className="h-4 w-4" />
+                Następny
+                <IconChevronRight className="h-4 w-4 ml-1" />
               </Button>
             </div>
           </div>
@@ -235,20 +259,25 @@ export function LessonsCalendar({ sessions, isAdmin = false }: LessonsCalendarPr
                       {format(day, 'd')}
                     </span>
                     {sortedSessions.length > 0 && (
-                      <div className="flex flex-wrap gap-0.5 w-full">
-                        {sortedSessions.map((session) => (
-                          <Badge
-                            key={session.id}
-                            variant="outline"
-                            className={cn(
-                              "text-[9px] px-0.5 py-0 h-3.5 leading-tight",
-                              "flex items-center justify-center",
-                              getStatusColor(session.status)
-                            )}
-                          >
-                            {format(new Date(session.session_date), 'HH:mm')}
-                          </Badge>
-                        ))}
+                      <div className="flex flex-col gap-0.5 w-full overflow-hidden">
+                        {sortedSessions.map((session) => {
+                          const studentName = `${session.students.first_name} ${session.students.last_name}`
+                          const time = format(new Date(session.session_date), 'HH:mm')
+                          return (
+                            <div
+                              key={session.id}
+                              className={cn(
+                                "text-xs px-1.5 py-1 rounded leading-tight truncate",
+                                "flex items-center gap-1 w-full",
+                                getStatusColor(session.status)
+                              )}
+                              title={`${time} - ${studentName}`}
+                            >
+                              <span className="font-medium">{time}</span>
+                              <span className="truncate">{studentName}</span>
+                            </div>
+                          )
+                        })}
                       </div>
                     )}
                   </button>

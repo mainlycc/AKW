@@ -12,6 +12,7 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { formatHours } from "@/lib/utils"
 
 interface Session {
   id: string
@@ -85,7 +86,7 @@ export function HistoryView({ sessions }: HistoryViewProps) {
             <CardTitle className="text-sm font-medium">Suma godzin</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.totalHours.toFixed(2)}h</div>
+            <div className="text-2xl font-bold">{formatHours(stats.totalHours)}h</div>
             <p className="text-xs text-muted-foreground">{stats.totalSessions} sesji</p>
           </CardContent>
         </Card>

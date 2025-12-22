@@ -28,6 +28,7 @@ export async function updateTutorDetails(
   if (error) throw error
 
   revalidatePath('/dashboard/tutorzy')
+  revalidatePath(`/dashboard/tutorzy/${tutorId}`)
 }
 
 export async function deleteTutor(id: string) {

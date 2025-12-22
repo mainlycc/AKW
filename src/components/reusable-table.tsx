@@ -278,36 +278,36 @@ export function ReusableTable<TData, TValue>({
   return (
     <div className="space-y-4">
       {/* Toolbar */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2 flex-1">
+      <div className="space-y-3">
+        <div className="flex items-center gap-2 flex-wrap">
           {searchable && (
-            <div className="relative flex-1 max-w-sm">
+            <div className="relative flex-1 min-w-[280px] max-w-md">
               <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder={searchPlaceholder}
                 value={globalFilter}
                 onChange={(e) => setGlobalFilter(e.target.value)}
-                className="pl-8"
+                className="pl-8 w-full"
               />
             </div>
           )}
-          {filters && <div className="flex items-center gap-2">{filters}</div>}
-        </div>
-        <div className="flex items-center gap-2">
-          {customToolbarButtons && customToolbarButtons(table.getFilteredSelectedRowModel().rows.length)}
-          {(onDeleteSelected || enableDeleteDialog) && 
-           table.getFilteredSelectedRowModel().rows.length > 0 && (
-            <Button onClick={handleDeleteClick} size="sm" variant="destructive">
-              <Trash2 className="mr-2 h-4 w-4" />
-              {deleteButtonLabel}
-            </Button>
-          )}
-          {(onAdd || enableAddDialog) && (
-            <Button onClick={handleAddClick} size="sm">
-              <Plus className="mr-2 h-4 w-4" />
-              {addButtonLabel}
-            </Button>
-          )}
+          {filters && <div className="flex items-center gap-2 flex-wrap">{filters}</div>}
+          <div className="flex items-center gap-2 ml-auto">
+            {customToolbarButtons && customToolbarButtons(table.getFilteredSelectedRowModel().rows.length)}
+            {(onDeleteSelected || enableDeleteDialog) && 
+             table.getFilteredSelectedRowModel().rows.length > 0 && (
+              <Button onClick={handleDeleteClick} size="sm" variant="destructive">
+                <Trash2 className="mr-2 h-4 w-4" />
+                {deleteButtonLabel}
+              </Button>
+            )}
+            {(onAdd || enableAddDialog) && (
+              <Button onClick={handleAddClick} size="sm">
+                <Plus className="mr-2 h-4 w-4" />
+                {addButtonLabel}
+              </Button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -320,14 +320,16 @@ export function ReusableTable<TData, TValue>({
                 {headerGroup.headers.map((header) => {
                   const canSort = header.column.getCanSort();
                   const sortDirection = header.column.getIsSorted();
+                  const meta = header.column.columnDef.meta as { headerClassName?: string } | undefined;
+                  const headerClassName = meta?.headerClassName || "";
                   
                   return (
                     <TableHead 
                       key={header.id}
-                      className={canSort ? "cursor-pointer select-none" : ""}
+                      className={`${canSort ? "cursor-pointer select-none" : ""} ${headerClassName}`}
                       onClick={header.column.getToggleSortingHandler()}
                     >
-                      <div className="flex items-center gap-2">
+                      <div className={`flex items-center gap-2 ${headerClassName ? "justify-end" : ""}`}>
                         {header.isPlaceholder
                           ? null
                           : flexRender(header.column.columnDef.header, header.getContext())}

@@ -15,6 +15,7 @@ import { ReportDialog } from "./report-dialog"
 import { deleteReport, type ReportStatus } from "./actions"
 import { IconPlus, IconTrash, IconPencil } from "@tabler/icons-react"
 import { ConfirmDialog } from "@/components/confirm-dialog"
+import { formatHours } from "@/lib/utils"
 
 interface MonthlyReport {
   id: string
@@ -126,7 +127,7 @@ export function ReportsTable({ reports, tutorId, students }: ReportsTableProps) 
                       {statusLabels[report.status]}
                     </Badge>
                   </TableCell>
-                  <TableCell className="text-right">{report.total_hours.toFixed(2)} h</TableCell>
+                  <TableCell className="text-right">{formatHours(report.total_hours)} h</TableCell>
                   <TableCell className="text-right">
                     {report.total_amount ? `${report.total_amount.toFixed(2)} zł` : '-'}
                   </TableCell>

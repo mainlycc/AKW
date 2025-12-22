@@ -20,19 +20,35 @@ export async function getUser() {
 }
 
 export async function getUserProfile() {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  try {
+    const supabase = await createClient()
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser()
 
-  if (!user) return null
+    if (userError) {
+      console.error('[getUserProfile] Error getting user:', userError)
+      return null
+    }
 
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', user.id)
-    .single()
+    if (!user) return null
 
-  return profile
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', user.id)
+      .single()
+
+    if (profileError) {
+      console.error('[getUserProfile] Error getting profile:', profileError)
+      return null
+    }
+
+    return profile
+  } catch (error) {
+    console.error('[getUserProfile] Unexpected error:', error)
+    return null
+  }
 }
 

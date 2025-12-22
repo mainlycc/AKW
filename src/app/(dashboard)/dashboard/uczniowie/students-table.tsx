@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
 import { Student } from "@/lib/types/database.types"
+import { SubjectBadge } from "@/components/subject-badge"
 import { StudentDialog } from "./student-dialog"
 import { GroupMessageDialog } from "./group-message-dialog"
 import { TutorGroupMessageDialog } from "./tutor-group-message-dialog"
@@ -55,7 +56,7 @@ interface StudentNote {
 
 interface StudentSubject {
   subject_level_id: string
-  subjects: { name: string } | null
+  subjects: { name: string; color?: string | null } | null
   subject_levels: { level_name: string } | null
 }
 
@@ -411,11 +412,15 @@ export function StudentsTable({
                     <TableCell>
                       {subjects.length > 0 ? (
                         <div className="flex flex-wrap gap-1">
-                          {subjects.map((ss, idx) => (
-                            <Badge key={idx} variant="secondary" className="text-xs">
-                              {ss.subjects?.name}
-                            </Badge>
-                          ))}
+                          {subjects.map((ss, idx) => 
+                            ss.subjects ? (
+                              <SubjectBadge
+                                key={idx}
+                                subject={ss.subjects}
+                                className="text-xs"
+                              />
+                            ) : null
+                          )}
                         </div>
                       ) : '-'}
                     </TableCell>

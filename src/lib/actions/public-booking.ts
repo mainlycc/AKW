@@ -54,7 +54,7 @@ export async function listPublicSubjects(): Promise<PublicSubjectLevel[]> {
       tutor_id,
       subject_id,
       subject_level_id,
-      subjects ( id, name ),
+      subjects ( id, name, color ),
       subject_levels ( id, level_name )
     `)
 

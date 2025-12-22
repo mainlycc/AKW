@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { SubjectBadge } from "@/components/subject-badge"
 import { AssignmentDialog } from "./assignment-dialog"
 import { updateAssignmentStatus } from "./actions"
 import { IconPlus } from "@tabler/icons-react"
@@ -28,7 +29,7 @@ interface Assignment {
   created_at: string
   students: { id: string; first_name: string; last_name: string }
   profiles: { id: string; full_name: string }
-  subjects: { id: string; name: string }
+  subjects: { id: string; name: string; color?: string | null }
   subject_levels: { id: string; level_name: string; price_per_hour: number }
 }
 
@@ -145,7 +146,9 @@ export function AssignmentsManagement({
                     {assignment.students.first_name} {assignment.students.last_name}
                   </TableCell>
                   <TableCell>{assignment.profiles.full_name}</TableCell>
-                  <TableCell>{assignment.subjects.name}</TableCell>
+                  <TableCell>
+                    <SubjectBadge subject={assignment.subjects} className="text-xs" />
+                  </TableCell>
                   <TableCell>{assignment.subject_levels.level_name}</TableCell>
                   <TableCell>{getStatusBadge(assignment.status)}</TableCell>
                   <TableCell className="text-right">

@@ -8,6 +8,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
+import { formatHours } from "@/lib/utils"
 import {
   Table,
   TableBody,
@@ -83,7 +84,7 @@ export function ReportDetailDialog({ open, onClose, report }: ReportDetailDialog
             </div>
             <div className="space-y-1">
               <p className="text-sm text-muted-foreground">Suma godzin</p>
-              <p className="text-lg font-semibold">{report.total_hours.toFixed(2)} h</p>
+              <p className="text-lg font-semibold">{formatHours(report.total_hours)} h</p>
             </div>
             <div className="space-y-1">
               <p className="text-sm text-muted-foreground">Kwota do wypłaty</p>
@@ -110,7 +111,7 @@ export function ReportDetailDialog({ open, onClose, report }: ReportDetailDialog
                       <TableCell>
                         {entry.students.first_name} {entry.students.last_name}
                       </TableCell>
-                      <TableCell className="text-right">{entry.hours.toFixed(2)} h</TableCell>
+                      <TableCell className="text-right">{formatHours(entry.hours)} h</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

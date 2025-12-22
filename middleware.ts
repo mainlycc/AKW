@@ -1,7 +1,15 @@
-import { type NextRequest } from 'next/server'
+import { type NextRequest, NextResponse } from 'next/server'
 import { updateSession } from '@/lib/supabase/middleware'
 
 export async function middleware(request: NextRequest) {
+  // Logowanie requestów dla debugowania (opcjonalne)
+  if (process.env.NODE_ENV === 'development') {
+    console.log(`[Middleware] ${request.method} ${request.nextUrl.pathname}`, {
+      userAgent: request.headers.get('user-agent')?.substring(0, 50),
+      origin: request.headers.get('origin'),
+    })
+  }
+
   const { supabaseResponse, user } = await updateSession(request)
 
   // Sprawdź czy użytkownik próbuje uzyskać dostęp do chronionej strony
@@ -11,12 +19,12 @@ export async function middleware(request: NextRequest) {
 
   // Jeśli użytkownik nie jest zalogowany i próbuje dostać się do dashboardu
   if (!user && isDashboard) {
-    return Response.redirect(new URL('/login', request.url))
+    return NextResponse.redirect(new URL('/login', request.url))
   }
 
   // Jeśli użytkownik jest zalogowany i próbuje dostać się do strony logowania lub rejestracji
   if (user && (isAuthPage || isRegisterPage)) {
-    return Response.redirect(new URL('/dashboard', request.url))
+    return NextResponse.redirect(new URL('/dashboard', request.url))
   }
 
   return supabaseResponse

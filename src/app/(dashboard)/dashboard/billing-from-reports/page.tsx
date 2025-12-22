@@ -8,7 +8,23 @@ export default async function BillingFromReportsPage({
 }: {
   searchParams: Promise<{ month?: string; year?: string }>
 }) {
-  const profile = await getUserProfile()
+  console.log('[BillingFromReportsPage] Starting page render')
+  
+  let profile
+  try {
+    console.log('[BillingFromReportsPage] Fetching user profile...')
+    profile = await getUserProfile()
+    console.log('[BillingFromReportsPage] User profile fetched:', { id: profile?.id, role: profile?.role })
+  } catch (error) {
+    console.error('[BillingFromReportsPage] Error fetching user profile:', error)
+    return (
+      <div className="p-4 rounded-lg border border-destructive/50 bg-destructive/10">
+        <p className="text-sm text-destructive font-medium">
+          Błąd podczas pobierania profilu użytkownika: {error instanceof Error ? error.message : 'Nieznany błąd'}
+        </p>
+      </div>
+    )
+  }
 
   if (!profile || profile.role !== 'admin') {
     return (
@@ -46,7 +62,7 @@ export default async function BillingFromReportsPage({
 
   // Get all students with their parents for payment dialog
   const supabase = await createClient()
-  const { data: studentsData } = await supabase
+  const { data: studentsData, error: studentsError } = await supabase
     .from('students')
     .select(
       `
@@ -66,6 +82,17 @@ export default async function BillingFromReportsPage({
     `
     )
     .order('last_name')
+
+  if (studentsError) {
+    console.error('Error fetching students:', studentsError)
+    return (
+      <div className="p-4 rounded-lg border border-destructive/50 bg-destructive/10">
+        <p className="text-sm text-destructive font-medium">
+          Błąd podczas pobierania danych uczniów: {studentsError.message}
+        </p>
+      </div>
+    )
+  }
 
   // Transform data
   interface ParentData {

@@ -60,6 +60,7 @@ export interface StudentBillingWithParent extends StudentBilling {
   }>
   hours_this_month: number
   total_hours: number
+  hours?: number // For declarations billing
 }
 
 /**
@@ -1623,5 +1624,277 @@ export async function sendPaymentReminder(
       hasParentData: !!parentData,
     })
   }
+}
+
+/**
+ * Get student billings calculated from approved declarations for a specific period
+ */
+export async function getStudentBillingsFromDeclarations(
+  month: number,
+  year: number
+): Promise<StudentBillingWithParent[]> {
+  const supabase = await createClient()
+
+  // Validate month and year
+  if (month < 1 || month > 12) {
+    throw new Error(`Invalid month: ${month}. Month must be between 1 and 12.`)
+  }
+  if (year < 2000 || year > 2100) {
+    throw new Error(`Invalid year: ${year}. Year must be between 2000 and 2100.`)
+  }
+
+  // Get or create billing period
+  const { data: period, error: periodFetchError } = await supabase
+    .from('billing_periods')
+    .select('id')
+    .eq('month', month)
+    .eq('year', year)
+    .maybeSingle()
+
+  if (periodFetchError) {
+    throw new Error(`Failed to fetch billing period: ${periodFetchError.message}`)
+  }
+
+  let periodId: string
+  if (period) {
+    periodId = period.id
+  } else {
+    const { data: newPeriod, error: periodError } = await supabase
+      .from('billing_periods')
+      .insert({ month, year })
+      .select('id')
+      .single()
+
+    if (periodError || !newPeriod) {
+      throw new Error(`Failed to create billing period: ${periodError?.message || 'Unknown error'}`)
+    }
+    periodId = newPeriod.id
+  }
+
+  // Get all submitted and approved declarations for the month/year
+  const { data: declarations, error: declarationsError } = await supabase
+    .from('monthly_declarations')
+    .select(`
+      id,
+      tutor_id,
+      month,
+      year,
+      status,
+      profiles!monthly_declarations_tutor_id_fkey (
+        id,
+        full_name
+      ),
+      monthly_declaration_entries (
+        id,
+        student_id,
+        duration_minutes,
+        students (
+          id,
+          first_name,
+          last_name,
+          hourly_rate
+        )
+      )
+    `)
+    .eq('month', month)
+    .eq('year', year)
+    .in('status', ['submitted', 'approved'])
+
+  if (declarationsError) {
+    throw new Error(`Failed to fetch declarations: ${declarationsError.message}`)
+  }
+
+  if (!declarations || declarations.length === 0) {
+    return []
+  }
+
+  // Group entries by student_id and sum hours
+  const studentHoursMap = new Map<string, number>()
+  const studentTutorsMap = new Map<string, Map<string, string>>()
+  const studentDataMap = new Map<string, { 
+    first_name: string
+    last_name: string
+    hourly_rate: number
+  }>()
+
+  for (const declaration of declarations) {
+    const tutor = Array.isArray(declaration.profiles) ? declaration.profiles[0] : declaration.profiles
+    const tutorId = tutor?.id || ''
+    const tutorName = tutor?.full_name || ''
+
+    const entries = declaration.monthly_declaration_entries || []
+    
+    for (const entry of entries) {
+      const studentId = entry.student_id
+      const hours = (entry.duration_minutes || 0) / 60
+      
+      const currentHours = studentHoursMap.get(studentId) || 0
+      studentHoursMap.set(studentId, currentHours + hours)
+
+      if (tutorId && tutorName) {
+        if (!studentTutorsMap.has(studentId)) {
+          studentTutorsMap.set(studentId, new Map())
+        }
+        studentTutorsMap.get(studentId)!.set(tutorId, tutorName)
+      }
+
+      if (!studentDataMap.has(studentId)) {
+        const student = Array.isArray(entry.students) ? entry.students[0] : entry.students
+        const hourlyRate = student?.hourly_rate 
+          ? parseFloat(student.hourly_rate.toString()) 
+          : 50
+        
+        studentDataMap.set(studentId, {
+          first_name: student?.first_name || '',
+          last_name: student?.last_name || '',
+          hourly_rate: hourlyRate,
+        })
+      }
+    }
+  }
+
+  const studentIds = Array.from(studentHoursMap.keys())
+  
+  if (studentIds.length === 0) {
+    return []
+  }
+
+  // Get parents
+  const BATCH_SIZE = 100
+  type ParentDataEntry = {
+    id: string
+    student_id: string
+    is_primary: boolean
+    parents: {
+      id: string
+      first_name: string
+      last_name: string
+      email: string
+      phone: string | null
+    } | null
+  }
+  
+  const allParentData: ParentDataEntry[] = []
+  
+  for (let i = 0; i < studentIds.length; i += BATCH_SIZE) {
+    const batch = studentIds.slice(i, i + BATCH_SIZE)
+    
+    const { data: batchData, error: parentQueryError } = await supabase
+      .from('student_parents')
+      .select(`
+        id,
+        student_id,
+        is_primary,
+        parents (
+          id,
+          first_name,
+          last_name,
+          email,
+          phone
+        )
+      `)
+      .in('student_id', batch)
+      .order('is_primary', { ascending: false })
+
+    if (parentQueryError) {
+      throw new Error(`Failed to fetch parents: ${parentQueryError.message}`)
+    }
+
+    if (batchData) {
+      // Mapuj dane - Supabase zwraca parents jako tablicę, ale typ oczekuje pojedynczego obiektu
+      const mappedData: ParentDataEntry[] = batchData.map((item: any) => ({
+        id: item.id,
+        student_id: item.student_id,
+        is_primary: item.is_primary,
+        parents: Array.isArray(item.parents) ? item.parents[0] : item.parents,
+      }))
+      allParentData.push(...mappedData)
+    }
+  }
+
+  const parentMap = new Map<string, ParentDataEntry>()
+  for (const item of allParentData) {
+    if (item.student_id) {
+      const existing = parentMap.get(item.student_id)
+      if (!existing || (item.is_primary && !existing.is_primary)) {
+        parentMap.set(item.student_id, item)
+      }
+    }
+  }
+
+  // Build result array
+  const result: StudentBillingWithParent[] = []
+
+  for (const studentId of studentIds) {
+    const hours = studentHoursMap.get(studentId) || 0
+    const studentData = studentDataMap.get(studentId)
+    if (!studentData) continue
+
+    const hourlyRate = studentData.hourly_rate
+    const totalDue = hours * hourlyRate
+
+    const parentData = parentMap.get(studentId)
+    const parent = parentData?.parents
+      ? {
+          id: parentData.parents.id,
+          first_name: parentData.parents.first_name,
+          last_name: parentData.parents.last_name,
+          email: parentData.parents.email,
+          phone: parentData.parents.phone,
+        }
+      : undefined
+
+    const tutorsMap = studentTutorsMap.get(studentId) || new Map()
+    const tutors = Array.from(tutorsMap.values())
+
+    const { data: payments } = await supabase
+      .from('payments')
+      .select('amount')
+      .eq('student_id', studentId)
+      .eq('billing_period_id', periodId)
+
+    const totalPaid = payments?.reduce((sum, p) => sum + parseFloat(p.amount?.toString() || '0'), 0) || 0
+    const balance = totalDue - totalPaid
+
+    let status: BillingStatus = 'unpaid'
+    if (balance <= 0 && totalPaid > 0) {
+      status = 'paid'
+    } else if (totalPaid > 0) {
+      status = 'partially_paid'
+    }
+
+    result.push({
+      id: '',
+      student_id: studentId,
+      billing_period_id: periodId,
+      total_due: totalDue,
+      total_paid: totalPaid,
+      balance,
+      status,
+      students: {
+        id: studentId,
+        first_name: studentData.first_name,
+        last_name: studentData.last_name,
+      },
+      billing_periods: {
+        id: periodId,
+        month,
+        year,
+      },
+      parent,
+      tutors: tutors.length > 0 ? tutors : undefined,
+      hours,
+      hours_this_month: hours, // For declarations, hours_this_month is the same as hours
+      total_hours: hours, // For declarations, total_hours is the same as hours
+    })
+  }
+
+  result.sort((a, b) => {
+    const nameA = `${a.students.last_name} ${a.students.first_name}`.toLowerCase()
+    const nameB = `${b.students.last_name} ${b.students.first_name}`.toLowerCase()
+    return nameA.localeCompare(nameB)
+  })
+
+  return result
 }
 

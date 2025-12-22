@@ -7,7 +7,6 @@ const pageTitles: Record<string, string> = {
   '/dashboard/profil': 'Profil',
   '/dashboard/kalendarz': 'Grafik',
   '/dashboard/uczniowie': 'Uczniowie',
-  '/dashboard/rodzice': 'Rodzice',
   '/dashboard/tutorzy': 'Tutorzy',
   '/dashboard/przedmioty': 'Przedmioty',
   '/dashboard/przypisania': 'Przypisania',
@@ -18,6 +17,10 @@ const pageTitles: Record<string, string> = {
   '/dashboard/historia': 'Historia sesji',
   '/dashboard/raporty': 'Raporty godzin',
   '/dashboard/moje-raporty': 'Moje raporty',
+  '/dashboard/moje-deklaracje': 'Moje deklaracje',
+  '/dashboard/moje-deklaracje/nowa': 'Utwórz deklarację miesięczną',
+  '/dashboard/deklaracje-tutorow': 'Deklaracje tutorów',
+  '/dashboard/rozliczenia-deklaracji': 'Rozliczenia deklaracji',
   '/dashboard/raporty-tutorow': 'Raporty tutorów',
   '/dashboard/billing': 'Rozliczenia miesięczne',
   '/dashboard/billing-from-reports': 'Rozliczenia z raportów',
@@ -29,6 +32,16 @@ const pageTitles: Record<string, string> = {
 
 export function PageHeader() {
   const pathname = usePathname()
+  
+  // Sprawdź czy to dynamiczna ścieżka
+  if (pathname.startsWith('/dashboard/tutorzy/') && pathname !== '/dashboard/tutorzy') {
+    return <h1 className="text-xl font-semibold">Szczegóły tutora</h1>
+  }
+  
+  if (pathname.startsWith('/dashboard/moje-deklaracje/') && pathname !== '/dashboard/moje-deklaracje' && pathname !== '/dashboard/moje-deklaracje/nowa') {
+    return <h1 className="text-xl font-semibold">Edytuj deklarację miesięczną</h1>
+  }
+  
   const title = pageTitles[pathname] || 'Dashboard'
 
   return (

@@ -20,6 +20,7 @@ export default async function ProfilePage() {
     .select(`
       id,
       name,
+      color,
       subject_levels (
         id,
         level_name,
@@ -31,7 +32,6 @@ export default async function ProfilePage() {
 
   // Get tutor's selected subject levels
   const tutorLevels = await getTutorSubjectLevels(profile.id)
-  const selectedLevelIds = tutorLevels.map((tl: { subject_level_id: string }) => tl.subject_level_id)
 
   return (
     <div className="space-y-6">
@@ -39,7 +39,7 @@ export default async function ProfilePage() {
       <SubjectSelection 
         tutorId={profile.id}
         subjects={subjects || []}
-        selectedLevelIds={selectedLevelIds}
+        tutorLevels={tutorLevels}
       />
     </div>
   )

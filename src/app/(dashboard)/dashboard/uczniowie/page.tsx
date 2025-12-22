@@ -322,6 +322,7 @@ export default async function StudentsPage() {
       supabase.from('subjects').select(`
         id,
         name,
+        color,
         subject_levels (
           id,
           level_name,

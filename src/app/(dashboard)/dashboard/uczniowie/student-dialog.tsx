@@ -73,6 +73,12 @@ interface TutorSubjectLevel {
   subject_levels: { id: string; level_name: string } | null
 }
 
+interface AdminSelectedSubjectLevel {
+  id: string
+  subjectId: string
+  levelId: string
+}
+
 interface StudentDialogProps {
   open: boolean
   onClose: () => void
@@ -119,9 +125,17 @@ export function StudentDialog({
   const [selectedSubjectLevels, setSelectedSubjectLevels] = useState<Set<string>>(new Set())
   const [selectedParentId, setSelectedParentId] = useState<string>('')
   const [newNote, setNewNote] = useState('')
-  const [tutorSelectedLevel, setTutorSelectedLevel] = useState('')
+  const [tutorSelectedSubjectId, setTutorSelectedSubjectId] = useState('')
+  const [tutorSelectedLevelId, setTutorSelectedLevelId] = useState('')
+  const [adminSelections, setAdminSelections] = useState<AdminSelectedSubjectLevel[]>([])
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false)
   const [confirmDialogContent, setConfirmDialogContent] = useState<{ title: string; description: string; onConfirm: () => void }>({ title: '', description: '', onConfirm: () => {} })
+
+  const getLevelsForSubject = (subjectId: string) => {
+    const subject = allSubjects.find(s => s.id === subjectId)
+    if (!subject) return []
+    return subject.subject_levels.sort((a, b) => a.level_order - b.level_order)
+  }
 
   useEffect(() => {
     if (open) {
@@ -139,6 +153,24 @@ export function StudentDialog({
           phone: '',
         })
         setSelectedSubjectLevels(new Set(studentSubjects))
+
+        // Inicjalizacja wyboru przedmiotów dla admina na podstawie istniejących przedmiotów ucznia
+        if (!isTutor) {
+          const initialSelections: AdminSelectedSubjectLevel[] = []
+          studentSubjects.forEach((levelId, index) => {
+            const subject = allSubjects.find(s =>
+              s.subject_levels.some(level => level.id === levelId)
+            )
+            if (subject) {
+              initialSelections.push({
+                id: `existing-${index}`,
+                subjectId: subject.id,
+                levelId,
+              })
+            }
+          })
+          setAdminSelections(initialSelections)
+        }
       } else {
         // Creating new student - allow parent data in form
         setFormData({
@@ -153,7 +185,19 @@ export function StudentDialog({
           phone: '',
         })
         setSelectedSubjectLevels(new Set())
-        setTutorSelectedLevel('')
+        if (!isTutor && allSubjects.length > 0) {
+          const firstSubject = allSubjects[0]
+          const firstLevel = firstSubject.subject_levels[0]
+          setAdminSelections(firstSubject && firstLevel ? [{
+            id: `new-${Date.now()}`,
+            subjectId: firstSubject.id,
+            levelId: firstLevel.id,
+          }] : [])
+        } else {
+          setAdminSelections([])
+        }
+        setTutorSelectedSubjectId('')
+        setTutorSelectedLevelId('')
       }
       setNewNote('')
     }
@@ -169,7 +213,7 @@ export function StudentDialog({
 
       if (isTutor && !student) {
         // Tutor creating new student
-        if (!tutorSelectedLevel) {
+        if (!tutorSelectedSubjectId || !tutorSelectedLevelId) {
           alert('Wybierz przedmiot i poziom')
           setLoading(false)
           return
@@ -179,7 +223,7 @@ export function StudentDialog({
             first_name: formData.first_name,
             last_name: formData.last_name,
             hourly_rate: formData.hourly_rate,
-            subject_level_id: tutorSelectedLevel,
+            subject_level_id: tutorSelectedLevelId,
             parent: parentData.email || parentData.first_name || parentData.last_name ? {
               first_name: parentData.first_name,
               last_name: parentData.last_name,
@@ -196,7 +240,15 @@ export function StudentDialog({
         
         // Update subjects (only for admin)
         if (!isTutor) {
-          await updateStudentSubjects(student.id, Array.from(selectedSubjectLevels))
+          const adminLevelIds = adminSelections.length
+            ? adminSelections
+                .filter(sel => sel.subjectId && sel.levelId)
+                .map(sel => sel.levelId)
+            : Array.from(selectedSubjectLevels)
+
+          if (adminLevelIds.length > 0) {
+            await updateStudentSubjects(student.id, adminLevelIds)
+          }
         }
       } else {
         // Admin creating new student
@@ -212,8 +264,16 @@ export function StudentDialog({
         newStudentId = result.id
         
         // Update subjects (only for admin)
-        if (selectedSubjectLevels.size > 0) {
-          await updateStudentSubjects(result.id, Array.from(selectedSubjectLevels))
+        if (!isTutor) {
+          const adminLevelIds = adminSelections.length
+            ? adminSelections
+                .filter(sel => sel.subjectId && sel.levelId)
+                .map(sel => sel.levelId)
+            : Array.from(selectedSubjectLevels)
+
+          if (adminLevelIds.length > 0) {
+            await updateStudentSubjects(result.id, adminLevelIds)
+          }
         }
       }
 
@@ -562,52 +622,187 @@ export function StudentDialog({
 
           {/* Przedmioty i poziomy */}
           {isTutor && !student ? (
-            // Tutor adding new student - select one level
+            // Tutor - wybór przedmiotu i poziomu (jedna kombinacja)
             <div className="space-y-4 border-t pt-4">
               <h3 className="font-semibold text-sm">Przedmiot i poziom</h3>
-              <Select value={tutorSelectedLevel} onValueChange={setTutorSelectedLevel} required>
-                <SelectTrigger>
-                  <SelectValue placeholder="Wybierz przedmiot i poziom" />
-                </SelectTrigger>
-                <SelectContent>
-                  {tutorSubjectLevels.map((tsl) => (
-                    <SelectItem key={tsl.subject_level_id} value={tsl.subject_level_id}>
-                      {tsl.subjects?.name} - {tsl.subject_levels?.level_name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Przedmiot</Label>
+                  <Select
+                    value={tutorSelectedSubjectId}
+                    onValueChange={(value) => {
+                      setTutorSelectedSubjectId(value)
+                      const firstLevelForSubject = tutorSubjectLevels.find(
+                        (tsl) => tsl.subjects?.id === value
+                      )
+                      setTutorSelectedLevelId(firstLevelForSubject?.subject_levels?.id || '')
+                    }}
+                    required
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Wybierz przedmiot" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Array.from(
+                        new Map(
+                          tutorSubjectLevels
+                            .filter((tsl) => tsl.subjects)
+                            .map((tsl) => [tsl.subjects!.id, tsl.subjects!])
+                        ).values()
+                      ).map((subject) => (
+                        <SelectItem key={subject.id} value={subject.id}>
+                          {subject.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Poziom</Label>
+                  <Select
+                    value={tutorSelectedLevelId}
+                    onValueChange={setTutorSelectedLevelId}
+                    disabled={!tutorSelectedSubjectId}
+                    required
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Wybierz poziom" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {tutorSubjectLevels
+                        .filter((tsl) => tsl.subjects?.id === tutorSelectedSubjectId)
+                        .map((tsl) => (
+                          <SelectItem
+                            key={tsl.subject_level_id}
+                            value={tsl.subject_level_id}
+                          >
+                            {tsl.subject_levels?.level_name}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
             </div>
           ) : !isTutor ? (
-            // Admin - checkboxes (both adding and editing)
+            // Admin - wybór przedmiotów i poziomów jak w zakładce „przedmioty”
             <div className="space-y-4 border-t pt-4">
               <h3 className="font-semibold text-sm">Przedmioty i poziomy</h3>
-              <div className="space-y-3 max-h-60 overflow-y-auto">
-                {allSubjects.map((subject) => (
-                  <div key={subject.id} className="space-y-2">
-                    <p className="font-medium text-sm">{subject.name}</p>
-                    <div className="grid gap-2 pl-4">
-                      {subject.subject_levels
-                        .sort((a, b) => a.level_order - b.level_order)
-                        .map((level) => (
-                          <div key={level.id} className="flex items-center space-x-2">
-                            <Checkbox
-                              id={level.id}
-                              checked={selectedSubjectLevels.has(level.id)}
-                              onCheckedChange={() => toggleSubjectLevel(level.id)}
-                              disabled={loading || deleting}
-                            />
-                            <label
-                              htmlFor={level.id}
-                              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
-                            >
-                              {level.level_name}
-                            </label>
-                          </div>
-                        ))}
+
+              {adminSelections.map((selection) => {
+                const levels = getLevelsForSubject(selection.subjectId)
+
+                return (
+                  <div key={selection.id} className="flex flex-col gap-3 md:flex-row md:items-end">
+                    <div className="flex-1 space-y-2">
+                      <Label>Przedmiot</Label>
+                      <Select
+                        value={selection.subjectId}
+                        onValueChange={(value) => {
+                          setAdminSelections((prev) =>
+                            prev.map((sel) => {
+                              if (sel.id === selection.id) {
+                                const subjectLevels = getLevelsForSubject(value)
+                                const firstLevelId = subjectLevels[0]?.id || ''
+                                return {
+                                  ...sel,
+                                  subjectId: value,
+                                  levelId: firstLevelId,
+                                }
+                              }
+                              return sel
+                            })
+                          )
+                        }}
+                        disabled={loading || deleting}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Wybierz przedmiot" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {allSubjects.map((subject) => (
+                            <SelectItem key={subject.id} value={subject.id}>
+                              {subject.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
+
+                    <div className="flex-1 space-y-2">
+                      <Label>Poziom</Label>
+                      <Select
+                        value={selection.levelId}
+                        onValueChange={(value) => {
+                          setAdminSelections((prev) =>
+                            prev.map((sel) =>
+                              sel.id === selection.id ? { ...sel, levelId: value } : sel
+                            )
+                          )
+                        }}
+                        disabled={loading || deleting || !selection.subjectId}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Wybierz poziom" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {levels.map((level) => (
+                            <SelectItem key={level.id} value={level.id}>
+                              {level.level_name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() =>
+                        setAdminSelections((prev) =>
+                          prev.filter((sel) => sel.id !== selection.id)
+                        )
+                      }
+                      disabled={loading || deleting}
+                      className="md:mb-0"
+                    >
+                      <IconTrash className="h-4 w-4" />
+                    </Button>
                   </div>
-                ))}
+                )
+              })}
+
+              {allSubjects.length === 0 && (
+                <p className="text-sm text-muted-foreground">
+                  Brak dostępnych przedmiotów. Skontaktuj się z administratorem.
+                </p>
+              )}
+
+              <div className="flex justify-between items-center pt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    if (allSubjects.length === 0) return
+                    const firstSubject = allSubjects[0]
+                    const firstLevel = firstSubject.subject_levels[0]
+                    setAdminSelections((prev) => [
+                      ...prev,
+                      {
+                        id: `new-${Date.now()}`,
+                        subjectId: firstSubject.id,
+                        levelId: firstLevel?.id || '',
+                      },
+                    ])
+                  }}
+                  disabled={loading || deleting || allSubjects.length === 0}
+                  className="flex items-center gap-2"
+                >
+                  <IconPlus className="h-4 w-4" />
+                  Dodaj kolejny przedmiot
+                </Button>
               </div>
             </div>
           ) : null}

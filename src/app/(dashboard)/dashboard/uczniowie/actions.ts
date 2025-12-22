@@ -667,7 +667,6 @@ export async function linkParentToStudentAction(
     if (result.success === true) {
       try {
         revalidatePath('/dashboard/uczniowie')
-        revalidatePath('/dashboard/rodzice')
       } catch (revalidateError) {
         // Log but don't fail if revalidation fails
         console.error('[linkParentToStudentAction] Error revalidating paths:', revalidateError)
@@ -746,6 +745,5 @@ export async function unlinkParentFromStudentAction(
 ): Promise<void> {
   await unlinkParentFromStudentLib(parentId, studentId)
   revalidatePath('/dashboard/uczniowie')
-  revalidatePath('/dashboard/rodzice')
 }
 

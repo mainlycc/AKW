@@ -7,7 +7,7 @@ interface TutorSubjectLevel {
   tutor_id: string
   subject_id: string
   subject_level_id: string
-  subjects: { id: string; name: string } | null
+  subjects: { id: string; name: string; color?: string | null } | null
   subject_levels: { id: string; level_name: string; price_per_hour: number } | null
 }
 
@@ -67,7 +67,8 @@ export default async function TutorsPage() {
       subject_level_id,
       subjects (
         id,
-        name
+        name,
+        color
       ),
       subject_levels (
         id,

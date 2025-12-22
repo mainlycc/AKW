@@ -3,17 +3,11 @@
 import { useState, useMemo } from "react"
 import { ColumnDef } from "@tanstack/react-table"
 import { Button } from "@/components/ui/button"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import { ReusableTable } from "@/components/reusable-table"
 import { ReportDetailDialog } from "./report-detail-dialog"
 import { deleteReports } from "./actions"
 import { IconDownload } from "@tabler/icons-react"
+import { formatHours } from "@/lib/utils"
 
 interface ReportEntry {
   id: string
@@ -60,9 +54,6 @@ const statusLabels: Record<string, string> = {
 const months = ['Styczeń', 'Luty', 'Marzec', 'Kwiecień', 'Maj', 'Czerwiec', 'Lipiec', 'Sierpień', 'Wrzesień', 'Październik', 'Listopad', 'Grudzień']
 
 export function TutorReportsClient({ reports, tutors }: TutorReportsClientProps) {
-  const [tutorFilter, setTutorFilter] = useState('all')
-  const [monthFilter, setMonthFilter] = useState('all')
-  const [yearFilter, setYearFilter] = useState('all')
   const [selectedReport, setSelectedReport] = useState<MonthlyReport | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
 
@@ -78,15 +69,6 @@ export function TutorReportsClient({ reports, tutors }: TutorReportsClientProps)
     })
   }, [reports])
 
-  const filteredReports = useMemo(() => {
-    return normalizedReports.filter(report => {
-      if (tutorFilter !== 'all' && report.profiles.id !== tutorFilter) return false
-      if (monthFilter !== 'all' && report.month !== parseInt(monthFilter)) return false
-      if (yearFilter !== 'all' && report.year !== parseInt(yearFilter)) return false
-      return true
-    })
-  }, [normalizedReports, tutorFilter, monthFilter, yearFilter])
-
   const handleRowClick = (report: MonthlyReport) => {
     setSelectedReport(report)
     setDialogOpen(true)
@@ -96,8 +78,6 @@ export function TutorReportsClient({ reports, tutors }: TutorReportsClientProps)
     const reportIds = selectedRows.map(row => row.id)
     await deleteReports(reportIds)
   }
-
-  const uniqueYears = Array.from(new Set(reports.map(r => r.year))).sort((a, b) => b - a)
 
   const columns: ColumnDef<MonthlyReport>[] = useMemo(() => [
     {
@@ -122,7 +102,7 @@ export function TutorReportsClient({ reports, tutors }: TutorReportsClientProps)
       header: () => <div className="text-right">Godziny</div>,
       accessorFn: (row) => row.total_hours,
       cell: ({ row }) => (
-        <div className="text-right">{row.original.total_hours.toFixed(2)} h</div>
+        <div className="text-right">{formatHours(row.original.total_hours)} h</div>
       ),
     },
     {
@@ -155,7 +135,7 @@ export function TutorReportsClient({ reports, tutors }: TutorReportsClientProps)
 
   const handleExportCSV = () => {
     const headers = ['Tutor', 'Miesiąc', 'Rok', 'Godziny', 'Stawka (zł/h)', 'Kwota (zł)', 'Status']
-    const rows = filteredReports.map(r => [
+    const rows = normalizedReports.map(r => [
       r.profiles.full_name,
       r.month,
       r.year,
@@ -176,50 +156,10 @@ export function TutorReportsClient({ reports, tutors }: TutorReportsClientProps)
 
   const totalStats = useMemo(() => {
     return {
-      totalHours: filteredReports.reduce((sum, r) => sum + r.total_hours, 0),
-      totalAmount: filteredReports.reduce((sum, r) => sum + (r.total_amount || 0), 0),
+      totalHours: normalizedReports.reduce((sum, r) => sum + r.total_hours, 0),
+      totalAmount: normalizedReports.reduce((sum, r) => sum + (r.total_amount || 0), 0),
     }
-  }, [filteredReports])
-
-  const filters = (
-    <>
-      <Select value={tutorFilter} onValueChange={setTutorFilter}>
-        <SelectTrigger className="w-[180px]">
-          <SelectValue placeholder="Wszyscy tutorzy" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="all">Wszyscy tutorzy</SelectItem>
-          {tutors.map(t => (
-            <SelectItem key={t.id} value={t.id}>{t.full_name}</SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-
-      <Select value={monthFilter} onValueChange={setMonthFilter}>
-        <SelectTrigger className="w-[180px]">
-          <SelectValue placeholder="Wszystkie miesiące" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="all">Wszystkie miesiące</SelectItem>
-          {months.map((m, i) => (
-            <SelectItem key={i + 1} value={(i + 1).toString()}>{m}</SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-
-      <Select value={yearFilter} onValueChange={setYearFilter}>
-        <SelectTrigger className="w-[180px]">
-          <SelectValue placeholder="Wszystkie lata" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="all">Wszystkie lata</SelectItem>
-          {uniqueYears.map(y => (
-            <SelectItem key={y} value={y.toString()}>{y}</SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    </>
-  )
+  }, [normalizedReports])
 
   return (
     <div className="space-y-4">
@@ -227,11 +167,11 @@ export function TutorReportsClient({ reports, tutors }: TutorReportsClientProps)
       <div className="grid gap-4 md:grid-cols-3">
         <div className="p-4 border rounded">
           <p className="text-sm text-muted-foreground">Liczba raportów</p>
-          <p className="text-2xl font-bold">{filteredReports.length}</p>
+          <p className="text-2xl font-bold">{normalizedReports.length}</p>
         </div>
         <div className="p-4 border rounded">
           <p className="text-sm text-muted-foreground">Suma godzin</p>
-          <p className="text-2xl font-bold">{totalStats.totalHours.toFixed(2)} h</p>
+          <p className="text-2xl font-bold">{formatHours(totalStats.totalHours)} h</p>
         </div>
         <div className="p-4 border rounded">
           <p className="text-sm text-muted-foreground">Suma wypłat</p>
@@ -241,19 +181,34 @@ export function TutorReportsClient({ reports, tutors }: TutorReportsClientProps)
 
       <ReusableTable
         columns={columns}
-        data={filteredReports}
+        data={normalizedReports}
         searchable={true}
-        searchPlaceholder="Szukaj po tutorze..."
+        searchPlaceholder="Szukaj po nazwisku tutora..."
         customGlobalFilterFn={(row, filterValue) => {
-          const tutorName = row.profiles.full_name.toLowerCase()
-          return tutorName.includes(filterValue.toLowerCase())
+          if (!filterValue.trim()) return true
+          
+          const searchLower = filterValue.toLowerCase().trim()
+          const fullNameLower = row.profiles.full_name.toLowerCase()
+          
+          // Wyszukiwanie po pełnym imieniu i nazwisku
+          if (fullNameLower.includes(searchLower)) {
+            return true
+          }
+          
+          // Wyszukiwanie po osobnych słowach (imię lub nazwisko)
+          const nameWords = fullNameLower.split(/\s+/)
+          const searchWords = searchLower.split(/\s+/)
+          
+          // Sprawdź czy wszystkie słowa z wyszukiwania znajdują się w imieniu/nazwisku
+          return searchWords.every(word => 
+            nameWords.some(nameWord => nameWord.includes(word))
+          )
         }}
         onRowClick={handleRowClick}
         enableRowSelection={true}
         enablePagination={true}
         pageSize={50}
         emptyMessage="Brak raportów do wyświetlenia"
-        filters={filters}
         enableDeleteDialog={true}
         onConfirmDelete={handleDeleteSelected}
         deleteDialogTitle="Usuń zaznaczone raporty?"

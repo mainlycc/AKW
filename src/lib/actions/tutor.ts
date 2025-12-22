@@ -27,7 +27,8 @@ export async function getTutorSubjectLevels(tutorId: string) {
       subject_level_id,
       subjects (
         id,
-        name
+        name,
+        color
       ),
       subject_levels (
         id,

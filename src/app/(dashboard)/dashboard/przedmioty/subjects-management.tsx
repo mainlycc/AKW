@@ -3,13 +3,20 @@
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { IconPlus, IconEdit, IconTrash, IconInfoCircle } from "@tabler/icons-react"
+import { IconPlus, IconEdit, IconTrash, IconInfoCircle, IconDotsVertical } from "@tabler/icons-react"
 import { Subject, SubjectLevel } from "@/lib/types/database.types"
 import { SubjectDialog } from "./subject-dialog"
 import { SubjectLevelDialog } from "./subject-level-dialog"
 import { deleteSubject } from "./actions"
 import { Badge } from "@/components/ui/badge"
 import { ConfirmDialog } from "@/components/confirm-dialog"
+import { SubjectBadge } from "@/components/subject-badge"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 
 interface SubjectWithLevels extends Subject {
   subject_levels: SubjectLevel[]
@@ -84,28 +91,37 @@ export function SubjectsManagement({ subjects }: SubjectsManagementProps) {
             <Card key={subject.id}>
               <CardHeader>
                 <div className="flex items-start justify-between">
-                  <div className="space-y-1">
-                    <CardTitle>{subject.name}</CardTitle>
+                  <div className="space-y-1 flex-1">
+                    <div className="flex items-center gap-2">
+                      <SubjectBadge subject={subject} />
+                    </div>
                     {subject.description && (
                       <CardDescription>{subject.description}</CardDescription>
                     )}
                   </div>
-                  <div className="flex gap-1">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => handleEditSubject(subject)}
-                    >
-                      <IconEdit className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => handleDeleteSubject(subject.id)}
-                    >
-                      <IconTrash className="h-4 w-4" />
-                    </Button>
-                  </div>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                      >
+                        <IconDotsVertical className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => handleEditSubject(subject)}>
+                        <IconEdit className="mr-2 h-4 w-4" />
+                        Edytuj
+                      </DropdownMenuItem>
+                      <DropdownMenuItem 
+                        onClick={() => handleDeleteSubject(subject.id)}
+                        className="text-destructive focus:text-destructive"
+                      >
+                        <IconTrash className="mr-2 h-4 w-4" />
+                        Usuń
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
               </CardHeader>
               <CardContent>
@@ -124,14 +140,23 @@ export function SubjectsManagement({ subjects }: SubjectsManagementProps) {
                               <Badge variant="secondary">{level.level_order}</Badge>
                               <span className="text-sm font-medium">{level.level_name}</span>
                             </div>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-6 w-6"
-                              onClick={() => handleEditLevel(level, subject.id)}
-                            >
-                              <IconEdit className="h-3 w-3" />
-                            </Button>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-6 w-6"
+                                >
+                                  <IconDotsVertical className="h-3 w-3" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => handleEditLevel(level, subject.id)}>
+                                  <IconEdit className="mr-2 h-3 w-3" />
+                                  Edytuj
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           </div>
                         ))}
                     </div>

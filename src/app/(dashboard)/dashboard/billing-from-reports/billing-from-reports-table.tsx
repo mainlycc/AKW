@@ -26,6 +26,7 @@ import { toast } from 'sonner'
 import { useState, useMemo, useEffect } from 'react'
 import React from 'react'
 import { PaymentDialog } from '../billing/payment-dialog'
+import { formatHours } from '@/lib/utils'
 import {
   Pagination,
   PaginationContent,
@@ -604,7 +605,7 @@ export function BillingFromReportsTable({
                     )}
                   </TableCell>
                   <TableCell className="text-right">
-                    {parseFloat(billing.hours_this_month.toFixed(2))}h
+                    {formatHours(billing.hours_this_month)}h
                   </TableCell>
                   <TableCell className="text-right">
                     {parseFloat(billing.total_due.toFixed(2))}zł

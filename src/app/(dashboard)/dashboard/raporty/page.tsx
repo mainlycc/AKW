@@ -67,7 +67,7 @@ export default async function ReportsPage() {
   const [tutors, students, subjects] = await Promise.all([
     supabase.from('profiles').select('id, full_name').eq('role', 'tutor').order('full_name'),
     supabase.from('students').select('id, first_name, last_name').order('last_name'),
-    supabase.from('subjects').select('id, name').order('name'),
+    supabase.from('subjects').select('id, name, color').order('name'),
   ])
 
   return (

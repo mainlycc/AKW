@@ -14,6 +14,8 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { updateTutorDetails } from "./actions"
 import { Badge } from "@/components/ui/badge"
+import { formatHours } from "@/lib/utils"
+import { SubjectBadge } from "@/components/subject-badge"
 
 interface TutorWithStats {
   id: string
@@ -22,16 +24,16 @@ interface TutorWithStats {
   phone: string | null
   bio: string | null
   hourly_rate: number | null
-  activeAssignments: number
-  totalHours: number
-  totalSessions: number
+  activeAssignments?: number
+  totalHours?: number
+  totalSessions?: number
 }
 
 interface TutorSubjectLevel {
   id: string
   subject_id: string
   subject_level_id: string
-  subjects: { id: string; name: string } | null
+  subjects: { id: string; name: string; color?: string | null } | null
   subject_levels: { id: string; level_name: string; price_per_hour: number } | null
 }
 
@@ -86,6 +88,12 @@ export function TutorDetailDialog({ open, onClose, tutor, tutorSubjects }: Tutor
 
   if (!tutor) return null
 
+  const stats = {
+    activeAssignments: tutor.activeAssignments ?? 0,
+    totalHours: tutor.totalHours ?? 0,
+    totalSessions: tutor.totalSessions ?? 0,
+  }
+
   // Group subjects by subject name
   const subjectGroups = tutorSubjects.reduce((acc, ts) => {
     const subjectName = ts.subjects?.name || 'Nieznany'
@@ -99,7 +107,7 @@ export function TutorDetailDialog({ open, onClose, tutor, tutorSubjects }: Tutor
   }, {} as Record<string, string[]>)
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
+    <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
       <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Szczegóły tutora</DialogTitle>
@@ -113,15 +121,15 @@ export function TutorDetailDialog({ open, onClose, tutor, tutorSubjects }: Tutor
           <div className="grid grid-cols-3 gap-4">
             <div className="space-y-1">
               <p className="text-sm text-muted-foreground">Aktywne przypisania</p>
-              <p className="text-2xl font-bold">{tutor.activeAssignments}</p>
+              <p className="text-2xl font-bold">{stats.activeAssignments}</p>
             </div>
             <div className="space-y-1">
               <p className="text-sm text-muted-foreground">Liczba sesji</p>
-              <p className="text-2xl font-bold">{tutor.totalSessions}</p>
+              <p className="text-2xl font-bold">{stats.totalSessions}</p>
             </div>
             <div className="space-y-1">
               <p className="text-sm text-muted-foreground">Suma godzin</p>
-              <p className="text-2xl font-bold">{tutor.totalHours.toFixed(2)}h</p>
+              <p className="text-2xl font-bold">{formatHours(stats.totalHours)}h</p>
             </div>
           </div>
 
@@ -132,14 +140,21 @@ export function TutorDetailDialog({ open, onClose, tutor, tutorSubjects }: Tutor
               <p className="text-sm text-muted-foreground">Brak wybranych przedmiotów</p>
             ) : (
               <div className="space-y-2">
-                {Object.entries(subjectGroups).map(([subject, levels]) => (
-                  <div key={subject} className="flex flex-wrap gap-2">
-                    <span className="text-sm font-medium">{subject}:</span>
-                    {levels.map((level, idx) => (
-                      <Badge key={idx} variant="secondary">{level}</Badge>
-                    ))}
-                  </div>
-                ))}
+                {Object.entries(subjectGroups).map(([subjectName, levels]) => {
+                  const subjectData = tutorSubjects.find(ts => ts.subjects?.name === subjectName)?.subjects
+                  return (
+                    <div key={subjectName} className="flex flex-wrap items-center gap-2">
+                      {subjectData ? (
+                        <SubjectBadge subject={subjectData} className="text-xs" />
+                      ) : (
+                        <span className="text-sm font-medium">{subjectName}:</span>
+                      )}
+                      {levels.map((level, idx) => (
+                        <Badge key={idx} variant="outline" className="text-xs">{level}</Badge>
+                      ))}
+                    </div>
+                  )
+                })}
               </div>
             )}
           </div>

@@ -22,6 +22,7 @@ import { Badge } from "@/components/ui/badge"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import type { SessionStatus } from "@/lib/types/database.types"
+import { formatHours } from "@/lib/utils"
 
 interface Session {
   id: string
@@ -178,7 +179,7 @@ export function SessionsManagement({
         </div>
         <div className="flex items-center gap-4">
           <div className="text-sm text-muted-foreground">
-            Suma godzin: <span className="font-bold">{totalHours.toFixed(2)}h</span>
+            Suma godzin: <span className="font-bold">{formatHours(totalHours)}h</span>
           </div>
           <Button onClick={() => setDialogOpen(true)}>
             <IconPlus className="mr-2 h-4 w-4" />

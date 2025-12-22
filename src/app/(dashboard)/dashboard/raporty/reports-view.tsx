@@ -21,6 +21,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { IconDownload } from "@tabler/icons-react"
+import { formatHours } from "@/lib/utils"
 
 interface Session {
   id: string
@@ -151,7 +152,7 @@ export function ReportsView({ sessions, tutors, students, subjects }: ReportsVie
             <CardTitle className="text-sm font-medium">Suma godzin</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{totalStats.totalHours.toFixed(2)}h</div>
+            <div className="text-2xl font-bold">{formatHours(totalStats.totalHours)}h</div>
             <p className="text-xs text-muted-foreground">
               {totalStats.totalSessions} sesji
             </p>
@@ -303,7 +304,7 @@ export function ReportsView({ sessions, tutors, students, subjects }: ReportsVie
                       <TableCell>{row.subjectName}</TableCell>
                       <TableCell className="text-right">{row.sessionCount}</TableCell>
                       <TableCell className="text-right">
-                        {(row.totalMinutes / 60).toFixed(2)}h
+                        {formatHours(row.totalMinutes / 60)}h
                       </TableCell>
                       <TableCell className="text-right">{row.totalCost.toFixed(2)} zł</TableCell>
                     </TableRow>

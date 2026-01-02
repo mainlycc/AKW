@@ -17,6 +17,7 @@ const pageTitles: Record<string, string> = {
   '/dashboard/historia': 'Historia sesji',
   '/dashboard/raporty': 'Raporty godzin',
   '/dashboard/moje-raporty': 'Moje raporty',
+  '/dashboard/moje-raporty/nowy': 'Utwórz raport miesięczny',
   '/dashboard/moje-deklaracje': 'Moje deklaracje',
   '/dashboard/moje-deklaracje/nowa': 'Utwórz deklarację miesięczną',
   '/dashboard/deklaracje-tutorow': 'Deklaracje tutorów',
@@ -36,6 +37,10 @@ export function PageHeader() {
   // Sprawdź czy to dynamiczna ścieżka
   if (pathname.startsWith('/dashboard/tutorzy/') && pathname !== '/dashboard/tutorzy') {
     return <h1 className="text-xl font-semibold">Szczegóły tutora</h1>
+  }
+  
+  if (pathname.startsWith('/dashboard/moje-raporty/') && pathname !== '/dashboard/moje-raporty' && pathname !== '/dashboard/moje-raporty/nowy') {
+    return <h1 className="text-xl font-semibold">Edytuj raport miesięczny</h1>
   }
   
   if (pathname.startsWith('/dashboard/moje-deklaracje/') && pathname !== '/dashboard/moje-deklaracje' && pathname !== '/dashboard/moje-deklaracje/nowa') {

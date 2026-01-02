@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useEffect } from "react"
+import { useState, useMemo, useEffect, useTransition } from "react"
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, getDay } from "date-fns"
 import { pl } from "date-fns/locale"
 import { Button } from "@/components/ui/button"
@@ -16,6 +16,8 @@ import {
 } from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
 import type { SessionStatus } from "@/lib/types/database.types"
+import { updateSessionStatus } from "./actions"
+import { useRouter } from "next/navigation"
 
 interface Session {
   id: string
@@ -41,6 +43,12 @@ export function LessonsCalendar({ sessions, isAdmin = false }: LessonsCalendarPr
   const [currentMonth, setCurrentMonth] = useState(new Date())
   const [selectedDate, setSelectedDate] = useState<Date | null>(null)
   const [selectedSessions, setSelectedSessions] = useState<Session[]>([])
+  const [isPending, startTransition] = useTransition()
+  const [updatingSessions, setUpdatingSessions] = useState<Set<string>>(new Set())
+  const router = useRouter()
+  
+  // Tylko dla tutora (nie admina)
+  const isTutor = !isAdmin
 
   const monthStart = startOfMonth(currentMonth)
   const monthEnd = endOfMonth(currentMonth)
@@ -95,6 +103,40 @@ export function LessonsCalendar({ sessions, isAdmin = false }: LessonsCalendarPr
     })
     return grouped
   }, [sessions])
+
+  // Filtruj przeszłe lekcje ze statusem 'scheduled' (tylko dla tutora)
+  const pastScheduledSessions = useMemo(() => {
+    if (!isTutor) return []
+    
+    const now = new Date()
+    return sessions.filter(session => {
+      const sessionDate = new Date(session.session_date)
+      return session.status === 'scheduled' && sessionDate < now && !updatingSessions.has(session.id)
+    }).sort((a, b) => {
+      const dateA = new Date(a.session_date).getTime()
+      const dateB = new Date(b.session_date).getTime()
+      return dateB - dateA // Najnowsze na górze
+    })
+  }, [sessions, isTutor, updatingSessions])
+
+  // Obsługa aktualizacji statusu sesji
+  const handleStatusUpdate = async (sessionId: string, status: 'completed' | 'cancelled') => {
+    setUpdatingSessions(prev => new Set(prev).add(sessionId))
+    
+    startTransition(async () => {
+      try {
+        await updateSessionStatus(sessionId, status)
+        router.refresh()
+      } catch (error) {
+        console.error('Error updating session status:', error)
+        setUpdatingSessions(prev => {
+          const newSet = new Set(prev)
+          newSet.delete(sessionId)
+          return newSet
+        })
+      }
+    })
+  }
 
   const handleDateClick = (date: Date) => {
     const dateKey = format(date, 'yyyy-MM-dd')
@@ -334,6 +376,77 @@ export function LessonsCalendar({ sessions, isAdmin = false }: LessonsCalendarPr
           </div>
         </CardContent>
       </Card>
+
+      {/* Sekcja potwierdzania przeszłych lekcji (tylko dla tutora) */}
+      {isTutor && pastScheduledSessions.length > 0 && (
+        <Card className="border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/20">
+          <CardHeader>
+            <CardTitle className="text-lg font-semibold text-amber-900 dark:text-amber-100">
+              Potwierdź status lekcji
+            </CardTitle>
+            <CardDescription className="text-amber-800 dark:text-amber-200">
+              Poniżej znajdują się lekcje, których termin już minął. Proszę potwierdzić czy się odbyły.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {pastScheduledSessions.map((session) => {
+                const studentName = `${session.students.first_name} ${session.students.last_name}`
+                const sessionDate = new Date(session.session_date)
+                const isUpdating = updatingSessions.has(session.id)
+                
+                return (
+                  <Card key={session.id} className="bg-background">
+                    <CardContent className="p-4">
+                      <div className="space-y-3">
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex-1 space-y-1">
+                            <p className="font-medium text-base">
+                              Czy lekcja z <span className="font-semibold text-primary">{studentName}</span> odbyła się?
+                            </p>
+                            <div className="text-sm text-muted-foreground space-y-1">
+                              <div>
+                                <span className="font-medium">Data i godzina: </span>
+                                {format(sessionDate, 'd MMMM yyyy, HH:mm', { locale: pl })}
+                              </div>
+                              <div>
+                                <span className="font-medium">Przedmiot: </span>
+                                {session.student_assignments.subjects.name} - {session.student_assignments.subject_levels.level_name}
+                              </div>
+                              <div>
+                                <span className="font-medium">Czas trwania: </span>
+                                {session.duration_minutes} minut
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex gap-2 pt-2">
+                          <Button
+                            onClick={() => handleStatusUpdate(session.id, 'completed')}
+                            disabled={isUpdating || isPending}
+                            className="flex-1 bg-green-500/20 text-green-700 border-green-500 hover:bg-green-500/30 dark:text-green-400 dark:border-green-500"
+                            variant="outline"
+                          >
+                            {isUpdating ? 'Aktualizowanie...' : 'Odbyta'}
+                          </Button>
+                          <Button
+                            onClick={() => handleStatusUpdate(session.id, 'cancelled')}
+                            disabled={isUpdating || isPending}
+                            className="flex-1 bg-red-500/20 text-red-700 border-red-500 hover:bg-red-500/30 dark:text-red-400 dark:border-red-500"
+                            variant="outline"
+                          >
+                            {isUpdating ? 'Aktualizowanie...' : 'Odwołana'}
+                          </Button>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Dialog ze szczegółami sesji dla wybranego dnia */}
       <Dialog open={selectedDate !== null} onOpenChange={(open) => !open && setSelectedDate(null)}>

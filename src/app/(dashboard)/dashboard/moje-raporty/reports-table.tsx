@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from "react"
+import Link from "next/link"
 import {
   Table,
   TableBody,
@@ -11,7 +12,6 @@ import {
 } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { ReportDialog } from "./report-dialog"
 import { deleteReport, type ReportStatus } from "./actions"
 import { IconPlus, IconTrash, IconPencil } from "@tabler/icons-react"
 import { ConfirmDialog } from "@/components/confirm-dialog"
@@ -58,14 +58,8 @@ const statusVariants: Record<ReportStatus, "default" | "secondary" | "outline" |
 const months = ['Styczeń', 'Luty', 'Marzec', 'Kwiecień', 'Maj', 'Czerwiec', 'Lipiec', 'Sierpień', 'Wrzesień', 'Październik', 'Listopad', 'Grudzień']
 
 export function ReportsTable({ reports, tutorId, students }: ReportsTableProps) {
-  const [dialogOpen, setDialogOpen] = useState(false)
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false)
   const [reportToDelete, setReportToDelete] = useState<string | null>(null)
-  const [initialReport, setInitialReport] = useState<{
-    month: number
-    year: number
-    entries: { student_id: string; hours: number }[]
-  } | null>(null)
 
   const handleDelete = async (id: string) => {
     setReportToDelete(id)
@@ -79,22 +73,15 @@ export function ReportsTable({ reports, tutorId, students }: ReportsTableProps) 
     }
   }
 
-  const handleEdit = (report: MonthlyReport) => {
-    setInitialReport({
-      month: report.month,
-      year: report.year,
-      entries: (report.monthly_report_entries || []).map(e => ({ student_id: e.student_id, hours: e.hours })),
-    })
-    setDialogOpen(true)
-  }
-
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
-        <Button onClick={() => setDialogOpen(true)}>
-          <IconPlus className="mr-2 h-4 w-4" />
-          Utwórz raport
-        </Button>
+        <Link href="/dashboard/moje-raporty/nowy">
+          <Button>
+            <IconPlus className="mr-2 h-4 w-4" />
+            Utwórz raport
+          </Button>
+        </Link>
       </div>
 
       <div className="rounded-md border">
@@ -137,14 +124,15 @@ export function ReportsTable({ reports, tutorId, students }: ReportsTableProps) 
                   <TableCell className="text-right">
                     {report.status === 'draft' && (
                       <div className="flex justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleEdit(report)}
-                          title="Edytuj wersję roboczą"
-                        >
-                          <IconPencil className="h-4 w-4" />
-                        </Button>
+                        <Link href={`/dashboard/moje-raporty/${report.id}`}>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            title="Edytuj wersję roboczą"
+                          >
+                            <IconPencil className="h-4 w-4" />
+                          </Button>
+                        </Link>
                         <Button
                           variant="ghost"
                           size="icon"
@@ -162,17 +150,6 @@ export function ReportsTable({ reports, tutorId, students }: ReportsTableProps) 
           </TableBody>
         </Table>
       </div>
-
-      <ReportDialog
-        open={dialogOpen}
-        onClose={() => {
-          setDialogOpen(false)
-          setInitialReport(null)
-        }}
-        tutorId={tutorId}
-        students={students}
-        initialReport={initialReport || undefined}
-      />
 
       <ConfirmDialog
         open={confirmDialogOpen}

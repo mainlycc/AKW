@@ -194,3 +194,81 @@ export async function deleteReport(reportId: string) {
   revalidatePath('/dashboard/moje-raporty')
 }
 
+export interface SessionForReport {
+  id: string
+  session_date: string
+  duration_minutes: number
+  status: string
+  student_id: string
+  students: {
+    id: string
+    first_name: string
+    last_name: string
+  }
+}
+
+export async function getSessionsForReport(
+  tutorId: string,
+  month: number,
+  year: number
+): Promise<SessionForReport[]> {
+  const supabase = await createClient()
+
+  // Oblicz daty początku i końca miesiąca
+  const startDate = new Date(year, month - 1, 1)
+  startDate.setHours(0, 0, 0, 0)
+  
+  const endDate = new Date(year, month, 0)
+  endDate.setHours(23, 59, 59, 999)
+
+  // Pobierz sesje dla danego tutora w wybranym miesiącu
+  const { data: rawSessions, error } = await supabase
+    .from('tutoring_sessions')
+    .select(`
+      id,
+      session_date,
+      duration_minutes,
+      status,
+      student_id,
+      students!tutoring_sessions_student_id_fkey (
+        id,
+        first_name,
+        last_name
+      )
+    `)
+    .eq('tutor_id', tutorId)
+    .gte('session_date', startDate.toISOString())
+    .lte('session_date', endDate.toISOString())
+    .order('session_date', { ascending: true })
+
+  if (error) {
+    console.error('Error fetching sessions for report:', error)
+    return []
+  }
+
+  // Przekształć sesje do oczekiwanego formatu
+  const sessions = rawSessions?.map((session: {
+    id: string
+    session_date: string
+    duration_minutes: number | null
+    status: string
+    student_id: string
+    students: { id: string; first_name: string; last_name: string } | { id: string; first_name: string; last_name: string }[] | null
+  }) => {
+    const student = Array.isArray(session.students)
+      ? session.students[0]
+      : session.students
+
+    return {
+      id: session.id,
+      session_date: session.session_date,
+      duration_minutes: session.duration_minutes ?? 0,
+      status: session.status,
+      student_id: session.student_id,
+      students: student || { id: '', first_name: '', last_name: '' },
+    }
+  }) || []
+
+  return sessions
+}
+

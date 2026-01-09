@@ -13,6 +13,7 @@ export type NotificationType =
   | 'report_submitted'
   | 'report_approved'
   | 'report_paid'
+  | 'report_reminder'
   | 'session_created'
   | 'session_confirmation_required'
 

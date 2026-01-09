@@ -29,6 +29,7 @@ const pageTitles: Record<string, string> = {
   '/dashboard/payments/new': 'Dodaj płatność',
   '/dashboard/powiadomienia': 'Powiadomienia',
   '/dashboard/zaproszenia': 'Zaproszenia',
+  '/dashboard/regulamin': 'Regulamin',
 }
 
 export function PageHeader() {

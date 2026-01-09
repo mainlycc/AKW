@@ -294,3 +294,132 @@ export async function exportReportsToCSV(reports: {
   return csv
 }
 
+const monthNames = [
+  'Styczeń', 'Luty', 'Marzec', 'Kwiecień', 'Maj', 'Czerwiec',
+  'Lipiec', 'Sierpień', 'Wrzesień', 'Październik', 'Listopad', 'Grudzień'
+]
+
+/**
+ * Wysyła przypomnienie o raporcie do pojedynczego tutora
+ */
+export async function sendReportReminderToTutor(tutorId: string, month: number, year: number) {
+  const supabase = await createClient()
+  
+  // Pobierz dane tutora
+  const { data: tutor, error: tutorError } = await supabase
+    .from('profiles')
+    .select('id, full_name')
+    .eq('id', tutorId)
+    .eq('role', 'tutor')
+    .single()
+
+  if (tutorError || !tutor) {
+    throw new Error(`Tutor not found: ${tutorError?.message || 'Unknown error'}`)
+  }
+
+  const monthName = monthNames[month - 1] || `Miesiąc ${month}`
+
+  // Utwórz powiadomienie
+  try {
+    await createNotification({
+      userId: tutorId,
+      type: 'report_reminder',
+      title: 'Przypomnienie o raporcie miesięcznym',
+      message: `Przypominamy o złożeniu raportu miesięcznego za okres ${monthName} ${year}.`,
+      metadata: {
+        month,
+        year,
+        month_name: monthName,
+      },
+    })
+
+    return { success: true }
+  } catch (error) {
+    console.error('Failed to send reminder notification:', error)
+    throw error
+  }
+}
+
+/**
+ * Wysyła przypomnienia o raporcie do wszystkich tutorów, którzy nie złożyli raportu za dany miesiąc
+ */
+export async function sendReportRemindersToAllMissing(month: number, year: number) {
+  const supabase = await createClient()
+  
+  // Pobierz wszystkich tutorów
+  const { data: allTutors, error: tutorsError } = await supabase
+    .from('profiles')
+    .select('id, full_name')
+    .eq('role', 'tutor')
+    .order('full_name')
+
+  if (tutorsError) {
+    throw new Error(`Error fetching tutors: ${tutorsError.message}`)
+  }
+
+  if (!allTutors || allTutors.length === 0) {
+    return { success: true, sent: 0, errors: [] }
+  }
+
+  // Pobierz tutorów, którzy już złożyli raport za ten okres (status submitted, approved lub paid)
+  const { data: existingReports, error: reportsError } = await supabase
+    .from('monthly_reports')
+    .select('tutor_id')
+    .eq('month', month)
+    .eq('year', year)
+    .in('status', ['submitted', 'approved', 'paid'])
+
+  if (reportsError) {
+    throw new Error(`Error fetching reports: ${reportsError.message}`)
+  }
+
+  // Utwórz zbiór ID tutorów, którzy już złożyli raport
+  const tutorsWithReports = new Set(existingReports?.map(r => r.tutor_id) || [])
+
+  // Znajdź tutorów bez raportu
+  const tutorsWithoutReports = allTutors.filter(tutor => !tutorsWithReports.has(tutor.id))
+
+  if (tutorsWithoutReports.length === 0) {
+    return { success: true, sent: 0, errors: [], message: 'Wszyscy tutorzy złożyli już raport za ten okres.' }
+  }
+
+  const monthName = monthNames[month - 1] || `Miesiąc ${month}`
+  const errors: string[] = []
+  let sentCount = 0
+
+  // Wyślij przypomnienia do każdego tutora bez raportu
+  for (const tutor of tutorsWithoutReports) {
+    try {
+      await createNotification({
+        userId: tutor.id,
+        type: 'report_reminder',
+        title: 'Przypomnienie o raporcie miesięcznym',
+        message: `Przypominamy o złożeniu raportu miesięcznego za okres ${monthName} ${year}.`,
+        metadata: {
+          month,
+          year,
+          month_name: monthName,
+        },
+        skipRevalidate: true, // Skip individual revalidations, do one at the end
+      })
+      sentCount++
+    } catch (error) {
+      const errorMessage = `Błąd przy wysyłaniu przypomnienia do ${tutor.full_name}: ${error instanceof Error ? error.message : 'Nieznany błąd'}`
+      console.error(errorMessage, error)
+      errors.push(errorMessage)
+    }
+  }
+
+  // Revalidate paths after all notifications are created
+  revalidatePath('/dashboard/raporty-tutorow')
+  revalidatePath('/dashboard/powiadomienia')
+  revalidatePath('/dashboard', 'layout')
+
+  return {
+    success: errors.length === 0,
+    sent: sentCount,
+    errors,
+    message: `Wysłano ${sentCount} przypomnień do tutorów bez raportu za ${monthName} ${year}.`,
+  }
+}
+

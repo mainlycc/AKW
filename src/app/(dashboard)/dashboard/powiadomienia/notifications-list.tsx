@@ -66,6 +66,7 @@ export function NotificationsList({ initialNotifications }: NotificationsListPro
       case 'assignment_status_changed':
         return '/dashboard/przypisania'
       case 'report_submitted':
+      case 'report_reminder':
         return '/dashboard/raporty-tutorow'
       case 'report_approved':
       case 'report_paid':
@@ -88,6 +89,7 @@ export function NotificationsList({ initialNotifications }: NotificationsListPro
       report_submitted: 'Raport',
       report_approved: 'Raport',
       report_paid: 'Raport',
+      report_reminder: 'Raport',
       session_created: 'Sesja',
       session_confirmation_required: 'Sesja',
     }

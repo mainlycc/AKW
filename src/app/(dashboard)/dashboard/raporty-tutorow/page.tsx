@@ -130,6 +130,9 @@ export default async function TutorReportsPage() {
     )
   }
 
+  // Get tutors without submitted/approved/paid reports (for reminder functionality)
+  // This will be used by the client component to show which tutors need reminders
+
   console.log('[TutorReportsPage] Rendering ReportsManagement with', {
     reportsCount: reports?.length || 0,
     tutorsCount: tutors?.length || 0,

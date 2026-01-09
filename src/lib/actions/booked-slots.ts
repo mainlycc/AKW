@@ -50,7 +50,8 @@ export async function listBookedSlots(params: {
     .order('weekday')
     .order('start_time')
 
-  if (params.scope === 'tutor' && params.tutorId) {
+  // Filtruj po tutorId jeśli jest podane (dla obu scope: 'tutor' i 'admin')
+  if (params.tutorId) {
     query = query.eq('tutor_id', params.tutorId)
   }
 

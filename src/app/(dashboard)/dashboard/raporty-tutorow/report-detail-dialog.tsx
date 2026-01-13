@@ -61,7 +61,7 @@ export function ReportDetailDialog({ open, onClose, report }: ReportDetailDialog
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
+      <DialogContent className="w-[95vw] sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Szczegóły raportu</DialogTitle>
           <DialogDescription>

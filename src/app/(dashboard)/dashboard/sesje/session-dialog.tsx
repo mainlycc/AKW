@@ -186,7 +186,7 @@ export function SessionDialog({ open, onClose, assignments, userId }: SessionDia
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-[560px]">
+      <DialogContent className="w-[95vw] sm:max-w-[560px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Dodaj sesję korepetycji</DialogTitle>
           <DialogDescription>

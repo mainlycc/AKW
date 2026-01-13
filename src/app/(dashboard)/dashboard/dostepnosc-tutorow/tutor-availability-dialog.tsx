@@ -190,7 +190,7 @@ export function TutorAvailabilityDialog({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-[98vw] w-full max-h-[90vh] overflow-y-auto">
+      <DialogContent className="w-[95vw] sm:max-w-[98vw] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Podgląd dostępności tutora</DialogTitle>
           <DialogDescription>

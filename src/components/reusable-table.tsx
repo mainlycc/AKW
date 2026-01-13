@@ -279,9 +279,9 @@ export function ReusableTable<TData, TValue>({
     <div className="space-y-4">
       {/* Toolbar */}
       <div className="space-y-3">
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
           {searchable && (
-            <div className="relative flex-1 min-w-[280px] max-w-md">
+            <div className="relative flex-1 min-w-0 sm:min-w-[200px] max-w-full sm:max-w-md">
               <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder={searchPlaceholder}
@@ -292,7 +292,7 @@ export function ReusableTable<TData, TValue>({
             </div>
           )}
           {filters && <div className="flex items-center gap-2 flex-wrap">{filters}</div>}
-          <div className="flex items-center gap-2 ml-auto">
+          <div className="flex items-center gap-2 sm:ml-auto flex-wrap">
             {customToolbarButtons && customToolbarButtons(table.getFilteredSelectedRowModel().rows.length)}
             {(onDeleteSelected || enableDeleteDialog) && 
              table.getFilteredSelectedRowModel().rows.length > 0 && (

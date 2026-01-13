@@ -279,7 +279,7 @@ export function ReportForm({ tutorId, students, initialReport }: ReportFormProps
       </Link>
 
       {/* Wybór miesiąca i roku */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label>Miesiąc</Label>
           <Select value={month.toString()} onValueChange={(v) => setMonth(parseInt(v))} disabled={!!initialReport}>

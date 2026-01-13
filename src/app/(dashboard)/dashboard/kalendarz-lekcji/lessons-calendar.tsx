@@ -450,7 +450,7 @@ export function LessonsCalendar({ sessions, isAdmin = false }: LessonsCalendarPr
 
       {/* Dialog ze szczegółami sesji dla wybranego dnia */}
       <Dialog open={selectedDate !== null} onOpenChange={(open) => !open && setSelectedDate(null)}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="w-[95vw] sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               Sesje z dnia {selectedDate && format(selectedDate, 'd MMMM yyyy', { locale: pl })}

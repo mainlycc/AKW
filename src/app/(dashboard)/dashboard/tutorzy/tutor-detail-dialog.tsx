@@ -108,7 +108,7 @@ export function TutorDetailDialog({ open, onClose, tutor, tutorSubjects }: Tutor
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
-      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+      <DialogContent className="w-[95vw] sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Szczegóły tutora</DialogTitle>
           <DialogDescription>

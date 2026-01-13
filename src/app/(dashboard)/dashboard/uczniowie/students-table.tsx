@@ -262,48 +262,59 @@ export function StudentsTable({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-2">
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 sm:gap-4">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 flex-1 min-w-0">
           <Input
             placeholder="Szukaj ucznia..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="max-w-sm"
+            className="w-full sm:max-w-sm"
           />
-          {isTutor ? (
-            <Button 
-              variant="outline" 
-              size="sm"
-              onClick={() => setTutorGroupMessageDialogOpen(true)}
-              disabled={students.length === 0}
-            >
-              <IconMail className="mr-2 h-4 w-4" />
-              Wyślij do wszystkich uczniów {students.length > 0 && `(${students.length})`}
-            </Button>
-          ) : (
-            <>
+          <div className="flex items-center gap-2 flex-wrap">
+            {isTutor ? (
               <Button 
                 variant="outline" 
                 size="sm"
-                onClick={() => setGroupMessageDialogOpen(true)}
-                disabled={selectedIds.size === 0}
+                onClick={() => setTutorGroupMessageDialogOpen(true)}
+                disabled={students.length === 0}
+                className="flex-1 sm:flex-initial"
               >
                 <IconMail className="mr-2 h-4 w-4" />
-                Wyślij wiadomość grupową {selectedIds.size > 0 && `(${selectedIds.size})`}
+                <span className="hidden sm:inline">Wyślij do wszystkich uczniów</span>
+                <span className="sm:hidden">Wyślij wszystkim</span>
+                {students.length > 0 && ` (${students.length})`}
               </Button>
-              <Button 
-                variant="destructive" 
-                size="sm"
-                onClick={handleDeleteSelected}
-                disabled={selectedIds.size === 0}
-              >
-                <IconTrash className="mr-2 h-4 w-4" />
-                Usuń zaznaczone {selectedIds.size > 0 && `(${selectedIds.size})`}
-              </Button>
-            </>
-          )}
+            ) : (
+              <>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => setGroupMessageDialogOpen(true)}
+                  disabled={selectedIds.size === 0}
+                  className="flex-1 sm:flex-initial"
+                >
+                  <IconMail className="mr-2 h-4 w-4" />
+                  <span className="hidden sm:inline">Wyślij wiadomość grupową</span>
+                  <span className="sm:hidden">Wiadomość</span>
+                  {selectedIds.size > 0 && ` (${selectedIds.size})`}
+                </Button>
+                <Button 
+                  variant="destructive" 
+                  size="sm"
+                  onClick={handleDeleteSelected}
+                  disabled={selectedIds.size === 0}
+                  className="flex-1 sm:flex-initial"
+                >
+                  <IconTrash className="mr-2 h-4 w-4" />
+                  <span className="hidden sm:inline">Usuń zaznaczone</span>
+                  <span className="sm:hidden">Usuń</span>
+                  {selectedIds.size > 0 && ` (${selectedIds.size})`}
+                </Button>
+              </>
+            )}
+          </div>
         </div>
-        <Button onClick={handleAdd}>
+        <Button onClick={handleAdd} className="w-full sm:w-auto">
           <IconPlus className="mr-2 h-4 w-4" />
           Dodaj ucznia
         </Button>

@@ -68,7 +68,7 @@ export function SubjectLevelDialog({ open, onClose, level, subjectId }: SubjectL
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="w-[95vw] sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Edytuj nazwę poziomu</DialogTitle>
           <DialogDescription>

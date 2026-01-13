@@ -51,7 +51,7 @@ export function InvitationDialog({ open, onOpenChange }: InvitationDialogProps) 
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-[525px]">
+      <DialogContent className="w-[95vw] sm:max-w-[525px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Wyślij zaproszenie email</DialogTitle>
           <DialogDescription>

@@ -85,7 +85,7 @@ export function SubjectDialog({ open, onClose, subject }: SubjectDialogProps) {
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="w-[95vw] sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
             {subject ? 'Edytuj przedmiot' : 'Dodaj nowy przedmiot'}

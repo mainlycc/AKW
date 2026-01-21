@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createNotification } from '@/lib/actions/notifications'
+import { sendReportReminderEmail } from '@/lib/email/send'
 
 export async function approveReport(reportId: string, adminId: string) {
   const supabase = await createClient()
@@ -305,10 +306,10 @@ const monthNames = [
 export async function sendReportReminderToTutor(tutorId: string, month: number, year: number) {
   const supabase = await createClient()
   
-  // Pobierz dane tutora
+  // Pobierz dane tutora z emailem
   const { data: tutor, error: tutorError } = await supabase
     .from('profiles')
-    .select('id, full_name')
+    .select('id, full_name, email')
     .eq('id', tutorId)
     .eq('role', 'tutor')
     .single()
@@ -333,6 +334,45 @@ export async function sendReportReminderToTutor(tutorId: string, month: number, 
       },
     })
 
+    // Wyślij email, jeśli tutor ma adres email
+    if (tutor.email && tutor.email.trim()) {
+      try {
+        const emailResult = await sendReportReminderEmail({
+          to: tutor.email,
+          tutorName: tutor.full_name,
+          month,
+          year,
+        })
+
+        if (!emailResult.success) {
+          console.error('Failed to send reminder email:', {
+            tutorId,
+            email: tutor.email,
+            error: emailResult.error,
+          })
+          // Nie przerywamy procesu - powiadomienie zostało wysłane
+        } else {
+          console.log('Reminder email sent successfully:', {
+            tutorId,
+            email: tutor.email,
+            messageId: emailResult.messageId,
+          })
+        }
+      } catch (emailError) {
+        console.error('Error sending reminder email:', {
+          tutorId,
+          email: tutor.email,
+          error: emailError,
+        })
+        // Nie przerywamy procesu - powiadomienie zostało wysłane
+      }
+    } else {
+      console.warn('Tutor does not have email address:', {
+        tutorId,
+        tutorName: tutor.full_name,
+      })
+    }
+
     return { success: true }
   } catch (error) {
     console.error('Failed to send reminder notification:', error)
@@ -346,10 +386,10 @@ export async function sendReportReminderToTutor(tutorId: string, month: number, 
 export async function sendReportRemindersToAllMissing(month: number, year: number) {
   const supabase = await createClient()
   
-  // Pobierz wszystkich tutorów
+  // Pobierz wszystkich tutorów z emailami
   const { data: allTutors, error: tutorsError } = await supabase
     .from('profiles')
-    .select('id, full_name')
+    .select('id, full_name, email')
     .eq('role', 'tutor')
     .order('full_name')
 
@@ -390,6 +430,7 @@ export async function sendReportRemindersToAllMissing(month: number, year: numbe
   // Wyślij przypomnienia do każdego tutora bez raportu
   for (const tutor of tutorsWithoutReports) {
     try {
+      // Utwórz powiadomienie
       await createNotification({
         userId: tutor.id,
         type: 'report_reminder',
@@ -402,6 +443,46 @@ export async function sendReportRemindersToAllMissing(month: number, year: numbe
         },
         skipRevalidate: true, // Skip individual revalidations, do one at the end
       })
+
+      // Wyślij email, jeśli tutor ma adres email
+      if (tutor.email && tutor.email.trim()) {
+        try {
+          const emailResult = await sendReportReminderEmail({
+            to: tutor.email,
+            tutorName: tutor.full_name,
+            month,
+            year,
+          })
+
+          if (!emailResult.success) {
+            console.error('Failed to send reminder email:', {
+              tutorId: tutor.id,
+              email: tutor.email,
+              error: emailResult.error,
+            })
+            // Nie przerywamy procesu - powiadomienie zostało wysłane
+          } else {
+            console.log('Reminder email sent successfully:', {
+              tutorId: tutor.id,
+              email: tutor.email,
+              messageId: emailResult.messageId,
+            })
+          }
+        } catch (emailError) {
+          console.error('Error sending reminder email:', {
+            tutorId: tutor.id,
+            email: tutor.email,
+            error: emailError,
+          })
+          // Nie przerywamy procesu - powiadomienie zostało wysłane
+        }
+      } else {
+        console.warn('Tutor does not have email address:', {
+          tutorId: tutor.id,
+          tutorName: tutor.full_name,
+        })
+      }
+
       sentCount++
     } catch (error) {
       const errorMessage = `Błąd przy wysyłaniu przypomnienia do ${tutor.full_name}: ${error instanceof Error ? error.message : 'Nieznany błąd'}`

@@ -747,3 +747,69 @@ export async function unlinkParentFromStudentAction(
   revalidatePath('/dashboard/uczniowie')
 }
 
+/**
+ * Get full student data with all relations
+ */
+export async function getStudentWithRelations(studentId: string) {
+  const supabase = await createClient()
+  
+  const { data, error } = await supabase
+    .from('students')
+    .select(`
+      *,
+      student_parents (
+        id,
+        is_primary,
+        parents (
+          id,
+          first_name,
+          last_name,
+          email,
+          phone,
+          parent_type
+        )
+      ),
+      student_notes (
+        id,
+        content,
+        created_at,
+        profiles (
+          id,
+          full_name
+        )
+      ),
+      student_subjects (
+        subject_level_id,
+        subjects (
+          name
+        ),
+        subject_levels (
+          level_name
+        )
+      ),
+      student_assignments (
+        id,
+        tutor_id,
+        status,
+        profiles!student_assignments_tutor_id_fkey (
+          id,
+          full_name,
+          email
+        ),
+        subjects (
+          id,
+          name
+        ),
+        subject_levels (
+          id,
+          level_name
+        )
+      )
+    `)
+    .eq('id', studentId)
+    .single()
+
+  if (error) throw error
+  
+  return data
+}

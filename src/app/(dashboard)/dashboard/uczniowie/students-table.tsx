@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/badge"
 import { Student } from "@/lib/types/database.types"
 import { SubjectBadge } from "@/components/subject-badge"
 import { StudentDialog } from "./student-dialog"
+import { StudentNameLink } from "@/components/student-name-link"
 import { GroupMessageDialog } from "./group-message-dialog"
 import { TutorGroupMessageDialog } from "./tutor-group-message-dialog"
 import { deleteStudent } from "./actions"
@@ -407,7 +408,18 @@ export function StudentsTable({
                       />
                     </TableCell>
                     <TableCell className="font-medium">
-                      {student.first_name} {student.last_name}
+                      <StudentNameLink
+                        student={student}
+                        studentParents={student.student_parents}
+                        studentNotes={student.student_notes}
+                        studentSubjects={student.student_subjects?.map(ss => ss.subject_level_id) || []}
+                        allParents={allParents}
+                        allSubjects={allSubjects}
+                        isTutor={isTutor}
+                        tutorId={tutorId}
+                        tutorSubjectLevels={tutorSubjectLevels}
+                        currentUserId={currentUserId}
+                      />
                     </TableCell>
                     <TableCell>
                       {parents.length > 0 ? (

@@ -29,6 +29,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { TutorDetailDialog } from "../tutor-detail-dialog"
+import { StudentNameLink } from "@/components/student-name-link"
 
 interface Tutor {
   id: string
@@ -373,7 +374,9 @@ export function TutorDetailsView({
                     return (
                       <TableRow key={student.id}>
                         <TableCell className="font-medium">
-                          {student.first_name} {student.last_name}
+                          <StudentNameLink
+                            student={student}
+                          />
                         </TableCell>
                         <TableCell>{parentInfo.email}</TableCell>
                         <TableCell>{parentInfo.phone || '-'}</TableCell>

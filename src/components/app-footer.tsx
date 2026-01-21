@@ -12,6 +12,13 @@ export function AppFooter() {
           >
             Regulamin
           </Link>
+          <span className="mx-2">•</span>
+          <Link 
+            href="/dashboard/polityka-prywatnosci" 
+            className="underline-offset-4 hover:underline"
+          >
+            Polityka Prywatności
+          </Link>
         </div>
       </div>
     </footer>

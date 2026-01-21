@@ -23,6 +23,7 @@ import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import type { SessionStatus } from "@/lib/types/database.types"
 import { formatHours } from "@/lib/utils"
+import { StudentNameLink } from "@/components/student-name-link"
 
 interface Session {
   id: string
@@ -228,7 +229,14 @@ export function SessionsManagement({
                     {formatDate(session.session_date)}
                   </TableCell>
                   <TableCell>
-                    {session.students?.first_name || ''} {session.students?.last_name || ''}
+                    {session.students ? (
+                      <StudentNameLink
+                        student={session.students}
+                        className="font-medium"
+                      />
+                    ) : (
+                      '-'
+                    )}
                   </TableCell>
                   {isAdmin && <TableCell>{session.profiles?.full_name || '-'}</TableCell>}
                   <TableCell>{session.student_assignments?.subjects?.name || '-'}</TableCell>

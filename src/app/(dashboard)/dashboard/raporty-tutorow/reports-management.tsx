@@ -127,10 +127,16 @@ export function ReportsManagement({ reports, tutors = [], adminId }: ReportsMana
   }, [router])
 
   const filteredReports = useMemo(() => {
-    if (!search.trim()) return reports
+    // Najpierw filtruj po wybranym okresie
+    let filtered = reports.filter(report => 
+      report.month === reminderMonth && report.year === reminderYear
+    )
+    
+    // Następnie filtruj po wyszukiwaniu (jeśli jest)
+    if (!search.trim()) return filtered
     
     const searchLower = search.toLowerCase().trim()
-    return reports.filter(report => {
+    return filtered.filter(report => {
       const fullNameLower = report.profiles.full_name.toLowerCase()
       
       // Wyszukiwanie po pełnym imieniu i nazwisku
@@ -147,7 +153,7 @@ export function ReportsManagement({ reports, tutors = [], adminId }: ReportsMana
         nameWords.some(nameWord => nameWord.includes(word))
       )
     })
-  }, [reports, search])
+  }, [reports, search, reminderMonth, reminderYear])
 
   const handleRowClick = (report: MonthlyReport) => {
     setSelectedReport(report)
@@ -155,7 +161,7 @@ export function ReportsManagement({ reports, tutors = [], adminId }: ReportsMana
   }
 
   const handleExportCSV = () => {
-    const headers = ['Tutor', 'Miesiąc', 'Rok', 'Godziny', 'Stawka (zł/h)', 'Kwota (zł)', 'Status']
+    const headers = ['Tutor', 'Miesiąc', 'Rok', 'Godziny', 'Stawka (zł/h)', 'Kwota (zł)']
     const rows = filteredReports.map(r => [
       r.profiles.full_name,
       r.month,
@@ -163,7 +169,6 @@ export function ReportsManagement({ reports, tutors = [], adminId }: ReportsMana
       r.total_hours.toFixed(2),
       (r.profiles.hourly_rate || 0).toFixed(2),
       (r.total_amount || 0).toFixed(2),
-      statusLabels[r.status],
     ])
 
     const csv = [headers, ...rows].map(row => row.join(',')).join('\n')
@@ -446,12 +451,11 @@ export function ReportsManagement({ reports, tutors = [], adminId }: ReportsMana
           <div className="rounded-md border">
             <Table className="w-full">
               <colgroup>
-                <col className="w-[16.66%]" />
-                <col className="w-[16.66%]" />
-                <col className="w-[16.66%]" />
-                <col className="w-[16.66%]" />
-                <col className="w-[16.66%]" />
-                <col className="w-[16.66%]" />
+                <col className="w-[20%]" />
+                <col className="w-[20%]" />
+                <col className="w-[20%]" />
+                <col className="w-[20%]" />
+                <col className="w-[20%]" />
               </colgroup>
               <TableHeader>
                 <TableRow>
@@ -460,13 +464,12 @@ export function ReportsManagement({ reports, tutors = [], adminId }: ReportsMana
                   <TableHead className="px-4 text-right">Godziny</TableHead>
                   <TableHead className="px-4 text-right">Stawka</TableHead>
                   <TableHead className="px-4 text-right">Kwota</TableHead>
-                  <TableHead className="px-4">Status</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredReports.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center text-muted-foreground">
+                    <TableCell colSpan={5} className="text-center text-muted-foreground">
                       Brak raportów do wyświetlenia
                     </TableCell>
                   </TableRow>
@@ -485,11 +488,6 @@ export function ReportsManagement({ reports, tutors = [], adminId }: ReportsMana
                       </TableCell>
                       <TableCell className="px-4 text-right">
                         {report.total_amount ? `${report.total_amount.toFixed(2)} zł` : '-'}
-                      </TableCell>
-                      <TableCell className="px-4">
-                        <Badge variant={statusVariants[report.status]}>
-                          {statusLabels[report.status]}
-                        </Badge>
                       </TableCell>
                     </TableRow>
                   ))

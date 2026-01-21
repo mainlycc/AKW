@@ -27,6 +27,7 @@ import { useState, useMemo, useEffect } from 'react'
 import React from 'react'
 import { PaymentDialog } from '../billing/payment-dialog'
 import { formatHours } from '@/lib/utils'
+import { StudentNameLink } from '@/components/student-name-link'
 import {
   Pagination,
   PaginationContent,
@@ -544,7 +545,9 @@ export function BillingFromReportsTable({
                     />
                   </TableCell>
                   <TableCell className="font-medium">
-                    {billing.students.first_name} {billing.students.last_name}
+                    <StudentNameLink
+                      student={billing.students}
+                    />
                   </TableCell>
                   <TableCell>
                     {billing.categories && billing.categories.length > 0 ? (

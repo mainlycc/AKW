@@ -781,7 +781,8 @@ export async function getStudentWithRelations(studentId: string) {
       student_subjects (
         subject_level_id,
         subjects (
-          name
+          name,
+          color
         ),
         subject_levels (
           level_name

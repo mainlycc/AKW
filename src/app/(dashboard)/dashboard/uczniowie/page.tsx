@@ -128,7 +128,8 @@ export default async function StudentsPage() {
         student_subjects (
           subject_level_id,
           subjects (
-            name
+            name,
+            color
           ),
           subject_levels (
             level_name
@@ -181,7 +182,8 @@ export default async function StudentsPage() {
         student_subjects (
           subject_level_id,
           subjects (
-            name
+            name,
+            color
           ),
           subject_levels (
             level_name

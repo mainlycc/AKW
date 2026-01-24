@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
+import { SubjectBadge } from "@/components/subject-badge"
 import {
   Select,
   SelectContent,
@@ -22,11 +23,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible"
 import { Student } from "@/lib/types/database.types"
 import { createStudent, updateStudent, deleteStudent, createStudentWithAssignment, updateStudentSubjects } from "./actions"
 import { createStudentNote } from "@/lib/actions/student-notes"
 import { linkParentToStudentAction, unlinkParentFromStudentAction } from "./actions"
-import { IconTrash, IconPlus } from "@tabler/icons-react"
+import { IconTrash, IconPlus, IconChevronDown } from "@tabler/icons-react"
 import { format } from "date-fns"
 import { pl } from "date-fns/locale"
 import { ConfirmDialog } from "@/components/confirm-dialog"
@@ -73,6 +79,17 @@ interface TutorSubjectLevel {
   subject_levels: { id: string; level_name: string } | null
 }
 
+interface StudentAssignment {
+  id: string
+  tutor_id: string
+  status: string
+  profiles?: {
+    id: string
+    full_name: string
+    email?: string
+  } | null
+}
+
 interface AdminSelectedSubjectLevel {
   id: string
   subjectId: string
@@ -86,6 +103,7 @@ interface StudentDialogProps {
   studentParents?: StudentParent[]
   studentNotes?: StudentNote[]
   studentSubjects?: string[]
+  studentAssignments?: StudentAssignment[]
   allParents?: Parent[]
   allSubjects?: SubjectWithLevels[]
   isTutor?: boolean
@@ -101,6 +119,7 @@ export function StudentDialog({
   studentParents = [],
   studentNotes = [],
   studentSubjects = [],
+  studentAssignments = [],
   allParents = [],
   allSubjects = [],
   isTutor = false,
@@ -109,6 +128,7 @@ export function StudentDialog({
   currentUserId,
 }: StudentDialogProps) {
   const router = useRouter()
+  const [isEditMode, setIsEditMode] = useState<boolean>(!student)
   const [loading, setLoading] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [formData, setFormData] = useState({
@@ -130,12 +150,25 @@ export function StudentDialog({
   const [adminSelections, setAdminSelections] = useState<AdminSelectedSubjectLevel[]>([])
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false)
   const [confirmDialogContent, setConfirmDialogContent] = useState<{ title: string; description: string; onConfirm: () => void }>({ title: '', description: '', onConfirm: () => {} })
+  const [addParentOpen, setAddParentOpen] = useState(false)
+  const [notesOpen, setNotesOpen] = useState(false)
 
   const getLevelsForSubject = (subjectId: string) => {
     const subject = allSubjects.find(s => s.id === subjectId)
     if (!subject) return []
     return subject.subject_levels.sort((a, b) => a.level_order - b.level_order)
   }
+
+  // Przy każdym otwarciu dialogu ustaw tryb:
+  // - istniejący uczeń -> podgląd
+  // - nowy uczeń       -> edycja
+  useEffect(() => {
+    if (open) {
+      setIsEditMode(!student)
+      setAddParentOpen(false)
+      setNotesOpen(false)
+    }
+  }, [open, student?.id])
 
   useEffect(() => {
     if (open) {
@@ -443,6 +476,7 @@ export function StudentDialog({
     try {
       await createStudentNote(student.id, newNote, currentUserId)
       setNewNote('')
+      setNotesOpen(false) // Zamknij rozwijaną sekcję po dodaniu
     } catch (error) {
       console.error('Error adding note:', error)
       alert('Błąd podczas dodawania notatki')
@@ -455,417 +489,747 @@ export function StudentDialog({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="w-[95vw] sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>
-            {student ? 'Edytuj ucznia' : isTutor ? 'Dodaj nowego ucznia' : 'Dodaj nowego ucznia'}
-          </DialogTitle>
-          <DialogDescription>
-            {student ? 'Zaktualizuj dane ucznia' : 'Wprowadź dane nowego ucznia'}
-          </DialogDescription>
-        </DialogHeader>
+      <DialogContent className="w-[95vw] sm:max-w-[500px] max-h-[90vh] overflow-hidden flex flex-col">
+        {/* Header tylko dla trybu edycji/tworzenia */}
+        {(!student || isEditMode) && (
+          <DialogHeader className="flex-shrink-0 pb-3">
+            <DialogTitle className="text-lg">
+              {student ? 'Edytuj ucznia' : 'Dodaj nowego ucznia'}
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              {student ? 'Zaktualizuj dane ucznia' : 'Wprowadź dane nowego ucznia'}
+            </DialogDescription>
+          </DialogHeader>
+        )}
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Podstawowe dane */}
+        <div className="flex-1 overflow-y-auto pr-2 -mr-2">
+
+        {/* Tryb PODGLĄDU dla istniejącego ucznia */}
+        {student && !isEditMode && (
           <div className="space-y-4">
-            <h3 className="font-semibold text-sm">Dane podstawowe</h3>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="first_name">Imię</Label>
-                <Input
-                  id="first_name"
-                  value={formData.first_name}
-                  onChange={(e) => setFormData({ ...formData, first_name: e.target.value })}
-                  required
-                  disabled={loading || deleting}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="last_name">Nazwisko</Label>
-                <Input
-                  id="last_name"
-                  value={formData.last_name}
-                  onChange={(e) => setFormData({ ...formData, last_name: e.target.value })}
-                  required
-                  disabled={loading || deleting}
-                />
+            {/* Header profilu z avatarem i podstawowymi danymi */}
+            <div className="relative bg-gradient-to-br from-primary/10 via-primary/5 to-transparent rounded-xl p-5">
+              <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium mb-3">Profil ucznia</p>
+              <div className="flex items-start gap-4">
+                {/* Avatar z inicjałami */}
+                <div className="flex-shrink-0">
+                  <div className="w-20 h-20 rounded-full bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center shadow-lg ring-4 ring-background">
+                    <span className="text-2xl font-bold text-primary-foreground">
+                      {formData.first_name.charAt(0)}{formData.last_name.charAt(0)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Dane podstawowe */}
+                <div className="flex-1 min-w-0 pt-1">
+                  <h2 className="text-xl font-bold text-foreground truncate">
+                    {formData.first_name} {formData.last_name}
+                  </h2>
+                  <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                    <div className="inline-flex items-center px-3 py-1 rounded-full bg-primary/10 text-primary">
+                      <span className="text-sm font-semibold">
+                        {formData.hourly_rate != null ? `${formData.hourly_rate.toFixed(0)} zł/h` : '-'}
+                      </span>
+                    </div>
+                    {studentSubjects.length > 0 && (
+                      <div className="inline-flex items-center px-3 py-1 rounded-full bg-muted text-muted-foreground">
+                        <span className="text-sm">{studentSubjects.length} przedmiot{studentSubjects.length === 1 ? '' : studentSubjects.length < 5 ? 'y' : 'ów'}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="hourly_rate">Stawka godzinowa (PLN)</Label>
-                <Input
-                  id="hourly_rate"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={formData.hourly_rate}
-                  onChange={(e) => setFormData({ ...formData, hourly_rate: parseFloat(e.target.value) || 50 })}
-                  required
+
+            {/* Grid z sekcjami */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {/* Przedmioty i poziomy */}
+              <div className="rounded-lg border bg-card p-4 space-y-3">
+                <h3 className="font-semibold text-sm">Przedmioty</h3>
+                {studentSubjects.length > 0 ? (
+                  <div className="space-y-2">
+                    {studentSubjects.map((levelId) => {
+                      const subject = allSubjects.find(s =>
+                        s.subject_levels.some(l => l.id === levelId)
+                      )
+                      const level = subject?.subject_levels.find(l => l.id === levelId)
+                      if (!subject || !level) return null
+                      return (
+                        <div key={levelId} className="flex flex-col gap-1">
+                          <SubjectBadge subject={subject} className="text-xs px-2 py-0.5 w-fit" />
+                          <p className="text-xs text-muted-foreground pl-0.5">{level.level_name}</p>
+                        </div>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground italic">Brak przedmiotów</p>
+                )}
+              </div>
+
+              {/* Rodzice */}
+              <div className="rounded-lg border bg-card p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-semibold text-sm">Rodzice</h3>
+                  {studentParents.length > 0 && (
+                    <Badge variant="secondary" className="text-xs">{studentParents.length}</Badge>
+                  )}
+                </div>
+                {studentParents.length > 0 ? (
+                  <div className="space-y-2">
+                    {studentParents.map((sp) => (
+                      <div key={sp.id} className="flex items-center gap-3 p-2 rounded-lg bg-muted/40">
+                        <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center flex-shrink-0">
+                          <span className="text-[10px] font-medium text-muted-foreground">
+                            {sp.parents.first_name.charAt(0)}{sp.parents.last_name.charAt(0)}
+                          </span>
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-medium truncate">
+                            {sp.parents.first_name} {sp.parents.last_name}
+                          </p>
+                          <p className="text-xs text-muted-foreground truncate">{sp.parents.email}</p>
+                        </div>
+                        {sp.is_primary && (
+                          <Badge variant="secondary" className="text-xs px-1.5 py-0 flex-shrink-0">Główny</Badge>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground italic">Brak rodziców</p>
+                )}
+              </div>
+
+              {/* Tutorzy - tylko dla admina */}
+              {!isTutor && (
+                <div className="rounded-lg border bg-card p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-semibold text-sm">Tutorzy</h3>
+                    {studentAssignments.filter(a => a.status === 'active' && a.profiles).length > 0 && (
+                      <Badge variant="secondary" className="text-xs">
+                        {studentAssignments.filter(a => a.status === 'active' && a.profiles).length}
+                      </Badge>
+                    )}
+                  </div>
+                  {studentAssignments.filter(a => a.status === 'active' && a.profiles).length > 0 ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {studentAssignments
+                        .filter(a => a.status === 'active' && a.profiles)
+                        .map((assignment) => (
+                          <Badge key={assignment.id} variant="outline" className="text-xs px-2 py-0.5">
+                            {assignment.profiles?.full_name}
+                          </Badge>
+                        ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground italic">Brak tutorów</p>
+                  )}
+                </div>
+              )}
+
+              {/* Notatki */}
+              <div className={`rounded-lg border bg-card p-4 space-y-3 ${!isTutor ? '' : 'md:col-span-2'}`}>
+                <div className="flex items-center justify-between">
+                  <h3 className="font-semibold text-sm">Notatki</h3>
+                  {studentNotes.length > 0 && (
+                    <Badge variant="secondary" className="text-xs">{studentNotes.length}</Badge>
+                  )}
+                </div>
+                {studentNotes.length > 0 ? (
+                  <div className="space-y-2 max-h-32 overflow-y-auto">
+                    {studentNotes.map((note) => (
+                      <div key={note.id} className="p-2.5 rounded-lg bg-muted/40 border-l-2 border-primary/30">
+                        <p className="text-xs leading-relaxed">{note.content}</p>
+                        <p className="text-xs text-muted-foreground mt-1.5 flex items-center gap-1">
+                          <span className="font-medium">{note.profiles.full_name}</span>
+                          <span>·</span>
+                          <span>{format(new Date(note.created_at), 'dd.MM.yyyy HH:mm', { locale: pl })}</span>
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground italic">Brak notatek</p>
+                )}
+              </div>
+            </div>
+
+            {/* Przyciski dla podglądu */}
+            <div className="flex justify-between gap-2 pt-2">
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                onClick={handleDelete}
+                disabled={loading || deleting}
+                className="gap-1.5"
+              >
+                <IconTrash className="w-4 h-4" />
+                {deleting ? 'Usuwanie...' : 'Usuń'}
+              </Button>
+              <div className="flex gap-2 ml-auto">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={onClose}
                   disabled={loading || deleting}
-                />
+                >
+                  Zamknij
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => setIsEditMode(true)}
+                  disabled={loading || deleting}
+                  className="gap-1.5"
+                >
+                  Edytuj
+                </Button>
               </div>
             </div>
           </div>
+        )}
 
-          {/* Rodzice */}
-          <div className="space-y-4 border-t pt-4">
-            <h3 className="font-semibold text-sm">Rodzice</h3>
-            
-            {/* Lista przypisanych rodziców - tylko dla istniejącego ucznia */}
-            {student && studentParents.length > 0 && (
-              <div className="space-y-2">
-                {studentParents.map((sp) => (
-                  <div key={sp.id} className="flex items-center justify-between p-2 border rounded">
-                    <div>
-                      <p className="font-medium">
-                        {sp.parents.first_name} {sp.parents.last_name}
-                        {sp.is_primary && <Badge variant="secondary" className="ml-2">Główny</Badge>}
-                      </p>
-                      <p className="text-sm text-muted-foreground">{sp.parents.email}</p>
+        {/* Tryb EDYCJI (istniejący uczeń lub tworzenie nowego) */}
+        {(!student || isEditMode) && (
+          <form onSubmit={handleSubmit} className="space-y-3">
+            {/* Podstawowe dane */}
+            <div className="space-y-2">
+              <h3 className="font-semibold text-sm text-primary">Dane podstawowe</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="first_name" className="text-xs">Imię</Label>
+                  <Input
+                    id="first_name"
+                    value={formData.first_name}
+                    onChange={(e) => setFormData({ ...formData, first_name: e.target.value })}
+                    required
+                    disabled={loading || deleting}
+                    className="h-9"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="last_name" className="text-xs">Nazwisko</Label>
+                  <Input
+                    id="last_name"
+                    value={formData.last_name}
+                    onChange={(e) => setFormData({ ...formData, last_name: e.target.value })}
+                    required
+                    disabled={loading || deleting}
+                    className="h-9"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="hourly_rate" className="text-xs">Stawka/h (PLN)</Label>
+                  <Input
+                    id="hourly_rate"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={formData.hourly_rate}
+                    onChange={(e) => setFormData({ ...formData, hourly_rate: parseFloat(e.target.value) || 50 })}
+                    required
+                    disabled={loading || deleting}
+                    className="h-9"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Rodzice */}
+            <div className="space-y-2 border-t pt-3">
+              <h3 className="font-semibold text-sm text-primary">Rodzice</h3>
+              
+              {/* Lista przypisanych rodziców - tylko dla istniejącego ucznia */}
+              {student && studentParents.length > 0 && (
+                <div className="space-y-1.5">
+                  {studentParents.map((sp) => (
+                    <div key={sp.id} className="flex items-start justify-between p-2 border rounded-md bg-muted/20">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium">
+                          {sp.parents.first_name} {sp.parents.last_name}
+                          {sp.is_primary && <Badge variant="secondary" className="ml-1.5 text-[10px] px-1.5 py-0">Główny</Badge>}
+                        </p>
+                        <p className="text-xs text-muted-foreground truncate">{sp.parents.email}</p>
+                        {sp.parents.phone && (
+                          <p className="text-[10px] text-muted-foreground mt-0.5">{sp.parents.phone}</p>
+                        )}
+                      </div>
+                      {!isTutor && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 flex-shrink-0"
+                          onClick={() => handleRemoveParent(sp.parents.id)}
+                        >
+                          <IconTrash className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
                     </div>
-                    {!isTutor && (
+                  ))}
+                </div>
+              )}
+
+              {student && studentParents.length === 0 && (
+                <p className="text-xs text-muted-foreground italic">Brak przypisanych rodziców</p>
+              )}
+
+              {/* Rozwijana sekcja dodawania rodzica */}
+              {!student ? (
+                // Dla nowego ucznia - zwykła sekcja (bez Collapsible)
+                <div className="space-y-2 pt-1">
+                  <h4 className="text-xs font-medium text-muted-foreground">Dane rodzica (opcjonalnie)</h4>
+                  <div className="space-y-2 rounded-md border p-3 bg-muted/10">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="parent_first_name" className="text-xs">Imię</Label>
+                        <Input
+                          id="parent_first_name"
+                          type="text"
+                          value={parentData.first_name}
+                          onChange={(e) => setParentData({ ...parentData, first_name: e.target.value })}
+                          disabled={loading || deleting}
+                          placeholder="Imię"
+                          className="h-9"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="parent_last_name" className="text-xs">Nazwisko</Label>
+                        <Input
+                          id="parent_last_name"
+                          type="text"
+                          value={parentData.last_name}
+                          onChange={(e) => setParentData({ ...parentData, last_name: e.target.value })}
+                          disabled={loading || deleting}
+                          placeholder="Nazwisko"
+                          className="h-9"
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="parent_email" className="text-xs">Email</Label>
+                        <Input
+                          id="parent_email"
+                          type="email"
+                          value={parentData.email}
+                          onChange={(e) => setParentData({ ...parentData, email: e.target.value })}
+                          disabled={loading || deleting}
+                          placeholder="email@example.com"
+                          className="h-9"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="parent_phone" className="text-xs">Telefon</Label>
+                        <Input
+                          id="parent_phone"
+                          type="tel"
+                          value={parentData.phone}
+                          onChange={(e) => setParentData({ ...parentData, phone: e.target.value })}
+                          disabled={loading || deleting}
+                          placeholder="+48 123 456 789"
+                          className="h-9"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                // Dla istniejącego ucznia - rozwijana sekcja
+                <Collapsible open={addParentOpen} onOpenChange={setAddParentOpen} className="space-y-1.5">
+                  <CollapsibleTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="flex w-full justify-between h-8"
+                    >
+                      <span className="flex items-center gap-1.5 text-xs">
+                        <IconPlus className="h-3.5 w-3.5" />
+                        Dodaj rodzica
+                      </span>
+                      <IconChevronDown 
+                        className={`h-3.5 w-3.5 transition-transform ${addParentOpen ? 'rotate-180' : ''}`}
+                      />
+                    </Button>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="space-y-2 pt-1">
+                    {/* Dodaj nowego rodzica przez formularz */}
+                    <div className="space-y-2 rounded-md border p-3 bg-muted/10">
+                      <h4 className="text-xs font-medium">Utwórz nowego rodzica</h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        <div className="space-y-1.5">
+                          <Label htmlFor="parent_first_name" className="text-xs">Imię</Label>
+                          <Input
+                            id="parent_first_name"
+                            type="text"
+                            value={parentData.first_name}
+                            onChange={(e) => setParentData({ ...parentData, first_name: e.target.value })}
+                            disabled={loading || deleting}
+                            placeholder="Imię"
+                            className="h-9"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label htmlFor="parent_last_name" className="text-xs">Nazwisko</Label>
+                          <Input
+                            id="parent_last_name"
+                            type="text"
+                            value={parentData.last_name}
+                            onChange={(e) => setParentData({ ...parentData, last_name: e.target.value })}
+                            disabled={loading || deleting}
+                            placeholder="Nazwisko"
+                            className="h-9"
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        <div className="space-y-1.5">
+                          <Label htmlFor="parent_email" className="text-xs">Email</Label>
+                          <Input
+                            id="parent_email"
+                            type="email"
+                            value={parentData.email}
+                            onChange={(e) => setParentData({ ...parentData, email: e.target.value })}
+                            disabled={loading || deleting}
+                            placeholder="email@example.com"
+                            className="h-9"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label htmlFor="parent_phone" className="text-xs">Telefon</Label>
+                          <Input
+                            id="parent_phone"
+                            type="tel"
+                            value={parentData.phone}
+                            onChange={(e) => setParentData({ ...parentData, phone: e.target.value })}
+                            disabled={loading || deleting}
+                            placeholder="+48 123 456 789"
+                            className="h-9"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Wybierz istniejącego rodzica - tylko dla admina */}
+                    {!isTutor && availableParents.length > 0 && (
+                      <div className="space-y-2 rounded-md border p-3 bg-muted/10">
+                        <h4 className="text-xs font-medium">Lub przypisz istniejącego</h4>
+                        <div className="flex gap-2">
+                          <Select value={selectedParentId} onValueChange={setSelectedParentId}>
+                            <SelectTrigger className="h-9">
+                              <SelectValue placeholder="Wybierz..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {availableParents.map((parent) => (
+                                <SelectItem key={parent.id} value={parent.id}>
+                                  {parent.first_name} {parent.last_name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <Button type="button" size="sm" className="h-9" onClick={handleAddParent} disabled={!selectedParentId}>
+                            <IconPlus className="mr-1 h-3.5 w-3.5" />
+                            Przypisz
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </CollapsibleContent>
+                </Collapsible>
+              )}
+            </div>
+
+            {/* Przedmioty i poziomy */}
+            {isTutor && !student ? (
+              // Tutor - wybór przedmiotu i poziomu (jedna kombinacja)
+              <div className="space-y-2 border-t pt-3">
+                <h3 className="font-semibold text-sm text-primary">Przedmiot i poziom</h3>
+                <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Przedmiot</Label>
+                    <Select
+                      value={tutorSelectedSubjectId}
+                      onValueChange={(value) => {
+                        setTutorSelectedSubjectId(value)
+                        const firstLevelForSubject = tutorSubjectLevels.find(
+                          (tsl) => tsl.subjects?.id === value
+                        )
+                        setTutorSelectedLevelId(firstLevelForSubject?.subject_levels?.id || '')
+                      }}
+                      required
+                    >
+                      <SelectTrigger className="h-9">
+                        <SelectValue placeholder="Wybierz przedmiot" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Array.from(
+                          new Map(
+                            tutorSubjectLevels
+                              .filter((tsl) => tsl.subjects)
+                              .map((tsl) => [tsl.subjects!.id, tsl.subjects!])
+                          ).values()
+                        ).map((subject) => (
+                          <SelectItem key={subject.id} value={subject.id}>
+                            {subject.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Poziom</Label>
+                    <Select
+                      value={tutorSelectedLevelId}
+                      onValueChange={setTutorSelectedLevelId}
+                      disabled={!tutorSelectedSubjectId}
+                      required
+                    >
+                      <SelectTrigger className="h-9">
+                        <SelectValue placeholder="Wybierz poziom" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {tutorSubjectLevels
+                          .filter((tsl) => tsl.subjects?.id === tutorSelectedSubjectId)
+                          .map((tsl) => (
+                            <SelectItem
+                              key={tsl.subject_level_id}
+                              value={tsl.subject_level_id}
+                            >
+                              {tsl.subject_levels?.level_name}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </div>
+            ) : !isTutor ? (
+              // Admin - wybór przedmiotów i poziomów
+              <div className="space-y-2 border-t pt-3">
+                <h3 className="font-semibold text-sm text-primary">Przedmioty i poziomy</h3>
+
+                {adminSelections.map((selection) => {
+                  const levels = getLevelsForSubject(selection.subjectId)
+
+                  return (
+                    <div key={selection.id} className="flex flex-col gap-2 md:flex-row md:items-end">
+                      <div className="flex-1 space-y-1.5">
+                        <Label className="text-xs">Przedmiot</Label>
+                        <Select
+                          value={selection.subjectId}
+                          onValueChange={(value) => {
+                            setAdminSelections((prev) =>
+                              prev.map((sel) => {
+                                if (sel.id === selection.id) {
+                                  const subjectLevels = getLevelsForSubject(value)
+                                  const firstLevelId = subjectLevels[0]?.id || ''
+                                  return {
+                                    ...sel,
+                                    subjectId: value,
+                                    levelId: firstLevelId,
+                                  }
+                                }
+                                return sel
+                              })
+                            )
+                          }}
+                          disabled={loading || deleting}
+                        >
+                          <SelectTrigger className="h-9">
+                            <SelectValue placeholder="Wybierz" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {allSubjects.map((subject) => (
+                              <SelectItem key={subject.id} value={subject.id}>
+                                {subject.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="flex-1 space-y-1.5">
+                        <Label className="text-xs">Poziom</Label>
+                        <Select
+                          value={selection.levelId}
+                          onValueChange={(value) => {
+                            setAdminSelections((prev) =>
+                              prev.map((sel) =>
+                                sel.id === selection.id ? { ...sel, levelId: value } : sel
+                              )
+                            )
+                          }}
+                          disabled={loading || deleting || !selection.subjectId}
+                        >
+                          <SelectTrigger className="h-9">
+                            <SelectValue placeholder="Wybierz" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {levels.map((level) => (
+                              <SelectItem key={level.id} value={level.id}>
+                                {level.level_name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
                       <Button
                         type="button"
                         variant="ghost"
                         size="icon"
-                        onClick={() => handleRemoveParent(sp.parents.id)}
+                        className="h-9 w-9"
+                        onClick={() =>
+                          setAdminSelections((prev) =>
+                            prev.filter((sel) => sel.id !== selection.id)
+                          )
+                        }
+                        disabled={loading || deleting}
                       >
-                        <IconTrash className="h-4 w-4" />
+                        <IconTrash className="h-3.5 w-3.5" />
                       </Button>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
+                    </div>
+                  )
+                })}
 
-            {/* Dodaj nowego rodzica */}
-            <div className="space-y-4">
-              <h4 className="text-sm font-medium text-muted-foreground">
-                {student ? 'Dodaj nowego rodzica' : 'Dane rodzica (opcjonalnie)'}
-              </h4>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="parent_first_name">Imię rodzica</Label>
-                  <Input
-                    id="parent_first_name"
-                    type="text"
-                    value={parentData.first_name}
-                    onChange={(e) => setParentData({ ...parentData, first_name: e.target.value })}
-                    disabled={loading || deleting}
-                    placeholder="Imię"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="parent_last_name">Nazwisko rodzica</Label>
-                  <Input
-                    id="parent_last_name"
-                    type="text"
-                    value={parentData.last_name}
-                    onChange={(e) => setParentData({ ...parentData, last_name: e.target.value })}
-                    disabled={loading || deleting}
-                    placeholder="Nazwisko"
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="parent_email">Email rodzica</Label>
-                  <Input
-                    id="parent_email"
-                    type="email"
-                    value={parentData.email}
-                    onChange={(e) => setParentData({ ...parentData, email: e.target.value })}
-                    disabled={loading || deleting}
-                    placeholder="email@example.com"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="parent_phone">Telefon rodzica</Label>
-                  <Input
-                    id="parent_phone"
-                    type="tel"
-                    value={parentData.phone}
-                    onChange={(e) => setParentData({ ...parentData, phone: e.target.value })}
-                    disabled={loading || deleting}
-                    placeholder="+48 123 456 789"
-                  />
-                </div>
-              </div>
-            </div>
+                {allSubjects.length === 0 && (
+                  <p className="text-xs text-muted-foreground italic">
+                    Brak dostępnych przedmiotów
+                  </p>
+                )}
 
-            {/* Wybierz istniejącego rodzica - tylko dla istniejącego ucznia i admina */}
-            {student && !isTutor && availableParents.length > 0 && (
-              <div className="space-y-2">
-                <h4 className="text-sm font-medium text-muted-foreground">Lub wybierz istniejącego rodzica</h4>
-                <div className="flex gap-2">
-                  <Select value={selectedParentId} onValueChange={setSelectedParentId}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Wybierz rodzica" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {availableParents.map((parent) => (
-                        <SelectItem key={parent.id} value={parent.id}>
-                          {parent.first_name} {parent.last_name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Button type="button" onClick={handleAddParent} disabled={!selectedParentId}>
-                    <IconPlus className="mr-2 h-4 w-4" />
-                    Dodaj
+                <div className="flex justify-start items-center pt-1">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8"
+                    onClick={() => {
+                      if (allSubjects.length === 0) return
+                      const firstSubject = allSubjects[0]
+                      const firstLevel = firstSubject.subject_levels[0]
+                      setAdminSelections((prev) => [
+                        ...prev,
+                        {
+                          id: `new-${Date.now()}`,
+                          subjectId: firstSubject.id,
+                          levelId: firstLevel?.id || '',
+                        },
+                      ])
+                    }}
+                    disabled={loading || deleting || allSubjects.length === 0}
+                  >
+                    <IconPlus className="h-3.5 w-3.5 mr-1.5" />
+                    <span className="text-xs">Dodaj przedmiot</span>
                   </Button>
                 </div>
               </div>
-            )}
-          </div>
+            ) : null}
 
-          {/* Przedmioty i poziomy */}
-          {isTutor && !student ? (
-            // Tutor - wybór przedmiotu i poziomu (jedna kombinacja)
-            <div className="space-y-4 border-t pt-4">
-              <h3 className="font-semibold text-sm">Przedmiot i poziom</h3>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label>Przedmiot</Label>
-                  <Select
-                    value={tutorSelectedSubjectId}
-                    onValueChange={(value) => {
-                      setTutorSelectedSubjectId(value)
-                      const firstLevelForSubject = tutorSubjectLevels.find(
-                        (tsl) => tsl.subjects?.id === value
-                      )
-                      setTutorSelectedLevelId(firstLevelForSubject?.subject_levels?.id || '')
-                    }}
-                    required
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Wybierz przedmiot" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {Array.from(
-                        new Map(
-                          tutorSubjectLevels
-                            .filter((tsl) => tsl.subjects)
-                            .map((tsl) => [tsl.subjects!.id, tsl.subjects!])
-                        ).values()
-                      ).map((subject) => (
-                        <SelectItem key={subject.id} value={subject.id}>
-                          {subject.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+            {/* Notatki - tylko dla istniejącego ucznia */}
+            {student && (
+              <div className="space-y-2 border-t pt-3">
+                <h3 className="font-semibold text-sm text-primary">Notatki</h3>
+                
+                {/* Istniejące notatki - zawsze widoczne */}
+                {studentNotes.length > 0 ? (
+                  <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                    {studentNotes.map((note) => (
+                      <div key={note.id} className="p-2 border rounded-md bg-muted/20">
+                        <p className="text-xs leading-relaxed">{note.content}</p>
+                        <p className="text-[10px] text-muted-foreground mt-1">
+                          {format(new Date(note.created_at), 'dd.MM.yyyy HH:mm', { locale: pl })} - {note.profiles.full_name}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground italic">Brak notatek</p>
+                )}
 
-                <div className="space-y-2">
-                  <Label>Poziom</Label>
-                  <Select
-                    value={tutorSelectedLevelId}
-                    onValueChange={setTutorSelectedLevelId}
-                    disabled={!tutorSelectedSubjectId}
-                    required
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Wybierz poziom" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {tutorSubjectLevels
-                        .filter((tsl) => tsl.subjects?.id === tutorSelectedSubjectId)
-                        .map((tsl) => (
-                          <SelectItem
-                            key={tsl.subject_level_id}
-                            value={tsl.subject_level_id}
-                          >
-                            {tsl.subject_levels?.level_name}
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            </div>
-          ) : !isTutor ? (
-            // Admin - wybór przedmiotów i poziomów jak w zakładce „przedmioty”
-            <div className="space-y-4 border-t pt-4">
-              <h3 className="font-semibold text-sm">Przedmioty i poziomy</h3>
-
-              {adminSelections.map((selection) => {
-                const levels = getLevelsForSubject(selection.subjectId)
-
-                return (
-                  <div key={selection.id} className="flex flex-col gap-3 md:flex-row md:items-end">
-                    <div className="flex-1 space-y-2">
-                      <Label>Przedmiot</Label>
-                      <Select
-                        value={selection.subjectId}
-                        onValueChange={(value) => {
-                          setAdminSelections((prev) =>
-                            prev.map((sel) => {
-                              if (sel.id === selection.id) {
-                                const subjectLevels = getLevelsForSubject(value)
-                                const firstLevelId = subjectLevels[0]?.id || ''
-                                return {
-                                  ...sel,
-                                  subjectId: value,
-                                  levelId: firstLevelId,
-                                }
-                              }
-                              return sel
-                            })
-                          )
-                        }}
-                        disabled={loading || deleting}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Wybierz przedmiot" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {allSubjects.map((subject) => (
-                            <SelectItem key={subject.id} value={subject.id}>
-                              {subject.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="flex-1 space-y-2">
-                      <Label>Poziom</Label>
-                      <Select
-                        value={selection.levelId}
-                        onValueChange={(value) => {
-                          setAdminSelections((prev) =>
-                            prev.map((sel) =>
-                              sel.id === selection.id ? { ...sel, levelId: value } : sel
-                            )
-                          )
-                        }}
-                        disabled={loading || deleting || !selection.subjectId}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Wybierz poziom" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {levels.map((level) => (
-                            <SelectItem key={level.id} value={level.id}>
-                              {level.level_name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
+                {/* Rozwijana sekcja dodawania nowej notatki */}
+                <Collapsible open={notesOpen} onOpenChange={setNotesOpen} className="space-y-1.5">
+                  <CollapsibleTrigger asChild>
                     <Button
                       type="button"
-                      variant="ghost"
-                      size="icon"
-                      onClick={() =>
-                        setAdminSelections((prev) =>
-                          prev.filter((sel) => sel.id !== selection.id)
-                        )
-                      }
-                      disabled={loading || deleting}
-                      className="md:mb-0"
+                      variant="outline"
+                      size="sm"
+                      className="flex w-full justify-between h-8"
                     >
-                      <IconTrash className="h-4 w-4" />
+                      <span className="flex items-center gap-1.5 text-xs">
+                        <IconPlus className="h-3.5 w-3.5" />
+                        Dodaj notatkę
+                      </span>
+                      <IconChevronDown 
+                        className={`h-3.5 w-3.5 transition-transform ${notesOpen ? 'rotate-180' : ''}`}
+                      />
                     </Button>
-                  </div>
-                )
-              })}
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="space-y-2 pt-1">
+                    <div className="space-y-2 rounded-md border p-3 bg-muted/10">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="new_note" className="text-xs">Treść notatki</Label>
+                        <Textarea
+                          id="new_note"
+                          value={newNote}
+                          onChange={(e) => setNewNote(e.target.value)}
+                          placeholder="Wpisz notatkę..."
+                          rows={3}
+                          className="text-xs resize-none"
+                        />
+                      </div>
+                      <Button 
+                        type="button" 
+                        size="sm" 
+                        onClick={handleAddNote} 
+                        disabled={!newNote.trim()}
+                        className="w-full h-8"
+                      >
+                        <IconPlus className="h-3.5 w-3.5 mr-1.5" />
+                        <span className="text-xs">Zapisz notatkę</span>
+                      </Button>
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
+              </div>
+            )}
 
-              {allSubjects.length === 0 && (
-                <p className="text-sm text-muted-foreground">
-                  Brak dostępnych przedmiotów. Skontaktuj się z administratorem.
-                </p>
+            {/* Buttons */}
+            <div className="flex justify-between gap-2 border-t pt-3 mt-2">
+              {student && (
+                <Button 
+                  type="button" 
+                  variant="destructive"
+                  size="sm"
+                  onClick={handleDelete} 
+                  disabled={loading || deleting}
+                >
+                  {deleting ? 'Usuwanie...' : 'Usuń'}
+                </Button>
               )}
-
-              <div className="flex justify-between items-center pt-2">
+              <div className="flex gap-2 ml-auto">
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => {
-                    if (allSubjects.length === 0) return
-                    const firstSubject = allSubjects[0]
-                    const firstLevel = firstSubject.subject_levels[0]
-                    setAdminSelections((prev) => [
-                      ...prev,
-                      {
-                        id: `new-${Date.now()}`,
-                        subjectId: firstSubject.id,
-                        levelId: firstLevel?.id || '',
-                      },
-                    ])
-                  }}
-                  disabled={loading || deleting || allSubjects.length === 0}
-                  className="flex items-center gap-2"
+                  size="sm"
+                  onClick={student ? () => setIsEditMode(false) : onClose}
+                  disabled={loading || deleting}
                 >
-                  <IconPlus className="h-4 w-4" />
-                  Dodaj kolejny przedmiot
+                  {student ? 'Anuluj' : 'Anuluj'}
+                </Button>
+                <Button type="submit" size="sm" disabled={loading || deleting}>
+                  {loading ? 'Zapisywanie...' : student ? 'Zapisz' : 'Dodaj'}
                 </Button>
               </div>
             </div>
-          ) : null}
-
-          {/* Notatki - tylko dla istniejącego ucznia */}
-          {student && (
-            <div className="space-y-4 border-t pt-4">
-              <h3 className="font-semibold text-sm">Notatki</h3>
-              
-              {studentNotes.length > 0 ? (
-                <div className="space-y-2 max-h-48 overflow-y-auto">
-                  {studentNotes.map((note) => (
-                    <div key={note.id} className="p-3 border rounded bg-muted/30">
-                      <p className="text-sm">{note.content}</p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {format(new Date(note.created_at), 'dd.MM.yyyy HH:mm', { locale: pl })} - {note.profiles.full_name}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground">Brak notatek</p>
-              )}
-
-              <div className="space-y-2">
-                <Label htmlFor="new_note">Dodaj notatkę</Label>
-                <Textarea
-                  id="new_note"
-                  value={newNote}
-                  onChange={(e) => setNewNote(e.target.value)}
-                  placeholder="Wpisz notatkę..."
-                  rows={3}
-                />
-                <Button type="button" size="sm" onClick={handleAddNote} disabled={!newNote.trim()}>
-                  <IconPlus className="h-4 w-4 mr-2" />
-                  Dodaj notatkę
-                </Button>
-              </div>
-            </div>
-          )}
-
-          {/* Buttons */}
-          <div className="flex justify-between gap-2 border-t pt-4">
-            {student && (
-              <Button 
-                type="button" 
-                variant="destructive" 
-                onClick={handleDelete} 
-                disabled={loading || deleting}
-              >
-                {deleting ? 'Usuwanie...' : 'Usuń'}
-              </Button>
-            )}
-            <div className="flex gap-2 ml-auto">
-              <Button type="button" variant="outline" onClick={onClose} disabled={loading || deleting}>
-                Anuluj
-              </Button>
-              <Button type="submit" disabled={loading || deleting}>
-                {loading ? 'Zapisywanie...' : student ? 'Zapisz zmiany' : 'Dodaj ucznia'}
-              </Button>
-            </div>
-          </div>
-        </form>
+          </form>
+        )}
+        </div>
       </DialogContent>
 
       <ConfirmDialog

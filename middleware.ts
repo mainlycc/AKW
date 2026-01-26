@@ -15,6 +15,8 @@ export async function middleware(request: NextRequest) {
   // Sprawdź czy użytkownik próbuje uzyskać dostęp do chronionej strony
   const isAuthPage = request.nextUrl.pathname.startsWith('/login')
   const isRegisterPage = request.nextUrl.pathname.startsWith('/register')
+  const isForgotPassword = request.nextUrl.pathname.startsWith('/forgot-password')
+  const isResetPassword = request.nextUrl.pathname.startsWith('/reset-password')
   const isDashboard = request.nextUrl.pathname.startsWith('/dashboard')
 
   // Jeśli użytkownik nie jest zalogowany i próbuje dostać się do dashboardu
@@ -23,7 +25,8 @@ export async function middleware(request: NextRequest) {
   }
 
   // Jeśli użytkownik jest zalogowany i próbuje dostać się do strony logowania lub rejestracji
-  if (user && (isAuthPage || isRegisterPage)) {
+  // (ale nie do stron resetowania hasła, które mogą wymagać zalogowanej sesji)
+  if (user && (isAuthPage || isRegisterPage) && !isForgotPassword && !isResetPassword) {
     return NextResponse.redirect(new URL('/dashboard', request.url))
   }
 

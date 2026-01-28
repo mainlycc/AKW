@@ -247,7 +247,7 @@ export function PaymentDialog({
               <SelectContent>
                 <SelectItem value="transfer">Przelew</SelectItem>
                 <SelectItem value="cash">Gotówka</SelectItem>
-                <SelectItem value="online">Online (Stripe)</SelectItem>
+                <SelectItem value="online">Online (PayU)</SelectItem>
               </SelectContent>
             </Select>
           </div>

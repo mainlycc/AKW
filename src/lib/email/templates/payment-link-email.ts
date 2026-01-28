@@ -64,7 +64,14 @@ export function generatePaymentLinkEmail(data: PaymentLinkEmailData) {
     </p>
     
     <div style="background: #e3f2fd; border-left: 4px solid #2196f3; padding: 15px; margin: 20px 0;">
-      <strong>ℹ️ Informacja:</strong> Płatność możesz dokonać za pomocą różnych metod płatności (BLIK, karta płatnicza, przelew online).
+      <strong>ℹ️ Informacja:</strong> Płatność możesz dokonać za pomocą różnych metod dostępnych w PayU:
+      <ul style="margin: 10px 0 0 0; padding-left: 20px;">
+        <li>Karty płatnicze (Visa, Mastercard, Maestro)</li>
+        <li>BLIK</li>
+        <li>Przelewy online (szybkie przelewy bankowe)</li>
+        <li>Google Pay, Apple Pay</li>
+      </ul>
+      Płatność jest w pełni bezpieczna i szyfrowana.
     </div>
     
     <p style="margin-top: 30px; color: #666; font-size: 14px;">

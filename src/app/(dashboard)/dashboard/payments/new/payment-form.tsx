@@ -104,15 +104,15 @@ export function PaymentForm({
 
       if (paymentMethod === 'online') {
         // For online payments, we'll create the payment record
-        // The webhook will update it when Stripe confirms the payment
+        // The webhook will update it when PayU confirms the payment
         // For now, we'll just save it as pending
-        toast.info('Płatność online będzie przetworzona przez Stripe. Sprawdź status w historii płatności.')
+        toast.info('Płatność online będzie przetworzona przez PayU. Sprawdź status w historii płatności.')
         
         // Note: In a full implementation, you would:
-        // 1. Create a Payment Intent on the server
-        // 2. Redirect user to Stripe Checkout
+        // 1. Create an Order in PayU on the server
+        // 2. Redirect user to PayU payment page
         // 3. Handle confirmation via webhook
-        // For now, we'll save it directly and mark it as needing Stripe processing
+        // For now, we'll save it directly and mark it as needing PayU processing
         await createPaymentAction({
           student_id: studentId,
           billing_period_id: billingPeriodId,
@@ -122,7 +122,7 @@ export function PaymentForm({
           notes: notes || undefined,
         })
 
-        toast.success('Płatność dodana. Potwierdzenie przez Stripe nastąpi automatycznie.')
+        toast.success('Płatność dodana. Potwierdzenie przez PayU nastąpi automatycznie.')
         router.push('/dashboard/payments')
       } else {
         // Direct save for transfer/cash
@@ -243,7 +243,7 @@ export function PaymentForm({
           <SelectContent>
             <SelectItem value="transfer">Przelew</SelectItem>
             <SelectItem value="cash">Gotówka</SelectItem>
-            <SelectItem value="online">Online (Stripe)</SelectItem>
+            <SelectItem value="online">Online (PayU)</SelectItem>
           </SelectContent>
         </Select>
       </div>

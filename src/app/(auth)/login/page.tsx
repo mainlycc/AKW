@@ -40,8 +40,8 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
-      <Card className="w-full max-w-md">
+    <div className="flex flex-1 items-center justify-center bg-gray-50 px-4">
+      <Card className="w-full max-w-sm">
         <CardHeader className="space-y-1">
           <CardTitle className="text-2xl font-bold text-center">Akademia Wiedzy</CardTitle>
           <CardDescription className="text-center">

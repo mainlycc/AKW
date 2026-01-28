@@ -1,7 +1,6 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
-import { stripe } from '@/lib/stripe/client'
 import { revalidatePath } from 'next/cache'
 
 export type PaymentMethod = 'transfer' | 'cash' | 'online'
@@ -14,7 +13,7 @@ export interface Payment {
   payment_method: PaymentMethod
   payment_date: string
   notes: string | null
-  stripe_payment_id: string | null
+  payu_order_id: string | null
   created_by: string
   created_at: string
   updated_at: string
@@ -102,68 +101,30 @@ export async function createPayment(
 ): Promise<string> {
   const supabase = await createClient()
 
-  // For online payments, we'll create a Stripe Payment Intent
-  // For transfer/cash, we'll save directly
-  if (data.payment_method === 'online') {
-    // Create Stripe Payment Intent
-    const paymentIntent = await stripe.paymentIntents.create({
-      amount: Math.round(data.amount * 100), // Convert to cents
-      currency: 'pln',
-      metadata: {
-        student_id: data.student_id,
-        billing_period_id: data.billing_period_id,
-      },
+  // For online payments, save as pending (will be confirmed via PayU webhook)
+  // For transfer/cash, save directly as completed
+  const { data: payment, error } = await supabase
+    .from('payments')
+    .insert({
+      student_id: data.student_id,
+      billing_period_id: data.billing_period_id,
+      amount: data.amount,
+      payment_method: data.payment_method,
+      payment_date: data.payment_date,
+      notes: data.notes || null,
+      created_by: createdBy,
     })
+    .select('id')
+    .single()
 
-    // Save payment with pending status (will be confirmed via webhook)
-    const { data: payment, error } = await supabase
-      .from('payments')
-      .insert({
-        student_id: data.student_id,
-        billing_period_id: data.billing_period_id,
-        amount: data.amount,
-        payment_method: data.payment_method,
-        payment_date: data.payment_date,
-        notes: data.notes || null,
-        stripe_payment_id: paymentIntent.id,
-        created_by: createdBy,
-      })
-      .select('id')
-      .single()
-
-    if (error) {
-      throw new Error(`Failed to create payment: ${error.message}`)
-    }
-
-    revalidatePath('/dashboard/payments')
-    revalidatePath('/dashboard/billing')
-
-    return paymentIntent.client_secret || ''
-  } else {
-    // Direct save for transfer/cash
-    const { data: payment, error } = await supabase
-      .from('payments')
-      .insert({
-        student_id: data.student_id,
-        billing_period_id: data.billing_period_id,
-        amount: data.amount,
-        payment_method: data.payment_method,
-        payment_date: data.payment_date,
-        notes: data.notes || null,
-        created_by: createdBy,
-      })
-      .select('id')
-      .single()
-
-    if (error) {
-      throw new Error(`Failed to create payment: ${error.message}`)
-    }
-
-    revalidatePath('/dashboard/payments')
-    revalidatePath('/dashboard/billing')
-
-    return payment.id
+  if (error) {
+    throw new Error(`Failed to create payment: ${error.message}`)
   }
+
+  revalidatePath('/dashboard/payments')
+  revalidatePath('/dashboard/billing')
+
+  return payment.id
 }
 
 /**
@@ -383,23 +344,4 @@ export async function exportPaymentsToCSV(
   return csvContent
 }
 
-/**
- * Create Stripe Payment Intent (for online payments)
- */
-export async function createStripePaymentIntent(
-  amount: number,
-  studentId: string,
-  billingPeriodId: string
-): Promise<string> {
-  const paymentIntent = await stripe.paymentIntents.create({
-    amount: Math.round(amount * 100), // Convert to cents
-    currency: 'pln',
-    metadata: {
-      student_id: studentId,
-      billing_period_id: billingPeriodId,
-    },
-  })
-
-  return paymentIntent.client_secret || ''
-}
 

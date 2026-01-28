@@ -30,7 +30,7 @@ import type { StudentBillingWithParent, BillingStatus } from '@/lib/actions/bill
 import { useRouter } from 'next/navigation'
 import { useState, useMemo } from 'react'
 import { formatHours } from '@/lib/utils'
-import { sendPaynowPaymentsAction } from './actions'
+import { sendPayUPaymentsAction } from './actions'
 import { toast } from 'sonner'
 import { IconCreditCard } from '@tabler/icons-react'
 
@@ -89,7 +89,7 @@ export function DeclarationBillingsTable({
   const router = useRouter()
   const [search, setSearch] = useState('')
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
-  const [paynowDialogOpen, setPaynowDialogOpen] = useState(false)
+  const [payuDialogOpen, setPayuDialogOpen] = useState(false)
   const [sendingPayments, setSendingPayments] = useState(false)
   const currentDate = new Date()
   const years = Array.from(
@@ -163,7 +163,7 @@ export function DeclarationBillingsTable({
   const allSelected = filteredBillings.length > 0 && selectedIds.size === filteredBillings.length
   const someSelected = selectedIds.size > 0 && selectedIds.size < filteredBillings.length
 
-  const handleSendPaynowPayments = async () => {
+  const handleSendPayUPayments = async () => {
     if (selectedIds.size === 0) {
       toast.error('Wybierz przynajmniej jednego ucznia')
       return
@@ -171,7 +171,7 @@ export function DeclarationBillingsTable({
 
     setSendingPayments(true)
     try {
-      const result = await sendPaynowPaymentsAction(
+      const result = await sendPayUPaymentsAction(
         Array.from(selectedIds),
         currentMonth,
         currentYear
@@ -179,7 +179,7 @@ export function DeclarationBillingsTable({
 
       if (result.success) {
         toast.success(
-          `Wysłano płatności Paynow dla ${result.sent} ${result.sent === 1 ? 'ucznia' : 'uczniów'}`
+          `Wysłano płatności PayU dla ${result.sent} ${result.sent === 1 ? 'ucznia' : 'uczniów'}`
         )
         if (result.failed > 0) {
           toast.warning(
@@ -187,16 +187,16 @@ export function DeclarationBillingsTable({
           )
         }
         setSelectedIds(new Set())
-        setPaynowDialogOpen(false)
+        setPayuDialogOpen(false)
         router.refresh()
       } else {
         toast.error('Nie udało się wysłać płatności')
         if (result.errors.length > 0) {
-          console.error('Paynow payment errors:', result.errors)
+          console.error('PayU payment errors:', result.errors)
         }
       }
     } catch (error) {
-      console.error('Error sending Paynow payments:', error)
+      console.error('Error sending PayU payments:', error)
       toast.error('Wystąpił błąd podczas wysyłania płatności')
     } finally {
       setSendingPayments(false)
@@ -223,13 +223,13 @@ export function DeclarationBillingsTable({
             className="max-w-sm"
           />
           <Button
-            onClick={() => setPaynowDialogOpen(true)}
+            onClick={() => setPayuDialogOpen(true)}
             variant="default"
             size="sm"
             disabled={selectedIds.size === 0}
           >
             <IconCreditCard className="h-4 w-4 mr-2" />
-            Wyślij płatność Paynow {selectedIds.size > 0 && `(${selectedIds.size})`}
+            Wyślij płatność PayU {selectedIds.size > 0 && `(${selectedIds.size})`}
           </Button>
         </div>
         <div className="grid grid-cols-2 gap-4 flex-shrink-0">
@@ -372,13 +372,13 @@ export function DeclarationBillingsTable({
         </Table>
       </div>
 
-      {/* Paynow Payment Dialog */}
-      <Dialog open={paynowDialogOpen} onOpenChange={setPaynowDialogOpen}>
+      {/* PayU Payment Dialog */}
+      <Dialog open={payuDialogOpen} onOpenChange={setPayuDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Wyślij płatności Paynow</DialogTitle>
+            <DialogTitle>Wyślij płatności PayU</DialogTitle>
             <DialogDescription>
-              Wysyłanie linków do płatności Paynow dla wybranych uczniów. Email z linkiem zostanie
+              Wysyłanie linków do płatności PayU dla wybranych uczniów. Email z linkiem zostanie
               wysłany do rodziców.
             </DialogDescription>
           </DialogHeader>
@@ -404,12 +404,12 @@ export function DeclarationBillingsTable({
           <DialogFooter>
             <Button
               variant="outline"
-              onClick={() => setPaynowDialogOpen(false)}
+              onClick={() => setPayuDialogOpen(false)}
               disabled={sendingPayments}
             >
               Anuluj
             </Button>
-            <Button onClick={handleSendPaynowPayments} disabled={sendingPayments}>
+            <Button onClick={handleSendPayUPayments} disabled={sendingPayments}>
               {sendingPayments ? 'Wysyłanie...' : 'Wyślij płatności'}
             </Button>
           </DialogFooter>

@@ -401,7 +401,9 @@ export function StudentDialog({
       if (result.success) {
         console.log('Parent linked successfully')
         setSelectedParentId('')
-        // Refresh the page to show updated parent list
+        setAddParentOpen(false)
+        // Close dialog to reload with fresh data
+        onClose()
         router.refresh()
       } else {
         console.error('Error linking parent:', result.message)
@@ -461,6 +463,9 @@ export function StudentDialog({
       onConfirm: async () => {
         try {
           await unlinkParentFromStudentAction(parentId, student.id)
+          // Close dialog to reload with fresh data
+          onClose()
+          router.refresh()
         } catch (error) {
           console.error('Error unlinking parent:', error)
           alert('Błąd podczas usuwania przypisania rodzica')

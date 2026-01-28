@@ -65,9 +65,6 @@ importers:
       '@radix-ui/react-tooltip':
         specifier: ^1.2.8
         version: 1.2.8(@types/react-dom@19.2.1(@types/react@19.2.2))(@types/react@19.2.2)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@stripe/stripe-js':
-        specifier: ^8.5.2
-        version: 8.5.2
       '@supabase/ssr':
         specifier: ^0.7.0
         version: 0.7.0(@supabase/supabase-js@2.75.0)
@@ -119,9 +116,6 @@ importers:
       sonner:
         specifier: ^2.0.7
         version: 2.0.7(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      stripe:
-        specifier: ^20.0.0
-        version: 20.0.0(@types/node@20.19.20)
       tailwind-merge:
         specifier: ^3.3.1
         version: 3.3.1
@@ -1034,10 +1028,6 @@ packages:
 
   '@standard-schema/utils@0.3.0':
     resolution: {integrity: sha512-e7Mew686owMaPJVNNLs55PUvgz371nKgwsc4vxE49zsODpJEnxgxRo2y/OKrqueavXgZNMDVj3DdHFlaSAeU8g==}
-
-  '@stripe/stripe-js@8.5.2':
-    resolution: {integrity: sha512-Y4FZjOCYS5kf9dhSEQNUXo4oYc8sgwq2LK9hValXaykl/VfTkiwFb2WbyqnI3EFjNwoxm0KSmyMhz3Wji4My3Q==}
-    engines: {node: '>=12.16'}
 
   '@supabase/auth-js@2.75.0':
     resolution: {integrity: sha512-J8TkeqCOMCV4KwGKVoxmEBuDdHRwoInML2vJilthOo7awVCro2SM+tOcpljORwuBQ1vHUtV62Leit+5wlxrNtw==}
@@ -2466,10 +2456,6 @@ packages:
     resolution: {integrity: sha512-vYt7UD1U9Wg6138shLtLOvdAu+8DsC/ilFtEVHcH+wydcSpNE20AfSOduf6MkRFahL5FY7X1oU7nKVZFtfq8Fg==}
     engines: {node: '>=6'}
 
-  qs@6.14.0:
-    resolution: {integrity: sha512-YWWTjgABSKcvs/nWBi9PycY/JiPJqOD4JA6o9Sej2AtvSGarXxKC3OQSk4pAarbdQlKAh5D4FCQkJNkW+GAn3w==}
-    engines: {node: '>=0.6'}
-
   querystringify@2.2.0:
     resolution: {integrity: sha512-FIqgj2EUvTa7R50u0rGsyTftzjYmv/a3hO345bZNrqabNqjtgiDMgmo4mkUjd+nzU5oF3dClKqFIPUKybUyqoQ==}
 
@@ -2703,15 +2689,6 @@ packages:
   strip-json-comments@3.1.1:
     resolution: {integrity: sha512-6fPc+R4ihwqP6N/aIv2f1gMH8lOVtWQHoqC4yK6oSDVVocumAsfCqjkXnqiYMhmMwS/mEHLp7Vehlt3ql6lEig==}
     engines: {node: '>=8'}
-
-  stripe@20.0.0:
-    resolution: {integrity: sha512-EaZeWpbJOCcDytdjKSwdrL5BxzbDGNueiCfHjHXlPdBQvLqoxl6AAivC35SPzTmVXJb5duXQlXFGS45H0+e6Gg==}
-    engines: {node: '>=16'}
-    peerDependencies:
-      '@types/node': '>=16'
-    peerDependenciesMeta:
-      '@types/node':
-        optional: true
 
   styled-jsx@5.1.6:
     resolution: {integrity: sha512-qSVyDTeMotdvQYoHWLNGwRFJHC+i+ZvdBRYosOFgC+Wg1vx4frN2/RG/NA7SYqqvKNLf39P2LSRA2pu6n0XYZA==}
@@ -3790,8 +3767,6 @@ snapshots:
   '@stablelib/base64@1.0.1': {}
 
   '@standard-schema/utils@0.3.0': {}
-
-  '@stripe/stripe-js@8.5.2': {}
 
   '@supabase/auth-js@2.75.0':
     dependencies:
@@ -5327,10 +5302,6 @@ snapshots:
 
   punycode@2.3.1: {}
 
-  qs@6.14.0:
-    dependencies:
-      side-channel: 1.1.0
-
   querystringify@2.2.0: {}
 
   queue-microtask@1.2.3: {}
@@ -5637,12 +5608,6 @@ snapshots:
   strip-bom@3.0.0: {}
 
   strip-json-comments@3.1.1: {}
-
-  stripe@20.0.0(@types/node@20.19.20):
-    dependencies:
-      qs: 6.14.0
-    optionalDependencies:
-      '@types/node': 20.19.20
 
   styled-jsx@5.1.6(@babel/core@7.28.5)(react@19.1.0):
     dependencies:

@@ -30,6 +30,7 @@ interface TutorWithStats {
   created_at: string
   activeAssignments: number
   totalHours: number
+  weeklyLessons: number
   totalSessions: number
 }
 
@@ -44,9 +45,10 @@ interface TutorSubjectLevel {
 interface TutorsTableProps {
   tutors: TutorWithStats[]
   tutorSubjects: Record<string, TutorSubjectLevel[]>
+  defaultTutorRate?: number | null
 }
 
-export function TutorsTable({ tutors, tutorSubjects }: TutorsTableProps) {
+export function TutorsTable({ tutors, tutorSubjects, defaultTutorRate = null }: TutorsTableProps) {
   const router = useRouter()
   const [search, setSearch] = useState("")
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -88,10 +90,18 @@ export function TutorsTable({ tutors, tutorSubjects }: TutorsTableProps) {
       title: 'Usuwanie tutorów',
       description: `Czy na pewno chcesz usunąć ${count} ${count === 1 ? 'tutora' : 'tutorów'}?`,
       onConfirm: async () => {
-        for (const id of selectedIds) {
-          await deleteTutor(id)
+        try {
+          for (const id of selectedIds) {
+            await deleteTutor(id)
+          }
+          setSelectedIds(new Set())
+          setConfirmDialogOpen(false)
+          router.refresh()
+        } catch (error) {
+          console.error('Błąd podczas usuwania tutorów:', error)
+          const errorMessage = error instanceof Error ? error.message : 'Nieznany błąd'
+          alert(`Wystąpił błąd podczas usuwania tutorów: ${errorMessage}`)
         }
-        setSelectedIds(new Set())
       }
     })
     setConfirmDialogOpen(true)
@@ -203,8 +213,8 @@ export function TutorsTable({ tutors, tutorSubjects }: TutorsTableProps) {
               <TableHead>Imię i nazwisko</TableHead>
               <TableHead>Email</TableHead>
               <TableHead className="text-right">Stawka (zł/h)</TableHead>
-              <TableHead className="text-right">Aktywne przypisania</TableHead>
-              <TableHead className="text-right">Liczba sesji</TableHead>
+              <TableHead className="text-right">Liczba uczniów</TableHead>
+              <TableHead className="text-right">Lekcje/tydz.</TableHead>
               <TableHead className="text-right">Suma godzin</TableHead>
             </TableRow>
           </TableHeader>
@@ -231,10 +241,14 @@ export function TutorsTable({ tutors, tutorSubjects }: TutorsTableProps) {
                   <TableCell className="font-medium">{tutor.full_name}</TableCell>
                   <TableCell>{tutor.email}</TableCell>
                   <TableCell className="text-right">
-                    {tutor.hourly_rate ? `${tutor.hourly_rate.toFixed(2)}` : '-'}
+                    {tutor.hourly_rate 
+                      ? `${tutor.hourly_rate.toFixed(0)}` 
+                      : defaultTutorRate 
+                        ? `${defaultTutorRate.toFixed(0)}` 
+                        : '-'}
                   </TableCell>
                   <TableCell className="text-right">{tutor.activeAssignments}</TableCell>
-                  <TableCell className="text-right">{tutor.totalSessions}</TableCell>
+                  <TableCell className="text-right">{tutor.weeklyLessons || 0}</TableCell>
                   <TableCell className="text-right">{formatHours(tutor.totalHours)}h</TableCell>
                 </TableRow>
               ))

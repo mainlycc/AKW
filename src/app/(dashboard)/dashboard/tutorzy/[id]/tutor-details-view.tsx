@@ -261,7 +261,7 @@ export function TutorDetailsView({
             {tutor.hourly_rate && (
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Stawka godzinowa</p>
-                <p className="text-lg">{tutor.hourly_rate.toFixed(2)} zł/h</p>
+                <p className="text-lg">{tutor.hourly_rate.toFixed(0)} zł/h</p>
               </div>
             )}
             {tutor.bio && (

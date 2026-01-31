@@ -79,7 +79,7 @@ export function ReportDetailDialog({ open, onClose, report }: ReportDetailDialog
             <div className="space-y-1">
               <p className="text-sm text-muted-foreground">Stawka godzinowa</p>
               <p className="text-lg font-semibold">
-                {report.profiles.hourly_rate ? `${report.profiles.hourly_rate.toFixed(2)} zł/h` : 'Nie ustawiona'}
+                {report.profiles.hourly_rate ? `${report.profiles.hourly_rate.toFixed(0)} zł/h` : 'Nie ustawiona'}
               </p>
             </div>
             <div className="space-y-1">

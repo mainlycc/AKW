@@ -286,7 +286,7 @@ export async function exportReportsToCSV(reports: {
     r.month,
     r.year,
     r.total_hours.toFixed(2),
-    r.hourly_rate.toFixed(2),
+    r.hourly_rate.toFixed(0),
     r.total_amount.toFixed(2),
     r.status,
   ])

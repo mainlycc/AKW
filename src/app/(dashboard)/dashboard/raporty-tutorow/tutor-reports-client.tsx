@@ -113,7 +113,7 @@ export function TutorReportsClient({ reports, tutors }: TutorReportsClientProps)
         const rate = row.original.profiles.hourly_rate
         return (
           <div className="text-right">
-            {rate ? `${rate.toFixed(2)} zł` : '-'}
+            {rate ? `${rate.toFixed(0)} zł` : '-'}
           </div>
         )
       },
@@ -140,7 +140,7 @@ export function TutorReportsClient({ reports, tutors }: TutorReportsClientProps)
       r.month,
       r.year,
       r.total_hours.toFixed(2),
-      (r.profiles.hourly_rate || 0).toFixed(2),
+      (r.profiles.hourly_rate || 0).toFixed(0),
       (r.total_amount || 0).toFixed(2),
       statusLabels[r.status] || r.status,
     ])

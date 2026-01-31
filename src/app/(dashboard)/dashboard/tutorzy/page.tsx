@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server"
 import { getUserProfile } from "@/lib/actions/auth"
+import { getDefaultTutorRate } from "../stawki/actions"
 import { TutorsTable } from "./tutors-table"
 
 interface TutorSubjectLevel {
@@ -34,7 +35,7 @@ export default async function TutorsPage() {
   // Pobierz statystyki dla każdego tutora
   const tutorsWithStats = await Promise.all(
     (tutors || []).map(async (tutor) => {
-      const [assignments, sessions] = await Promise.all([
+      const [assignments, sessions, weeklySlots] = await Promise.all([
         supabase
           .from('student_assignments')
           .select('id', { count: 'exact', head: true })
@@ -44,15 +45,23 @@ export default async function TutorsPage() {
           .from('tutoring_sessions')
           .select('duration_minutes')
           .eq('tutor_id', tutor.id),
+        // Liczba lekcji w tygodniu = wszystkie aktywne booked_slots (są cykliczne tygodniowe)
+        supabase
+          .from('booked_slots')
+          .select('id', { count: 'exact', head: true })
+          .eq('tutor_id', tutor.id)
+          .eq('status', 'booked'),
       ])
 
       const totalHours = (sessions.data || []).reduce((acc, s) => acc + s.duration_minutes, 0) / 60
+      const totalSessions = sessions.data?.length || 0
 
       return {
         ...tutor,
         activeAssignments: assignments.count || 0,
         totalHours: totalHours,
-        totalSessions: sessions.data?.length || 0,
+        weeklyLessons: weeklySlots.count || 0,
+        totalSessions: totalSessions,
       }
     })
   )
@@ -86,9 +95,16 @@ export default async function TutorsPage() {
     tutorSubjects[ts.tutor_id]!.push(ts as unknown as TutorSubjectLevel)
   })
 
+  // Get default tutor rate from system settings
+  const defaultTutorRate = await getDefaultTutorRate()
+
   return (
     <div className="space-y-4">
-      <TutorsTable tutors={tutorsWithStats} tutorSubjects={tutorSubjects} />
+      <TutorsTable 
+        tutors={tutorsWithStats} 
+        tutorSubjects={tutorSubjects}
+        defaultTutorRate={defaultTutorRate}
+      />
     </div>
   )
 }

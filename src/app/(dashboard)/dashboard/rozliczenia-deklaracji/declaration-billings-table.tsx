@@ -348,7 +348,7 @@ export function DeclarationBillingsTable({
                       {billing.hours ? formatHours(billing.hours) : '0'} h
                     </TableCell>
                     <TableCell className="text-right">
-                      {hourlyRate.toFixed(2)} zł/h
+                      {hourlyRate.toFixed(0)} zł/h
                     </TableCell>
                     <TableCell className="text-right">
                       {(billing.total_due || 0).toFixed(2)} zł

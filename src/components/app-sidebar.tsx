@@ -19,6 +19,7 @@ import {
   IconCalendarPlus,
   IconBell,
   IconHistory,
+  IconCurrency,
   type Icon,
 } from "@tabler/icons-react"
 
@@ -163,6 +164,11 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
           title: "Powiadomienia",
           url: "/dashboard/powiadomienia",
           icon: IconBell,
+        },
+        {
+          title: "Stawki",
+          url: "/dashboard/stawki",
+          icon: IconCurrency,
         },
       ],
     },

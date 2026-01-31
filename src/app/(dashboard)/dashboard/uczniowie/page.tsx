@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server"
 import { getUserProfile } from "@/lib/actions/auth"
 import { getTutorSubjectLevels } from "@/lib/actions/tutor"
+import { getDefaultStudentRate } from "../stawki/actions"
 import { StudentsTable } from "./students-table"
 
 interface Parent {
@@ -197,8 +198,11 @@ export default async function StudentsPage() {
     students = data || []
   }
 
+  // Get default student rate from system settings (needed for mergeDuplicateStudents)
+  const defaultStudentRate = await getDefaultStudentRate()
+
   // Łączenie duplikatów uczniów (tych samych imię i nazwisko, ale różne student_id)
-  const mergeDuplicateStudents = (studentsList: StudentWithRelations[]): StudentWithRelations[] => {
+  const mergeDuplicateStudents = (studentsList: StudentWithRelations[], defaultRate: number): StudentWithRelations[] => {
     // Tworzymy mapę po znormalizowanym imieniu i nazwisku
     const normalizedNameMap = new Map<string, StudentWithRelations[]>()
     
@@ -281,9 +285,12 @@ export default async function StudentsPage() {
         }
         const mergedAssignments = Array.from(allAssignmentsMap.values())
         
-        // Wybieramy najwyższą stawkę godzinową
+        // Wybieramy najwyższą stawkę godzinową (używamy defaultRate jako fallback)
         const maxHourlyRate = Math.max(
-          ...duplicates.map(s => parseFloat(s.hourly_rate?.toString() || '50'))
+          ...duplicates.map(s => {
+            const rate = parseFloat(s.hourly_rate?.toString() || '0')
+            return rate > 0 ? rate : defaultRate
+          })
         )
         
         // Wybieramy najnowszą datę aktualizacji
@@ -311,7 +318,7 @@ export default async function StudentsPage() {
   }
   
   // Łączymy duplikaty przed przekazaniem do tabeli
-  students = mergeDuplicateStudents(students)
+  students = mergeDuplicateStudents(students, defaultStudentRate)
 
   // Get all parents and subjects for dialog
   let allParents: Parent[] = []
@@ -349,6 +356,7 @@ export default async function StudentsPage() {
         allParents={allParents}
         allSubjects={allSubjects}
         tutorId={profile.id}
+        defaultStudentRate={defaultStudentRate}
         tutorSubjectLevels={tutorSubjectLevels}
         currentUserId={profile.id}
       />

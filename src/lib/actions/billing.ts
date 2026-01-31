@@ -175,14 +175,31 @@ async function calculateBillingManually(
     periodId = newPeriod.id
   }
 
-  // Get student hourly rate (default 50 PLN)
+  // Get student hourly rate
   const { data: student } = await supabase
     .from('students')
     .select('hourly_rate')
     .eq('id', studentId)
     .single()
 
-  const hourlyRate = student?.hourly_rate ? parseFloat(student.hourly_rate.toString()) : 50
+  // Get default rate from system_settings if student doesn't have one
+  let defaultRate = 50.00 // fallback
+  if (!student?.hourly_rate) {
+    const { data: setting } = await supabase
+      .from('system_settings')
+      .select('value')
+      .eq('key', 'default_student_rate')
+      .maybeSingle()
+    
+    if (setting?.value) {
+      const parsedRate = parseFloat(setting.value)
+      if (!isNaN(parsedRate)) {
+        defaultRate = parsedRate
+      }
+    }
+  }
+
+  const hourlyRate = student?.hourly_rate ? parseFloat(student.hourly_rate.toString()) : defaultRate
 
   // Calculate total due from completed sessions
   const { data: sessions } = await supabase
@@ -805,9 +822,26 @@ export async function getStudentBillingsFromReports(
       // NOTE: We do NOT store student_parents here - we'll fetch the latest parent data separately
       if (!studentDataMap.has(studentId)) {
         const student = Array.isArray(entry.students) ? entry.students[0] : entry.students
+        // Get default rate from system_settings if student doesn't have one
+        let defaultRate = 50.00 // fallback
+        if (!student?.hourly_rate) {
+          const { data: setting } = await supabase
+            .from('system_settings')
+            .select('value')
+            .eq('key', 'default_student_rate')
+            .maybeSingle()
+          
+          if (setting?.value) {
+            const parsedRate = parseFloat(setting.value)
+            if (!isNaN(parsedRate)) {
+              defaultRate = parsedRate
+            }
+          }
+        }
+        
         const hourlyRate = student?.hourly_rate 
           ? parseFloat(student.hourly_rate.toString()) 
-          : 50 // default
+          : defaultRate
         
         studentDataMap.set(studentId, {
           first_name: student?.first_name || '',
@@ -1511,7 +1545,23 @@ export async function sendPaymentReminder(
     totalPaid = parseFloat(billingData.total_paid?.toString() || '0')
     balance = parseFloat(billingData.balance?.toString() || '0')
     // Calculate hours from total_due and hourly_rate
-    const hourlyRate = parseFloat(student.hourly_rate?.toString() || '50')
+    // Get default rate from system_settings if student doesn't have one
+    let defaultRate = 50.00 // fallback
+    if (!student?.hourly_rate) {
+      const { data: setting } = await supabase
+        .from('system_settings')
+        .select('value')
+        .eq('key', 'default_student_rate')
+        .maybeSingle()
+      
+      if (setting?.value) {
+        const parsedRate = parseFloat(setting.value)
+        if (!isNaN(parsedRate)) {
+          defaultRate = parsedRate
+        }
+      }
+    }
+    const hourlyRate = parseFloat(student.hourly_rate?.toString() || defaultRate.toString())
     hours = hourlyRate > 0 ? totalDue / hourlyRate : 0
   } else {
     // If billing doesn't exist, get data from reports (for billing-from-reports)
@@ -1538,7 +1588,23 @@ export async function sendPaymentReminder(
           }
         }
       }
-      const hourlyRate = parseFloat(student.hourly_rate?.toString() || '50')
+      // Get default rate from system_settings if student doesn't have one
+    let defaultRate = 50.00 // fallback
+    if (!student?.hourly_rate) {
+      const { data: setting } = await supabase
+        .from('system_settings')
+        .select('value')
+        .eq('key', 'default_student_rate')
+        .maybeSingle()
+      
+      if (setting?.value) {
+        const parsedRate = parseFloat(setting.value)
+        if (!isNaN(parsedRate)) {
+          defaultRate = parsedRate
+        }
+      }
+    }
+    const hourlyRate = parseFloat(student.hourly_rate?.toString() || defaultRate.toString())
       totalDue = hours * hourlyRate
     }
 

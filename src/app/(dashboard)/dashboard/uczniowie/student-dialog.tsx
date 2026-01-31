@@ -108,6 +108,7 @@ interface StudentDialogProps {
   allSubjects?: SubjectWithLevels[]
   isTutor?: boolean
   tutorId?: string
+  defaultStudentRate?: number
   tutorSubjectLevels?: TutorSubjectLevel[]
   currentUserId?: string
 }
@@ -124,6 +125,7 @@ export function StudentDialog({
   allSubjects = [],
   isTutor = false,
   tutorId,
+  defaultStudentRate = 50,
   tutorSubjectLevels = [],
   currentUserId,
 }: StudentDialogProps) {
@@ -134,7 +136,7 @@ export function StudentDialog({
   const [formData, setFormData] = useState({
     first_name: '',
     last_name: '',
-    hourly_rate: 50,
+    hourly_rate: defaultStudentRate,
   })
   const [parentData, setParentData] = useState({
     first_name: '',
@@ -170,6 +172,16 @@ export function StudentDialog({
     }
   }, [open, student?.id])
 
+  // Update formData when defaultStudentRate changes
+  useEffect(() => {
+    if (!student && open) {
+      setFormData(prev => ({
+        ...prev,
+        hourly_rate: prev.hourly_rate === 50 ? defaultStudentRate : prev.hourly_rate
+      }))
+    }
+  }, [defaultStudentRate, student, open])
+
   useEffect(() => {
     if (open) {
       if (student) {
@@ -177,7 +189,7 @@ export function StudentDialog({
         setFormData({
           first_name: student.first_name,
           last_name: student.last_name,
-          hourly_rate: student.hourly_rate ?? 50,
+          hourly_rate: student.hourly_rate ?? defaultStudentRate,
         })
         setParentData({
           first_name: '',
@@ -209,7 +221,7 @@ export function StudentDialog({
         setFormData({
           first_name: '',
           last_name: '',
-          hourly_rate: 50,
+          hourly_rate: defaultStudentRate,
         })
         setParentData({
           first_name: '',
@@ -734,7 +746,7 @@ export function StudentDialog({
                     step="0.01"
                     min="0"
                     value={formData.hourly_rate}
-                    onChange={(e) => setFormData({ ...formData, hourly_rate: parseFloat(e.target.value) || 50 })}
+                    onChange={(e) => setFormData({ ...formData, hourly_rate: parseFloat(e.target.value) || defaultStudentRate })}
                     required
                     disabled={loading || deleting}
                     className="h-9"

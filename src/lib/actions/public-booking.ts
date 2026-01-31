@@ -6,10 +6,10 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import type { CalendarSlot, DayOfWeek } from '@/lib/types/availability.types'
 import { SLOT_DURATION_MINUTES } from '@/lib/types/availability.types'
 import { generateCalendarSlots } from '@/lib/utils/availability-helpers'
-import { sendBookingConfirmationEmail } from '@/lib/email/send'
 import { format, parseISO } from 'date-fns'
 import { pl } from 'date-fns/locale'
 import { createNotification } from '@/lib/actions/notifications'
+import { getDefaultStudentRate } from '@/app/(dashboard)/dashboard/stawki/actions'
 
 interface TutorProfile {
   id: string
@@ -381,6 +381,39 @@ const normalizeTime = (time: string) => {
   return `${h.padStart(2, '0')}:${m.padStart(2, '0')}`
 }
 
+/**
+ * Calculate lesson price based on student's hourly rate or default rate
+ * Price = hourly_rate * (SLOT_DURATION_MINUTES / 60)
+ */
+export async function calculateLessonPrice(studentId: string): Promise<number> {
+  const admin = createAdminClient()
+
+  // Get student's hourly rate
+  const { data: student, error: studentError } = await admin
+    .from('students')
+    .select('hourly_rate')
+    .eq('id', studentId)
+    .single()
+
+  if (studentError) {
+    throw studentError
+  }
+
+  // Use student's hourly_rate or get default rate from system_settings
+  let hourlyRate: number
+  if (student?.hourly_rate) {
+    hourlyRate = parseFloat(student.hourly_rate.toString())
+  } else {
+    hourlyRate = await getDefaultStudentRate()
+  }
+
+  // Calculate price: hourly_rate * (duration in hours)
+  const durationInHours = SLOT_DURATION_MINUTES / 60
+  const price = hourlyRate * durationInHours
+
+  return price
+}
+
 export async function bookPublicSlot(payload: PublicBookingPayload) {
   const admin = createAdminClient()
 
@@ -447,6 +480,9 @@ export async function bookPublicSlot(payload: PublicBookingPayload) {
   if (existingStudent) {
     studentId = existingStudent.id
   } else {
+    // Get default rate from system_settings
+    const defaultRate = await getDefaultStudentRate()
+    
     const { data: newStudent, error: studentInsertError } = await admin
       .from('students')
       .insert({
@@ -455,7 +491,7 @@ export async function bookPublicSlot(payload: PublicBookingPayload) {
         parent_email: email,
         parent_phone: phone,
         notes,
-        hourly_rate: 50.00, // Domyślna stawka godzinowa
+        hourly_rate: defaultRate,
       })
       .select('id')
       .single()
@@ -549,7 +585,11 @@ export async function bookPublicSlot(payload: PublicBookingPayload) {
     throw insertError
   }
 
-  // Pobierz dane do emaila (tutor, przedmiot, poziom)
+  if (!bookingRequest) {
+    throw new Error('Nie udało się utworzyć rezerwacji.')
+  }
+
+  // Pobierz dane do powiadomienia (tutor, przedmiot, poziom)
   const [tutorData, subjectData, levelData] = await Promise.all([
     admin
       .from('profiles')
@@ -568,59 +608,7 @@ export async function bookPublicSlot(payload: PublicBookingPayload) {
       .single(),
   ])
 
-  // Wyślij email potwierdzający (nie przerywamy procesu jeśli się nie powiedzie)
-  if (tutorData.data && subjectData.data && levelData.data) {
-    try {
-      const formattedDate = format(parseISO(payload.date), 'd MMMM yyyy', { locale: pl })
-      const timeRange = `${startTime.substring(0, 5)}-${endTime.substring(0, 5)}`
-      const studentFullName = `${firstName} ${lastName}`
-
-      const emailResult = await sendBookingConfirmationEmail({
-        to: email,
-        studentName: studentFullName,
-        tutorName: tutorData.data.full_name,
-        subject: subjectData.data.name,
-        level: levelData.data.level_name,
-        date: formattedDate,
-        time: timeRange,
-        duration: SLOT_DURATION_MINUTES,
-      })
-
-      if (!emailResult.success) {
-        // Szczegółowe logowanie błędów dla debugowania na Vercel
-        console.error('Booking confirmation email failed:', {
-          error: emailResult.error,
-          hasResendKey: !!process.env.RESEND_API_KEY,
-          resendKeyPrefix: process.env.RESEND_API_KEY?.substring(0, 3) || 'N/A',
-          email: email,
-          environment: process.env.NODE_ENV,
-          vercel: !!process.env.VERCEL,
-        })
-      } else {
-        console.log('Booking confirmation email sent successfully:', {
-          messageId: emailResult.messageId,
-          email: email,
-        })
-      }
-    } catch (emailError) {
-      // Logujemy błąd, ale nie przerywamy procesu rezerwacji
-      console.error('Failed to send booking confirmation email (exception):', {
-        error: emailError instanceof Error ? emailError.message : String(emailError),
-        stack: emailError instanceof Error ? emailError.stack : undefined,
-        hasResendKey: !!process.env.RESEND_API_KEY,
-        environment: process.env.NODE_ENV,
-        vercel: !!process.env.VERCEL,
-      })
-    }
-  } else {
-    console.error('Failed to fetch booking data for email:', {
-      tutor: !!tutorData.data,
-      subject: !!subjectData.data,
-      level: !!levelData.data,
-    })
-  }
-
-  // Powiadomienie dla adminów o nowej rezerwacji
+  // Powiadomienie dla adminów o nowej rezerwacji (oczekującej na płatność)
   try {
     // Pobierz wszystkich adminów
     const { data: admins } = await admin
@@ -639,8 +627,8 @@ export async function bookPublicSlot(payload: PublicBookingPayload) {
           createNotification({
             userId: adminProfile.id,
             type: 'public_booking_created',
-            title: 'Nowa rezerwacja publiczna',
-            message: `${studentFullName} zarezerwował(a) termin ${formattedDate} ${timeRange} u tutora ${tutorData.data.full_name} (${subjectData.data.name} - ${levelData.data.level_name})`,
+            title: 'Nowa rezerwacja publiczna (oczekuje na płatność)',
+            message: `${studentFullName} zarezerwował(a) termin ${formattedDate} ${timeRange} u tutora ${tutorData.data.full_name} (${subjectData.data.name} - ${levelData.data.level_name}) - oczekuje na płatność`,
             metadata: {
               booking_id: bookingRequest.id,
               tutor_id: payload.tutorId,

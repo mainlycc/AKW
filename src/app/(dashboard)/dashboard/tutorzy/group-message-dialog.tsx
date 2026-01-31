@@ -26,7 +26,7 @@ interface TutorWithStats {
   created_at: string
   activeAssignments: number
   totalHours: number
-  totalSessions: number
+  totalSessions?: number
 }
 
 interface GroupMessageDialogProps {

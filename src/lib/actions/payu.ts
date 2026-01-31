@@ -1,10 +1,16 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { createPayUClient } from '@/lib/payu/client'
 import { getUserProfile } from '@/lib/actions/auth'
 import { revalidatePath } from 'next/cache'
 import type { StudentBillingWithParent } from '@/lib/actions/billing'
+import { sendFinalBookingConfirmationEmail } from '@/lib/email/send'
+import { createNotification } from '@/lib/actions/notifications'
+import { format, parseISO } from 'date-fns'
+import { pl } from 'date-fns/locale'
+import { SLOT_DURATION_MINUTES } from '@/lib/types/availability.types'
 
 export interface CreatePayUOrderResult {
   success: boolean
@@ -169,6 +175,193 @@ export async function createPayUOrder(
     }
   } catch (error) {
     console.error('Error creating PayU order:', error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Nieznany błąd',
+    }
+  }
+}
+
+/**
+ * Create PayU order for a booking request
+ */
+export async function createPayUOrderForBooking(
+  bookingRequestId: string
+): Promise<CreatePayUOrderResult> {
+  try {
+    // Use admin client to bypass RLS - this is called from public booking page
+    const admin = createAdminClient()
+    const supabase = await createClient() // Still use regular client for reading booking request (has RLS for public)
+
+    // Get booking request details
+    const { data: bookingRequest, error: bookingError } = await supabase
+      .from('public_booking_requests')
+      .select(`
+        id,
+        student_id,
+        status,
+        student_first_name,
+        student_last_name,
+        contact_email,
+        contact_phone,
+        request_date,
+        start_time,
+        end_time,
+        tutor:profiles!public_booking_requests_tutor_id_fkey (id, full_name),
+        subject:subjects!public_booking_requests_subject_id_fkey (id, name),
+        subject_level:subject_levels!public_booking_requests_subject_level_id_fkey (id, level_name)
+      `)
+      .eq('id', bookingRequestId)
+      .single()
+
+    if (bookingError || !bookingRequest) {
+      return { success: false, error: 'Rezerwacja nie została znaleziona' }
+    }
+
+    // Check if booking is already paid or confirmed
+    if (bookingRequest.status === 'confirmed') {
+      return { success: false, error: 'Rezerwacja została już potwierdzona' }
+    }
+
+    if (!bookingRequest.student_id) {
+      return { success: false, error: 'Brak powiązania z uczniem' }
+    }
+
+    // Calculate lesson price
+    const { calculateLessonPrice } = await import('@/lib/actions/public-booking')
+    const amount = await calculateLessonPrice(bookingRequest.student_id)
+
+    if (amount <= 0) {
+      return { success: false, error: 'Nieprawidłowa cena lekcji' }
+    }
+
+    // Generate external order ID
+    const extOrderId = `booking-${bookingRequestId}-${Date.now()}-${Math.random()
+      .toString(36)
+      .slice(2, 8)}`
+
+    // Check if order already exists (use admin client to bypass RLS)
+    const { data: existingOrder } = await admin
+      .from('payu_payments')
+      .select('id, order_id, status, redirect_url')
+      .eq('booking_request_id', bookingRequestId)
+      .eq('status', 'PENDING')
+      .maybeSingle()
+
+    if (existingOrder && existingOrder.status !== 'CANCELED') {
+      // Return existing order
+      return {
+        success: true,
+        orderId: existingOrder.order_id,
+        redirectUrl: existingOrder.redirect_url || undefined,
+      }
+    }
+
+    // Get base URL for return and notification URLs
+    const baseUrlRaw = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+    const baseUrl = baseUrlRaw.replace(/\/+$/, '')
+    const continueUrl = `${baseUrl}/public/rezerwacje/platnosc/sukces?bookingId=${bookingRequestId}`
+    const notifyUrl = `${baseUrl}/api/payu/webhook`
+
+    // Format date and time for description
+    const tutor = Array.isArray(bookingRequest.tutor) ? bookingRequest.tutor[0] : bookingRequest.tutor
+    const subject = Array.isArray(bookingRequest.subject) ? bookingRequest.subject[0] : bookingRequest.subject
+    const subjectLevel = Array.isArray(bookingRequest.subject_level) ? bookingRequest.subject_level[0] : bookingRequest.subject_level
+
+    const tutorName = tutor?.full_name || 'Tutor'
+    const subjectName = subject?.name || 'Przedmiot'
+    const levelName = subjectLevel?.level_name || 'Poziom'
+    const studentName = `${bookingRequest.student_first_name} ${bookingRequest.student_last_name}`
+    
+    // Format date
+    const bookingDate = new Date(bookingRequest.request_date)
+    const formattedDate = bookingDate.toLocaleDateString('pl-PL', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    })
+
+    // Create PayU client
+    const payuClient = createPayUClient()
+
+    // Split contact name for buyer info (use student name if no separate contact name)
+    const contactName = studentName
+    const nameParts = contactName.split(' ')
+    const firstName = nameParts[0] || contactName
+    const lastName = nameParts.slice(1).join(' ') || ''
+
+    // Create order in PayU
+    // Amount must be in grosze (smallest currency unit)
+    const totalAmount = Math.round(amount * 100).toString()
+
+    const orderResponse = await payuClient.createOrder({
+      customerIp: '185.68.12.34', // Test IP for sandbox (PayU may reject 127.0.0.1)
+      description: `Płatność za lekcję - ${subjectName} (${levelName}) - ${formattedDate} ${bookingRequest.start_time.substring(0, 5)}`,
+      currencyCode: 'PLN',
+      totalAmount,
+      extOrderId,
+      buyer: {
+        email: bookingRequest.contact_email,
+        firstName,
+        lastName,
+        language: 'pl',
+      },
+      products: [
+        {
+          name: `Lekcja - ${subjectName} (${levelName}) - ${tutorName} - ${formattedDate} ${bookingRequest.start_time.substring(0, 5)}`,
+          unitPrice: totalAmount,
+          quantity: '1',
+        },
+      ],
+      continueUrl,
+      notifyUrl,
+    })
+
+    // Save order to database (use admin client to bypass RLS)
+    const { data: payuPayment, error: dbError } = await admin
+      .from('payu_payments')
+      .insert({
+        order_id: orderResponse.paymentId,
+        ext_order_id: extOrderId,
+        student_id: bookingRequest.student_id,
+        billing_period_id: null, // No billing period for booking payments
+        booking_request_id: bookingRequestId,
+        status: 'PENDING',
+        amount,
+        currency: 'PLN',
+        redirect_url: orderResponse.redirectUrl,
+        notify_url: notifyUrl,
+        continue_url: continueUrl,
+        description: `Płatność za lekcję - ${subjectName} (${levelName}) - ${formattedDate} ${bookingRequest.start_time.substring(0, 5)}`,
+        buyer_email: bookingRequest.contact_email,
+        buyer_first_name: firstName,
+        buyer_last_name: lastName,
+      })
+      .select('id, order_id, redirect_url')
+      .single()
+
+    if (dbError) {
+      console.error('Error saving PayU order to database:', dbError)
+      return {
+        success: false,
+        error: `Nie udało się zapisać zamówienia w bazie: ${dbError.message}`,
+      }
+    }
+
+    console.log('PayU order created successfully for booking:', {
+      paymentId: orderResponse.paymentId,
+      extOrderId,
+      bookingRequestId,
+      amount,
+    })
+
+    return {
+      success: true,
+      orderId: payuPayment.order_id,
+      redirectUrl: payuPayment.redirect_url || orderResponse.redirectUrl || undefined,
+    }
+  } catch (error) {
+    console.error('Error creating PayU order for booking:', error)
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Nieznany błąd',
@@ -351,6 +544,215 @@ export async function sendPayUPayments(
 }
 
 /**
+ * Handle booking payment completion - confirm booking and send email
+ */
+async function handleBookingPaymentCompletion(bookingRequestId: string): Promise<void> {
+  try {
+    const admin = createAdminClient()
+
+    // Get booking request details
+    const { data: booking, error: fetchError } = await admin
+      .from('public_booking_requests')
+      .select(
+        'id, assignment_id, booked_slot_id, tutor_id, request_date, weekday, start_time, end_time, student_first_name, student_last_name, contact_email, subject_id, subject_level_id, status'
+      )
+      .eq('id', bookingRequestId)
+      .single()
+
+    if (fetchError || !booking) {
+      console.error('Error fetching booking request:', fetchError)
+      return
+    }
+
+    // Check if already confirmed
+    if (booking.status === 'confirmed') {
+      console.log('Booking already confirmed:', bookingRequestId)
+      return
+    }
+
+    // Update booking status to confirmed
+    const { error: updateError } = await admin
+      .from('public_booking_requests')
+      .update({ status: 'confirmed' })
+      .eq('id', bookingRequestId)
+
+    if (updateError) {
+      console.error('Error updating booking status:', updateError)
+      return
+    }
+
+    // Update assignment status to active
+    if (booking.assignment_id) {
+      const { error: assignmentError } = await admin
+        .from('student_assignments')
+        .update({ status: 'active' })
+        .eq('id', booking.assignment_id)
+
+      if (assignmentError) {
+        console.error('Error updating assignment status:', assignmentError)
+      }
+    }
+
+    // Create booked_slot if it doesn't exist
+    if (!booking.booked_slot_id && booking.assignment_id) {
+      // Check if slot already exists
+      const { data: existingSlot } = await admin
+        .from('booked_slots')
+        .select('id, status')
+        .eq('tutor_id', booking.tutor_id)
+        .eq('student_assignment_id', booking.assignment_id)
+        .eq('weekday', booking.weekday)
+        .eq('start_time', booking.start_time)
+        .eq('end_time', booking.end_time)
+        .maybeSingle()
+
+      if (existingSlot) {
+        // Update existing slot to booked
+        if (existingSlot.status !== 'booked') {
+          await admin
+            .from('booked_slots')
+            .update({ status: 'booked' })
+            .eq('id', existingSlot.id)
+        }
+
+        // Update booking request with booked_slot_id
+        await admin
+          .from('public_booking_requests')
+          .update({ booked_slot_id: existingSlot.id })
+          .eq('id', bookingRequestId)
+      } else {
+        // Create new booked_slot
+        const { data: newSlot, error: slotInsertError } = await admin
+          .from('booked_slots')
+          .insert({
+            tutor_id: booking.tutor_id,
+            student_assignment_id: booking.assignment_id,
+            weekday: booking.weekday,
+            start_time: booking.start_time,
+            end_time: booking.end_time,
+            status: 'booked',
+            created_by: booking.tutor_id,
+          })
+          .select('id')
+          .single()
+
+        if (!slotInsertError && newSlot) {
+          // Update booking request with booked_slot_id
+          await admin
+            .from('public_booking_requests')
+            .update({ booked_slot_id: newSlot.id })
+            .eq('id', bookingRequestId)
+        } else {
+          console.error('Error creating booked_slot:', slotInsertError)
+        }
+      }
+    }
+
+    // Get data for email and notification
+    const [tutorData, subjectData, levelData] = await Promise.all([
+      admin
+        .from('profiles')
+        .select('full_name')
+        .eq('id', booking.tutor_id)
+        .single(),
+      booking.subject_id
+        ? admin
+            .from('subjects')
+            .select('name')
+            .eq('id', booking.subject_id)
+            .maybeSingle()
+        : Promise.resolve({ data: null }),
+      booking.subject_level_id
+        ? admin
+            .from('subject_levels')
+            .select('level_name')
+            .eq('id', booking.subject_level_id)
+            .maybeSingle()
+        : Promise.resolve({ data: null }),
+    ])
+
+    const formattedDate = format(parseISO(booking.request_date), 'd MMMM yyyy', { locale: pl })
+    const timeRange = `${booking.start_time.substring(0, 5)}-${booking.end_time.substring(0, 5)}`
+    const studentName = `${booking.student_first_name} ${booking.student_last_name}`
+
+    // Send notification to tutor
+    if (tutorData.data) {
+      try {
+        const subjectLabel = subjectData.data?.name
+          ? `${subjectData.data.name}${levelData.data?.level_name ? ` - ${levelData.data.level_name}` : ''}`
+          : ''
+
+        await createNotification({
+          userId: booking.tutor_id,
+          type: 'public_booking_confirmed',
+          title: 'Rezerwacja potwierdzona',
+          message: `Rezerwacja dla ${studentName} na ${formattedDate} ${timeRange}${subjectLabel ? ` (${subjectLabel})` : ''} została potwierdzona.`,
+          metadata: {
+            booking_id: bookingRequestId,
+            student_name: studentName,
+            date: booking.request_date,
+            time: timeRange,
+          },
+        })
+      } catch (notificationError) {
+        console.error('Error creating notification:', notificationError)
+      }
+    }
+
+    // Send confirmation email
+    if (
+      booking.contact_email &&
+      tutorData.data &&
+      subjectData.data &&
+      levelData.data
+    ) {
+      try {
+        const emailResult = await sendFinalBookingConfirmationEmail({
+          to: booking.contact_email,
+          studentName: studentName,
+          tutorName: tutorData.data.full_name,
+          subject: subjectData.data.name,
+          level: levelData.data.level_name,
+          date: formattedDate,
+          time: timeRange,
+          duration: SLOT_DURATION_MINUTES,
+        })
+
+        if (!emailResult.success) {
+          console.error('Final booking confirmation email failed:', {
+            error: emailResult.error,
+            email: booking.contact_email,
+            bookingId: bookingRequestId,
+          })
+        } else {
+          console.log('Final booking confirmation email sent successfully:', {
+            messageId: emailResult.messageId,
+            email: booking.contact_email,
+            bookingId: bookingRequestId,
+          })
+        }
+      } catch (emailError) {
+        console.error('Failed to send final booking confirmation email:', {
+          error: emailError instanceof Error ? emailError.message : String(emailError),
+          email: booking.contact_email,
+          bookingId: bookingRequestId,
+        })
+      }
+    }
+
+    // Revalidate paths
+    revalidatePath('/dashboard/rezerwacje-publiczne')
+    revalidatePath('/public/rezerwacje')
+    revalidatePath('/dashboard')
+
+    console.log('Booking payment completed successfully:', bookingRequestId)
+  } catch (error) {
+    console.error('Error handling booking payment completion:', error)
+    // Don't throw - we don't want to break the webhook processing
+  }
+}
+
+/**
  * Process PayU webhook notification
  */
 export async function processPayUWebhook(
@@ -386,7 +788,7 @@ export async function processPayUWebhook(
         updated_at: new Date().toISOString(),
       })
       .eq('order_id', notification.orderId)
-      .select('id, student_id, billing_period_id, amount, ext_order_id')
+      .select('id, student_id, billing_period_id, booking_request_id, amount, ext_order_id')
       .single()
 
     if (updateError) {
@@ -403,10 +805,16 @@ export async function processPayUWebhook(
       orderId: notification.orderId,
       status: notification.status,
       studentId: payuPayment.student_id,
+      bookingRequestId: payuPayment.booking_request_id,
     })
 
-    // If payment completed, create or update payment record
-    if (notification.status === 'COMPLETED') {
+    // Handle booking payment completion
+    if (notification.status === 'COMPLETED' && payuPayment.booking_request_id) {
+      await handleBookingPaymentCompletion(payuPayment.booking_request_id)
+    }
+
+    // If payment completed, create or update payment record (for billing payments)
+    if (notification.status === 'COMPLETED' && payuPayment.billing_period_id) {
       // Check if payment record already exists
       const { data: existingPayment } = await supabase
         .from('payments')

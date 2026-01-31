@@ -167,7 +167,7 @@ export function ReportsManagement({ reports, tutors = [], adminId }: ReportsMana
       r.month,
       r.year,
       r.total_hours.toFixed(2),
-      (r.profiles.hourly_rate || 0).toFixed(2),
+      (r.profiles.hourly_rate || 0).toFixed(0),
       (r.total_amount || 0).toFixed(2),
     ])
 
@@ -484,7 +484,7 @@ export function ReportsManagement({ reports, tutors = [], adminId }: ReportsMana
                       <TableCell className="px-4">{months[report.month - 1]} {report.year}</TableCell>
                       <TableCell className="px-4 text-right">{formatHours(report.total_hours)} h</TableCell>
                       <TableCell className="px-4 text-right">
-                        {report.profiles.hourly_rate ? `${report.profiles.hourly_rate.toFixed(2)} zł` : '-'}
+                        {report.profiles.hourly_rate ? `${report.profiles.hourly_rate.toFixed(0)} zł` : '-'}
                       </TableCell>
                       <TableCell className="px-4 text-right">
                         {report.total_amount ? `${report.total_amount.toFixed(2)} zł` : '-'}

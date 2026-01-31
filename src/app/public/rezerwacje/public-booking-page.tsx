@@ -14,6 +14,7 @@ import type {
   SubjectLevelSlot,
 } from '@/lib/actions/public-booking'
 import { getSubjectLevelOpenSlots, bookPublicSlot } from '@/lib/actions/public-booking'
+import { createPayUOrderForBooking } from '@/lib/actions/payu'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -170,20 +171,22 @@ export function PublicBookingPage({ subjects }: PublicBookingPageProps) {
 
     startBookingTransition(async () => {
       try {
-        await bookPublicSlot(payload)
-        toast.success('Dokonałeś wstępnej rejestracji! Sprawdź swoją skrzynkę email - wysłaliśmy potwierdzenie.')
-        setBooking(null)
-        setFormData({
-          studentFirstName: '',
-          studentLastName: '',
-          contactEmail: '',
-          contactPhone: '',
-          notes: '',
-        })
-        if (selectedLevelId) {
-          fetchSlots(selectedLevelId, rangeStart)
+        // Create booking request
+        const bookingRequest = await bookPublicSlot(payload)
+        
+        if (!bookingRequest || !bookingRequest.id) {
+          throw new Error('Nie udało się utworzyć rezerwacji.')
         }
-        router.refresh()
+
+        // Create PayU order for booking
+        const paymentResult = await createPayUOrderForBooking(bookingRequest.id)
+        
+        if (!paymentResult.success || !paymentResult.redirectUrl) {
+          throw new Error(paymentResult.error || 'Nie udało się utworzyć płatności.')
+        }
+
+        // Redirect to PayU payment page
+        window.location.href = paymentResult.redirectUrl
       } catch (error) {
         console.error(error)
         toast.error(error instanceof Error ? error.message : 'Nie udało się zarezerwować slotu.')

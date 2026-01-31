@@ -34,9 +34,16 @@ export async function updateTutorDetails(
 export async function deleteTutor(id: string) {
   const supabase = await createClient()
 
-  const { error } = await supabase.from('profiles').delete().eq('id', id).eq('role', 'tutor')
+  const { data, error } = await supabase.from('profiles').delete().eq('id', id).eq('role', 'tutor').select()
 
-  if (error) throw error
+  if (error) {
+    console.error('Błąd podczas usuwania tutora:', error)
+    throw new Error(`Nie udało się usunąć tutora: ${error.message}`)
+  }
+
+  if (!data || data.length === 0) {
+    throw new Error('Nie znaleziono tutora do usunięcia lub brak uprawnień')
+  }
 
   revalidatePath('/dashboard/tutorzy')
 }

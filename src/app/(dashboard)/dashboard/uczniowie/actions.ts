@@ -67,12 +67,29 @@ export async function createStudent(
     )
   }
 
+  // Get default rate from system_settings if not provided
+  let defaultRate = 50.00 // fallback
+  if (data.hourly_rate === undefined) {
+    const { data: setting } = await supabase
+      .from('system_settings')
+      .select('value')
+      .eq('key', 'default_student_rate')
+      .maybeSingle()
+    
+    if (setting?.value) {
+      const parsedRate = parseFloat(setting.value)
+      if (!isNaN(parsedRate)) {
+        defaultRate = parsedRate
+      }
+    }
+  }
+
   const { data: student, error } = await supabase
     .from('students')
     .insert({
       first_name: data.first_name.trim(),
       last_name: data.last_name.trim(),
-      hourly_rate: data.hourly_rate ?? 50.00,
+      hourly_rate: data.hourly_rate ?? defaultRate,
     })
     .select()
     .single()
@@ -224,13 +241,30 @@ export async function createStudentWithAssignment(
     return existingStudent
   }
 
+  // Get default rate from system_settings if not provided
+  let defaultRate = 50.00 // fallback
+  if (data.hourly_rate === undefined) {
+    const { data: setting } = await supabase
+      .from('system_settings')
+      .select('value')
+      .eq('key', 'default_student_rate')
+      .maybeSingle()
+    
+    if (setting?.value) {
+      const parsedRate = parseFloat(setting.value)
+      if (!isNaN(parsedRate)) {
+        defaultRate = parsedRate
+      }
+    }
+  }
+
   // Create new student
   const { data: student, error: studentError } = await supabase
     .from('students')
     .insert({
       first_name: data.first_name.trim(),
       last_name: data.last_name.trim(),
-      hourly_rate: data.hourly_rate ?? 50.00,
+      hourly_rate: data.hourly_rate ?? defaultRate,
     })
     .select()
     .single()

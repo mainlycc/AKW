@@ -14,7 +14,15 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { sendGroupMessageToTutors } from './actions'
 import { toast } from 'sonner'
-import { IconAlertCircle, IconMail } from '@tabler/icons-react'
+import { IconAlertCircle, IconMail, IconPhone } from '@tabler/icons-react'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import type { NotificationChannel } from '@/lib/types/notifications'
 
 interface TutorWithStats {
   id: string
@@ -43,10 +51,16 @@ export function GroupMessageDialog({
   const [message, setMessage] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [channel, setChannel] = useState<NotificationChannel>('email')
 
   const handleSend = async () => {
     if (!message.trim()) {
       setError('Treść wiadomości nie może być pusta')
+      return
+    }
+
+     if ((channel === 'sms' || channel === 'both') && tutorsMissingPhone.length > 0) {
+      setError('Nie wszyscy tutorzy mają podany numer telefonu. Uzupełnij brakujące numery lub wybierz kanał Email.')
       return
     }
 
@@ -55,7 +69,7 @@ export function GroupMessageDialog({
 
     try {
       const tutorIds = selectedTutors.map(t => t.id)
-      const result = await sendGroupMessageToTutors(tutorIds, message)
+      const result = await sendGroupMessageToTutors(tutorIds, message, channel)
 
       if (result.success) {
         const sentCount = result.sentCount ?? 0
@@ -81,16 +95,26 @@ export function GroupMessageDialog({
   }
 
   // Sprawdź czy tutorzy mają emaile
-  const tutorsWithEmails = selectedTutors.filter(tutor => 
-    tutor.email && tutor.email.trim()
+  const tutorsWithEmails = selectedTutors.filter(
+    (tutor) => tutor.email && tutor.email.trim()
   )
 
   const hasNoEmails = tutorsWithEmails.length === 0 && selectedTutors.length > 0
+
+  // Sprawdź czy tutorzy mają numery telefonów (dla SMS)
+  const tutorsWithPhones = selectedTutors.filter(
+    (tutor) => tutor.phone && tutor.phone.trim()
+  )
+
+  const tutorsMissingPhone = selectedTutors.filter(
+    (tutor) => !tutorsWithPhones.some((t) => t.id === tutor.id)
+  )
 
   const handleOpenChange = (newOpen: boolean) => {
     if (!newOpen) {
       setMessage('')
       setError(null)
+      setChannel('email')
     }
     onOpenChange(newOpen)
   }
@@ -101,7 +125,8 @@ export function GroupMessageDialog({
         <DialogHeader>
           <DialogTitle>Wyślij wiadomość grupową</DialogTitle>
           <DialogDescription>
-            Wyślij wiadomość do {selectedTutors.length} {selectedTutors.length === 1 ? 'zaznaczonego tutora' : 'zaznaczonych tutorów'}
+            Wyślij wiadomość do {selectedTutors.length}{' '}
+            {selectedTutors.length === 1 ? 'zaznaczonego tutora' : 'zaznaczonych tutorów'}
           </DialogDescription>
         </DialogHeader>
 
@@ -123,6 +148,24 @@ export function GroupMessageDialog({
             </div>
           ) : (
             <>
+              <div className="space-y-2">
+                <Label htmlFor="channel">Kanał powiadomienia</Label>
+                <Select
+                  value={channel}
+                  onValueChange={(value) => setChannel(value as NotificationChannel)}
+                  disabled={loading}
+                >
+                  <SelectTrigger id="channel">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="email">Email</SelectItem>
+                    <SelectItem value="sms">SMS</SelectItem>
+                    <SelectItem value="both">Email + SMS</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
               <div className="space-y-2">
                 <Label htmlFor="message">Treść wiadomości</Label>
                 <Textarea
@@ -150,9 +193,27 @@ export function GroupMessageDialog({
               <div className="rounded-md bg-muted p-3">
                 <p className="text-sm text-muted-foreground">
                   <IconMail className="inline h-4 w-4 mr-1" />
-                  Wiadomość zostanie wysłana do {tutorsWithEmails.length} {tutorsWithEmails.length === 1 ? 'tutora' : 'tutorów'} z adresami email.
+                  Email: wiadomość może być wysłana do {tutorsWithEmails.length}{' '}
+                  {tutorsWithEmails.length === 1 ? 'tutora' : 'tutorów'} z adresami email.
+                </p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  <IconPhone className="inline h-4 w-4 mr-1" />
+                  SMS: numery telefonów znaleziono dla {tutorsWithPhones.length}{' '}
+                  {tutorsWithPhones.length === 1 ? 'tutora' : 'tutorów'}.
                 </p>
               </div>
+
+              {(channel === 'sms' || channel === 'both') && tutorsMissingPhone.length > 0 && (
+                <div className="rounded-md bg-amber-50 border border-amber-200 p-3">
+                  <div className="flex items-start gap-2">
+                    <IconAlertCircle className="h-4 w-4 text-amber-500 mt-0.5" />
+                    <p className="text-sm text-amber-700">
+                      Dla części tutorów nie znaleziono numeru telefonu. Uzupełnij numery telefonów
+                      lub wybierz kanał Email, aby wysłać wiadomość.
+                    </p>
+                  </div>
+                </div>
+              )}
             </>
           )}
         </div>
@@ -167,7 +228,12 @@ export function GroupMessageDialog({
           </Button>
           <Button
             onClick={handleSend}
-            disabled={loading || hasNoEmails || !message.trim()}
+            disabled={
+              loading ||
+              hasNoEmails ||
+              !message.trim() ||
+              ((channel === 'sms' || channel === 'both') && tutorsMissingPhone.length > 0)
+            }
           >
             {loading ? 'Wysyłanie...' : 'Wyślij wiadomość'}
           </Button>

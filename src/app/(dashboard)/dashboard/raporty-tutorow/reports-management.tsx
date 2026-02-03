@@ -21,6 +21,7 @@ import { ReportDetailDialog } from "./report-detail-dialog"
 import { autoApproveSubmittedReports, sendReportReminderToTutor, sendReportRemindersToAllMissing } from "./actions"
 import { IconDownload, IconSearch, IconMail } from "@tabler/icons-react"
 import { toast } from "sonner"
+import type { NotificationChannel } from "@/lib/types/notifications"
 
 interface ReportEntry {
   id: string
@@ -109,6 +110,7 @@ export function ReportsManagement({ reports, tutors = [], adminId }: ReportsMana
   const [sendingAllReminders, setSendingAllReminders] = useState(false)
   const [sendingSelectedReminders, setSendingSelectedReminders] = useState(false)
   const [selectedTutorIds, setSelectedTutorIds] = useState<Set<string>>(new Set())
+  const [channel, setChannel] = useState<NotificationChannel>('email')
   
   // Generuj listę lat (bieżący rok i 2 lata wstecz)
   const years = Array.from({ length: 3 }, (_, i) => currentDate.getFullYear() - i)
@@ -273,7 +275,7 @@ export function ReportsManagement({ reports, tutors = [], adminId }: ReportsMana
   const handleSendReminder = async (tutorId: string, tutorName: string) => {
     setSendingReminder(tutorId)
     try {
-      await sendReportReminderToTutor(tutorId, reminderMonth, reminderYear)
+      await sendReportReminderToTutor(tutorId, reminderMonth, reminderYear, channel)
       toast.success(`Wysłano przypomnienie do ${tutorName}`)
       router.refresh()
     } catch (error) {
@@ -291,7 +293,7 @@ export function ReportsManagement({ reports, tutors = [], adminId }: ReportsMana
 
     setSendingAllReminders(true)
     try {
-      const result = await sendReportRemindersToAllMissing(reminderMonth, reminderYear)
+      const result = await sendReportRemindersToAllMissing(reminderMonth, reminderYear, channel)
       if (result.success) {
         toast.success(result.message || `Wysłano ${result.sent} przypomnień`)
       } else {
@@ -327,7 +329,7 @@ export function ReportsManagement({ reports, tutors = [], adminId }: ReportsMana
         if (!tutor) continue
 
         try {
-          await sendReportReminderToTutor(tutorId, reminderMonth, reminderYear)
+            await sendReportReminderToTutor(tutorId, reminderMonth, reminderYear, channel)
           successCount++
         } catch (error) {
           errorCount++
@@ -377,7 +379,7 @@ export function ReportsManagement({ reports, tutors = [], adminId }: ReportsMana
         <div className="flex items-center gap-2">
           <Label className="text-sm font-medium">Okres:</Label>
         </div>
-        <div className="grid grid-cols-2 gap-4 max-w-md">
+        <div className="grid grid-cols-3 gap-4 max-w-3xl">
           <div className="space-y-2">
             <Label htmlFor="reminder-month">Miesiąc</Label>
             <Select
@@ -411,6 +413,22 @@ export function ReportsManagement({ reports, tutors = [], adminId }: ReportsMana
                     {y}
                   </SelectItem>
                 ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="channel">Kanał przypomnień</Label>
+            <Select
+              value={channel}
+              onValueChange={(v) => setChannel(v as NotificationChannel)}
+            >
+              <SelectTrigger id="channel">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="email">Email</SelectItem>
+                <SelectItem value="sms">SMS</SelectItem>
+                <SelectItem value="both">Email + SMS</SelectItem>
               </SelectContent>
             </Select>
           </div>

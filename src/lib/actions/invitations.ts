@@ -4,6 +4,9 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import type { TutorInvitation } from '@/lib/types/database.types'
 import { sendInvitationEmail } from '@/lib/email/send'
+import type { NotificationChannel } from '@/lib/types/notifications'
+import { sendInvitationSms } from '@/lib/sms/send'
+import { sendWithChannel } from '@/lib/notifications/send-with-channel'
 
 interface CreateInvitationResult {
   success: boolean
@@ -25,7 +28,11 @@ interface RegisterResult {
 /**
  * Tworzy nowe zaproszenie dla tutora
  */
-export async function createInvitation(email: string): Promise<CreateInvitationResult> {
+export async function createInvitation(
+  email: string,
+  channel: NotificationChannel = 'email',
+  phone?: string
+): Promise<CreateInvitationResult> {
   const supabase = await createClient()
   
   // Sprawdź czy użytkownik jest adminem
@@ -102,19 +109,44 @@ export async function createInvitation(email: string): Promise<CreateInvitationR
   }
   
   const invitationLink = `${baseUrl}/register?token=${invitation.token}`
-  
-  const emailResult = await sendInvitationEmail({
-    to: email,
-    invitationLink,
-    expiryDays: 7,
-  })
 
-  if (!emailResult.success) {
-    console.error('Failed to send invitation email:', emailResult.error)
-    // Kontynuujemy - zaproszenie jest już utworzone, użytkownik może skopiować link ręcznie
-    // W przyszłości można dodać opcję ponownego wysłania emaila
-  } else {
-    console.log('Invitation email sent successfully to:', email)
+  // Wysyłka według wybranego kanału – zachowujemy dotychczasowe zachowanie:
+  // nie przerywamy procesu tworzenia zaproszenia, nawet jeśli wysyłka się nie powiedzie.
+  try {
+    const result = await sendWithChannel(channel, {
+      sendEmail: () =>
+        sendInvitationEmail({
+          to: email,
+          invitationLink,
+          expiryDays: 7,
+        }),
+      // Kanał SMS jest dostępny tylko, jeśli przekazano numer telefonu
+      sendSms: phone
+        ? () =>
+            sendInvitationSms({
+              toPhone: phone,
+              invitationLink,
+            })
+        : undefined,
+    })
+
+    if (!result.success) {
+      console.error('Failed to send invitation notification:', {
+        email,
+        phone,
+        channel,
+        error: result.error,
+        details: result.details,
+      })
+    } else {
+      console.log('Invitation notification sent successfully:', {
+        email,
+        phone,
+        channel,
+      })
+    }
+  } catch (sendError) {
+    console.error('Unexpected error while sending invitation notification:', sendError)
   }
 
   revalidatePath('/dashboard/zaproszenia')
@@ -151,8 +183,12 @@ export async function getInvitations(): Promise<TutorInvitation[]> {
 
 /**
  * Wysyła ponownie emaile z zaproszeniem dla podanych zaproszeń (tylko dla adminów)
+ * Aktualnie ponowna wysyłka odbywa się tylko kanałem email.
  */
-export async function resendInvitations(ids: string[]): Promise<{ success: boolean; failed?: string[]; error?: string }> {
+export async function resendInvitations(
+  ids: string[],
+  _channel: NotificationChannel = 'email'
+): Promise<{ success: boolean; failed?: string[]; error?: string }> {
   const supabase = await createClient()
 
   const { data: { user } } = await supabase.auth.getUser()

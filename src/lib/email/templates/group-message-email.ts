@@ -2,10 +2,11 @@ export interface GroupMessageEmailData {
   parentName: string
   studentNames: string[]
   message: string
+  headerImageUrl: string
 }
 
 export function generateGroupMessageEmail(data: GroupMessageEmailData) {
-  const { parentName, studentNames, message } = data
+  const { parentName, studentNames, message, headerImageUrl } = data
   const studentsList = studentNames.map(name => `<li>${name}</li>`).join('')
 
   return `
@@ -14,15 +15,15 @@ export function generateGroupMessageEmail(data: GroupMessageEmailData) {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Wiadomość grupowa - Akademia Wiedzy</title>
+  <title>Wiadomość z Akademii Wiedzy</title>
 </head>
 <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-  <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
-    <h1 style="color: white; margin: 0;">Akademia Wiedzy</h1>
+  <div style="text-align: center; border-radius: 10px 10px 0 0; overflow: hidden;">
+    <img src="${headerImageUrl}" alt="Akademia Wiedzy" style="display: block; width: 100%; max-width: 600px; height: auto; border: 0; margin: 0 auto;" />
   </div>
   
   <div style="background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px;">
-    <h2 style="color: #333; margin-top: 0;">Wiadomość grupowa</h2>
+    <h2 style="color: #333; margin-top: 0;">Wiadomość</h2>
     
     <p>Dzień dobry ${parentName},</p>
     

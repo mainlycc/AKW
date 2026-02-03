@@ -28,6 +28,7 @@ import React from 'react'
 import { PaymentDialog } from '../billing/payment-dialog'
 import { formatHours } from '@/lib/utils'
 import { StudentNameLink } from '@/components/student-name-link'
+import type { NotificationChannel } from '@/lib/types/notifications'
 import {
   Pagination,
   PaginationContent,
@@ -101,6 +102,7 @@ export function BillingFromReportsTable({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false)
   const [paymentDialogStudentId, setPaymentDialogStudentId] = useState<string | undefined>()
+  const [channel, setChannel] = useState<NotificationChannel>('email')
   const currentDate = new Date()
   const years = Array.from(
     { length: 5 },
@@ -261,7 +263,7 @@ export function BillingFromReportsTable({
         studentId,
         billingPeriodId,
       })
-      await sendReminderAction(studentId, billingPeriodId)
+      await sendReminderAction(studentId, billingPeriodId, channel)
       toast.success('Przypomnienie wysłane')
     } catch (error) {
       console.error('[handleSendReminder] Error sending reminder:', error)
@@ -347,7 +349,7 @@ export function BillingFromReportsTable({
     if (selectedIds.size === 0) return
 
     try {
-      await sendGroupRemindersAction(Array.from(selectedIds))
+      await sendGroupRemindersAction(Array.from(selectedIds), channel)
       toast.success(`Wysłano przypomnienia dla ${selectedIds.size} ${selectedIds.size === 1 ? 'rozliczenia' : 'rozliczeń'}`)
       setSelectedIds(new Set())
       router.refresh()
@@ -387,7 +389,7 @@ export function BillingFromReportsTable({
             Wyślij przypomnienie {selectedIds.size > 0 && `(${selectedIds.size})`}
           </Button>
         </div>
-        <div className="grid grid-cols-2 gap-4 flex-shrink-0">
+        <div className="grid grid-cols-3 gap-4 flex-shrink-0">
           <div className="space-y-2">
             <label className="text-sm font-medium">Miesiąc</label>
             <Select
@@ -421,6 +423,22 @@ export function BillingFromReportsTable({
                     {y}
                   </SelectItem>
                 ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Kanał przypomnień</label>
+            <Select
+              value={channel}
+              onValueChange={(v) => setChannel(v as NotificationChannel)}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="email">Email</SelectItem>
+                <SelectItem value="sms">SMS</SelectItem>
+                <SelectItem value="both">Email + SMS</SelectItem>
               </SelectContent>
             </Select>
           </div>

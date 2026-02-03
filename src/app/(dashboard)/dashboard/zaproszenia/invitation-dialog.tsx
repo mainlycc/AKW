@@ -13,8 +13,16 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { toast } from 'sonner'
 import { createInvitation } from '@/lib/actions/invitations'
+import type { NotificationChannel } from '@/lib/types/notifications'
 
 interface InvitationDialogProps {
   open: boolean
@@ -23,18 +31,33 @@ interface InvitationDialogProps {
 
 export function InvitationDialog({ open, onOpenChange }: InvitationDialogProps) {
   const [email, setEmail] = useState('')
+  const [phone, setPhone] = useState('')
+  const [channel, setChannel] = useState<NotificationChannel>('email')
   const [isLoading, setIsLoading] = useState(false)
   const router = useRouter()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+
+    if ((channel === 'sms' || channel === 'both') && !phone.trim()) {
+      toast.error('Aby wysłać SMS lub SMS + email, podaj numer telefonu tutora.')
+      return
+    }
+
     setIsLoading(true)
 
-    const result = await createInvitation(email)
+    const result = await createInvitation(email, channel, phone || undefined)
 
     if (result.success && result.invitation) {
-      toast.success(`Email z zaproszeniem został wysłany do ${email}`)
+      const channelLabel =
+        channel === 'email' ? 'Email z zaproszeniem został wysłany' :
+        channel === 'sms' ? 'SMS z zaproszeniem został wysłany' :
+        'Email i SMS z zaproszeniem zostały wysłane'
+
+      toast.success(`${channelLabel} do ${email}${phone ? ` / ${phone}` : ''}`)
       setEmail('')
+      setPhone('')
+      setChannel('email')
       onOpenChange(false)
       router.refresh()
     } else {
@@ -46,6 +69,8 @@ export function InvitationDialog({ open, onOpenChange }: InvitationDialogProps) 
 
   const handleClose = () => {
     setEmail('')
+    setPhone('')
+    setChannel('email')
     onOpenChange(false)
   }
 
@@ -72,6 +97,41 @@ export function InvitationDialog({ open, onOpenChange }: InvitationDialogProps) 
                 required
                 disabled={isLoading}
               />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="channel">Kanał powiadomienia</Label>
+              <Select
+                value={channel}
+                onValueChange={(value) => setChannel(value as NotificationChannel)}
+                disabled={isLoading}
+              >
+                <SelectTrigger id="channel">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="email">Email</SelectItem>
+                  <SelectItem value="sms">SMS</SelectItem>
+                  <SelectItem value="both">Email + SMS</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="phone">
+                Numer telefonu tutora (dla SMS)
+              </Label>
+              <Input
+                id="phone"
+                type="tel"
+                placeholder="+48 600 000 000"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                disabled={isLoading}
+              />
+              <p className="text-xs text-muted-foreground">
+                Wymagany, jeśli wybierzesz kanał SMS lub Email + SMS.
+              </p>
             </div>
           </div>
 

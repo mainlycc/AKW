@@ -3,6 +3,9 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { sendTutorGroupMessageEmail } from '@/lib/email/send'
+import type { NotificationChannel } from '@/lib/types/notifications'
+import { sendTutorGroupMessageSms } from '@/lib/sms/send'
+import { sendWithChannel } from '@/lib/notifications/send-with-channel'
 
 export async function updateTutorDetails(
   tutorId: string,
@@ -15,17 +18,44 @@ export async function updateTutorDetails(
 ) {
   const supabase = await createClient()
 
+  // Najpierw sprawdźmy czy tutora istnieje i czy użytkownik ma uprawnienia
+  const { data: profile, error: checkError } = await supabase
+    .from('profiles')
+    .select('id, role')
+    .eq('id', tutorId)
+    .eq('role', 'tutor')
+    .single()
+
+  if (checkError || !profile) {
+    throw new Error('Nie znaleziono tutora do aktualizacji')
+  }
+
+  // Teraz wykonajmy aktualizację
   const { error } = await supabase
     .from('profiles')
     .update({
-      full_name: data.full_name,
-      phone: data.phone || null,
-      bio: data.bio || null,
+      full_name: data.full_name.trim(),
+      phone: data.phone.trim() || null,
+      bio: data.bio.trim() || null,
       hourly_rate: data.hourly_rate,
     })
     .eq('id', tutorId)
+    .eq('role', 'tutor')
 
-  if (error) throw error
+  if (error) {
+    console.error('Error updating tutor details:', error)
+    console.error('Error code:', error.code)
+    console.error('Error message:', error.message)
+    console.error('Error details:', error.details)
+    console.error('Error hint:', error.hint)
+    
+    // Jeśli błąd związany z RLS (brak uprawnień)
+    if (error.code === '42501' || error.message?.includes('permission') || error.message?.includes('policy')) {
+      throw new Error('Brak uprawnień do aktualizacji. Upewnij się, że migracja 037_add_profiles_admin_update_policy.sql została uruchomiona.')
+    }
+    
+    throw new Error(`Nie udało się zaktualizować danych tutora: ${error.message} (Kod: ${error.code})`)
+  }
 
   revalidatePath('/dashboard/tutorzy')
   revalidatePath(`/dashboard/tutorzy/${tutorId}`)
@@ -50,9 +80,17 @@ export async function deleteTutor(id: string) {
 
 export async function sendGroupMessageToTutors(
   selectedTutorIds: string[],
-  message: string
+  message: string,
+  channel: NotificationChannel = 'email'
 ): Promise<{ success: boolean; error?: string; sentCount?: number; failedCount?: number }> {
   const supabase = await createClient()
+
+  // Proste ograniczenie prędkości wysyłki maili, żeby nie przekraczać limitów Resend
+  // Resend pozwala na 2 żądania na sekundę, więc wprowadzamy odstęp między wysyłkami.
+  const RATE_LIMIT_PER_SECOND = 2
+  const REQUEST_INTERVAL_MS = Math.ceil(1000 / RATE_LIMIT_PER_SECOND) + 100 // mały zapas ponad limit
+
+  const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
   if (!selectedTutorIds || selectedTutorIds.length === 0) {
     return { success: false, error: 'Nie wybrano tutorów' }
@@ -62,10 +100,10 @@ export async function sendGroupMessageToTutors(
     return { success: false, error: 'Treść wiadomości nie może być pusta' }
   }
 
-  // Pobierz tutorów z emailami
+  // Pobierz tutorów z danymi kontaktowymi
   const { data: tutors, error: tutorsError } = await supabase
     .from('profiles')
-    .select('id, full_name, email')
+    .select('id, full_name, email, phone')
     .in('id', selectedTutorIds)
     .eq('role', 'tutor')
 
@@ -78,30 +116,65 @@ export async function sendGroupMessageToTutors(
     return { success: false, error: 'Nie znaleziono zaznaczonych tutorów' }
   }
 
-  // Filtruj tylko tutorów z emailami
-  const tutorsWithEmails = tutors.filter(tutor => tutor.email && tutor.email.trim())
-
-  if (tutorsWithEmails.length === 0) {
-    return { success: false, error: 'Nie znaleziono tutorów z adresami email dla zaznaczonych tutorów' }
-  }
-
-  // Wyślij email do każdego tutora
+  // Wyślij wiadomość do każdego tutora według wybranego kanału
   let sentCount = 0
   let failedCount = 0
   const errors: string[] = []
 
-  for (const tutor of tutorsWithEmails) {
-    const result = await sendTutorGroupMessageEmail({
-      to: tutor.email,
-      tutorName: tutor.full_name,
-      message: message.trim(),
+  // URL aplikacji do budowy absolutnego linku do obrazka
+  let appUrl = 'http://localhost:3000'
+  if (process.env.NEXT_PUBLIC_APP_URL) {
+    appUrl = process.env.NEXT_PUBLIC_APP_URL
+  } else if (process.env.VERCEL_URL) {
+    appUrl = `https://${process.env.VERCEL_URL}`
+  }
+  const headerImageUrl = `${appUrl}/akademia_wiedzy.png`
+
+  for (let index = 0; index < tutors.length; index++) {
+    const tutor = tutors[index]
+
+    const hasEmail = !!(tutor.email && tutor.email.trim())
+    const hasPhone = !!(tutor.phone && tutor.phone.trim())
+
+    const result = await sendWithChannel(channel, {
+      sendEmail:
+        hasEmail && (channel === 'email' || channel === 'both')
+          ? () =>
+              sendTutorGroupMessageEmail({
+                to: tutor.email as string,
+                tutorName: tutor.full_name,
+                message: message.trim(),
+                headerImageUrl,
+              })
+          : undefined,
+      sendSms:
+        hasPhone && (channel === 'sms' || channel === 'both')
+          ? () =>
+              sendTutorGroupMessageSms({
+                toPhone: tutor.phone as string,
+                tutorName: tutor.full_name,
+                message: message.trim(),
+              })
+          : undefined,
     })
 
     if (result.success) {
       sentCount++
     } else {
       failedCount++
-      errors.push(`${tutor.full_name}: ${result.error || 'Nieznany błąd'}`)
+      errors.push(
+        `${tutor.full_name}: ${
+          result.error ||
+          result.details?.email ||
+          result.details?.sms ||
+          'Nieznany błąd'
+        }`
+      )
+    }
+
+    // Jeżeli są jeszcze kolejni tutorzy, odczekaj chwilę, aby nie przekroczyć limitu 2 req/s
+    if (index < tutors.length - 1) {
+      await sleep(REQUEST_INTERVAL_MS)
     }
   }
 

@@ -16,6 +16,7 @@ import { updateTutorDetails } from "./actions"
 import { Badge } from "@/components/ui/badge"
 import { formatHours } from "@/lib/utils"
 import { SubjectBadge } from "@/components/subject-badge"
+import { useRouter } from "next/navigation"
 
 interface TutorWithStats {
   id: string
@@ -45,6 +46,7 @@ interface TutorDetailDialogProps {
 }
 
 export function TutorDetailDialog({ open, onClose, tutor, tutorSubjects }: TutorDetailDialogProps) {
+  const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [formData, setFormData] = useState({
     full_name: '',
@@ -73,14 +75,18 @@ export function TutorDetailDialog({ open, onClose, tutor, tutorSubjects }: Tutor
     try {
       await updateTutorDetails(tutor.id, {
         full_name: formData.full_name,
-        phone: formData.phone,
-        bio: formData.bio,
+        phone: formData.phone.trim(),
+        bio: formData.bio.trim(),
         hourly_rate: formData.hourly_rate ? parseFloat(formData.hourly_rate) : null,
       })
+      router.refresh()
       onClose()
     } catch (error) {
       console.error('Error updating tutor:', error)
-      alert('Błąd podczas aktualizacji danych tutora')
+      const errorMessage = error instanceof Error 
+        ? error.message 
+        : 'Błąd podczas aktualizacji danych tutora'
+      alert(`Błąd podczas aktualizacji danych tutora: ${errorMessage}`)
     } finally {
       setLoading(false)
     }

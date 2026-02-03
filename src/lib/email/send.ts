@@ -243,6 +243,14 @@ export async function sendGroupMessageEmail({
   message,
 }: SendGroupMessageEmailParams): Promise<SendEmailResult> {
   try {
+    // URL aplikacji do budowy absolutnego linku do obrazka
+    let appUrl = 'http://localhost:3000'
+    if (process.env.NEXT_PUBLIC_APP_URL) {
+      appUrl = process.env.NEXT_PUBLIC_APP_URL
+    } else if (process.env.VERCEL_URL) {
+      appUrl = `https://${process.env.VERCEL_URL}`
+    }
+
     const resendApiKey = process.env.RESEND_API_KEY
     if (!resendApiKey) {
       const errorMsg = 'RESEND_API_KEY is not set in environment variables'
@@ -271,12 +279,13 @@ export async function sendGroupMessageEmail({
       parentName,
       studentNames,
       message,
+      headerImageUrl: `${appUrl}/akademia_wiedzy.png`,
     })
     
     const { data, error } = await resend.emails.send({
       from: FROM_EMAIL,
       to: [to],
-      subject: 'Wiadomość grupowa - Akademia Wiedzy',
+      subject: 'Wiadomość z Akademii Wiedzy',
       html,
     })
 
@@ -322,6 +331,14 @@ export async function sendTutorGroupMessageEmail({
   message,
 }: SendTutorGroupMessageEmailParams): Promise<SendEmailResult> {
   try {
+    // URL aplikacji do budowy absolutnego linku do obrazka
+    let appUrl = 'http://localhost:3000'
+    if (process.env.NEXT_PUBLIC_APP_URL) {
+      appUrl = process.env.NEXT_PUBLIC_APP_URL
+    } else if (process.env.VERCEL_URL) {
+      appUrl = `https://${process.env.VERCEL_URL}`
+    }
+
     const resendApiKey = process.env.RESEND_API_KEY
     if (!resendApiKey) {
       const errorMsg = 'RESEND_API_KEY is not set in environment variables'
@@ -349,12 +366,13 @@ export async function sendTutorGroupMessageEmail({
     const html = generateTutorGroupMessageEmail({
       tutorName,
       message,
+      headerImageUrl: `${appUrl}/akademia_wiedzy.png`,
     })
     
     const { data, error } = await resend.emails.send({
       from: FROM_EMAIL,
       to: [to],
-      subject: 'Wiadomość grupowa - Akademia Wiedzy',
+      subject: 'Wiadomość z Akademii Wiedzy',
       html,
     })
 

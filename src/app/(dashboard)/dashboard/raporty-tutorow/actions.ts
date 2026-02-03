@@ -5,6 +5,9 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createNotification } from '@/lib/actions/notifications'
 import { sendReportReminderEmail } from '@/lib/email/send'
+import type { NotificationChannel } from '@/lib/types/notifications'
+import { sendReportReminderSms } from '@/lib/sms/send'
+import { sendWithChannel } from '@/lib/notifications/send-with-channel'
 
 export async function approveReport(reportId: string, adminId: string) {
   const supabase = await createClient()
@@ -303,13 +306,18 @@ const monthNames = [
 /**
  * Wysyła przypomnienie o raporcie do pojedynczego tutora
  */
-export async function sendReportReminderToTutor(tutorId: string, month: number, year: number) {
+export async function sendReportReminderToTutor(
+  tutorId: string,
+  month: number,
+  year: number,
+  channel: NotificationChannel = 'email'
+) {
   const supabase = await createClient()
   
-  // Pobierz dane tutora z emailem
+  // Pobierz dane tutora z emailem/telefonem
   const { data: tutor, error: tutorError } = await supabase
     .from('profiles')
-    .select('id, full_name, email')
+    .select('id, full_name, email, phone')
     .eq('id', tutorId)
     .eq('role', 'tutor')
     .single()
@@ -334,42 +342,45 @@ export async function sendReportReminderToTutor(tutorId: string, month: number, 
       },
     })
 
-    // Wyślij email, jeśli tutor ma adres email
-    if (tutor.email && tutor.email.trim()) {
-      try {
-        const emailResult = await sendReportReminderEmail({
-          to: tutor.email,
-          tutorName: tutor.full_name,
-          month,
-          year,
-        })
+    const tutorEmail = tutor.email?.trim() || null
+    const tutorPhone = tutor.phone?.trim() || null
 
-        if (!emailResult.success) {
-          console.error('Failed to send reminder email:', {
-            tutorId,
-            email: tutor.email,
-            error: emailResult.error,
-          })
-          // Nie przerywamy procesu - powiadomienie zostało wysłane
-        } else {
-          console.log('Reminder email sent successfully:', {
-            tutorId,
-            email: tutor.email,
-            messageId: emailResult.messageId,
-          })
-        }
-      } catch (emailError) {
-        console.error('Error sending reminder email:', {
-          tutorId,
-          email: tutor.email,
-          error: emailError,
-        })
-        // Nie przerywamy procesu - powiadomienie zostało wysłane
-      }
-    } else {
-      console.warn('Tutor does not have email address:', {
+    const result = await sendWithChannel(channel, {
+      sendEmail:
+        tutorEmail && (channel === 'email' || channel === 'both')
+          ? () =>
+              sendReportReminderEmail({
+                to: tutorEmail,
+                tutorName: tutor.full_name,
+                month,
+                year,
+              })
+          : undefined,
+      sendSms:
+        tutorPhone && (channel === 'sms' || channel === 'both')
+          ? () =>
+              sendReportReminderSms({
+                toPhone: tutorPhone,
+                tutorName: tutor.full_name,
+                month,
+                year,
+              })
+          : undefined,
+    })
+
+    if (!result.success) {
+      console.error('Failed to send report reminder notification:', {
         tutorId,
-        tutorName: tutor.full_name,
+        email: tutorEmail,
+        phone: tutorPhone,
+        error: result.error,
+        details: result.details,
+      })
+    } else {
+      console.log('Report reminder notification sent successfully:', {
+        tutorId,
+        email: tutorEmail,
+        phone: tutorPhone,
       })
     }
 
@@ -383,13 +394,17 @@ export async function sendReportReminderToTutor(tutorId: string, month: number, 
 /**
  * Wysyła przypomnienia o raporcie do wszystkich tutorów, którzy nie złożyli raportu za dany miesiąc
  */
-export async function sendReportRemindersToAllMissing(month: number, year: number) {
+export async function sendReportRemindersToAllMissing(
+  month: number,
+  year: number,
+  channel: NotificationChannel = 'email'
+) {
   const supabase = await createClient()
   
-  // Pobierz wszystkich tutorów z emailami
+  // Pobierz wszystkich tutorów z emailami/telefonami
   const { data: allTutors, error: tutorsError } = await supabase
     .from('profiles')
-    .select('id, full_name, email')
+    .select('id, full_name, email, phone')
     .eq('role', 'tutor')
     .order('full_name')
 
@@ -444,42 +459,45 @@ export async function sendReportRemindersToAllMissing(month: number, year: numbe
         skipRevalidate: true, // Skip individual revalidations, do one at the end
       })
 
-      // Wyślij email, jeśli tutor ma adres email
-      if (tutor.email && tutor.email.trim()) {
-        try {
-          const emailResult = await sendReportReminderEmail({
-            to: tutor.email,
-            tutorName: tutor.full_name,
-            month,
-            year,
-          })
+      const tutorEmail = tutor.email?.trim() || null
+      const tutorPhone = tutor.phone?.trim() || null
 
-          if (!emailResult.success) {
-            console.error('Failed to send reminder email:', {
-              tutorId: tutor.id,
-              email: tutor.email,
-              error: emailResult.error,
-            })
-            // Nie przerywamy procesu - powiadomienie zostało wysłane
-          } else {
-            console.log('Reminder email sent successfully:', {
-              tutorId: tutor.id,
-              email: tutor.email,
-              messageId: emailResult.messageId,
-            })
-          }
-        } catch (emailError) {
-          console.error('Error sending reminder email:', {
-            tutorId: tutor.id,
-            email: tutor.email,
-            error: emailError,
-          })
-          // Nie przerywamy procesu - powiadomienie zostało wysłane
-        }
-      } else {
-        console.warn('Tutor does not have email address:', {
+      const result = await sendWithChannel(channel, {
+        sendEmail:
+          tutorEmail && (channel === 'email' || channel === 'both')
+            ? () =>
+                sendReportReminderEmail({
+                  to: tutorEmail,
+                  tutorName: tutor.full_name,
+                  month,
+                  year,
+                })
+            : undefined,
+        sendSms:
+          tutorPhone && (channel === 'sms' || channel === 'both')
+            ? () =>
+                sendReportReminderSms({
+                  toPhone: tutorPhone,
+                  tutorName: tutor.full_name,
+                  month,
+                  year,
+                })
+            : undefined,
+      })
+
+      if (!result.success) {
+        console.error('Failed to send reminder notification:', {
           tutorId: tutor.id,
-          tutorName: tutor.full_name,
+          email: tutorEmail,
+          phone: tutorPhone,
+          error: result.error,
+          details: result.details,
+        })
+      } else {
+        console.log('Reminder notification sent successfully:', {
+          tutorId: tutor.id,
+          email: tutorEmail,
+          phone: tutorPhone,
         })
       }
 

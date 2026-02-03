@@ -7,6 +7,9 @@ import { getUserProfile } from '@/lib/actions/auth'
 import { revalidatePath } from 'next/cache'
 import type { StudentBillingWithParent } from '@/lib/actions/billing'
 import { sendFinalBookingConfirmationEmail } from '@/lib/email/send'
+import type { NotificationChannel } from '@/lib/types/notifications'
+import { sendPaymentLinkSms } from '@/lib/sms/send'
+import { sendWithChannel } from '@/lib/notifications/send-with-channel'
 import { createNotification } from '@/lib/actions/notifications'
 import { format, parseISO } from 'date-fns'
 import { pl } from 'date-fns/locale'
@@ -375,7 +378,8 @@ export async function createPayUOrderForBooking(
 export async function sendPayUPayments(
   studentIds: string[],
   month: number,
-  year: number
+  year: number,
+  channel: NotificationChannel = 'email'
 ): Promise<SendPayUPaymentsResult> {
   try {
     const profile = await getUserProfile()
@@ -430,11 +434,15 @@ export async function sendPayUPayments(
     }
 
     // Create parent map from billings
-    const parentMap = new Map<string, { email: string; name: string }>()
+    const parentMap = new Map<
+      string,
+      { email: string | null; phone: string | null; name: string }
+    >()
     for (const billing of billings) {
-      if (billing.parent && billing.parent.email && !parentMap.has(billing.student_id)) {
+      if (billing.parent && !parentMap.has(billing.student_id)) {
         parentMap.set(billing.student_id, {
-          email: billing.parent.email,
+          email: billing.parent.email || null,
+          phone: billing.parent.phone || null,
           name: `${billing.parent.first_name} ${billing.parent.last_name}`,
         })
       }
@@ -459,9 +467,12 @@ export async function sendPayUPayments(
       }
 
       const parent = parentMap.get(studentId)
-      if (!parent || !parent.email) {
+      if (!parent || (!parent.email && !parent.phone)) {
         results.failed++
-        results.errors.push({ studentId, error: 'Brak adresu email rodzica' })
+        results.errors.push({
+          studentId,
+          error: 'Brak danych kontaktowych rodzica (email/telefon)',
+        })
         continue
       }
 
@@ -486,7 +497,7 @@ export async function sendPayUPayments(
         studentId,
         billingPeriodId,
         amount,
-        parent.email,
+        parent.email || '', // PayU wymaga emaila kupującego – jeśli go nie mamy, i tak później nie wyślemy emaila
         parent.name,
         studentName,
         month,
@@ -502,25 +513,49 @@ export async function sendPayUPayments(
         continue
       }
 
-      // Send email with payment link
+      // Wyślij link płatności według wybranego kanału
+      const redirectUrl = orderResult.redirectUrl // TypeScript guard - już sprawdziliśmy że istnieje
       const { sendPaymentLinkEmail } = await import('@/lib/email/send')
-      const emailResult = await sendPaymentLinkEmail({
-        to: parent.email,
-        parentName: parent.name,
-        studentName: studentName,
-        amount: amount,
-        month: month,
-        year: year,
-        paymentUrl: orderResult.redirectUrl,
+      const notificationResult = await sendWithChannel(channel, {
+        sendEmail:
+          parent.email && (channel === 'email' || channel === 'both')
+            ? () =>
+                sendPaymentLinkEmail({
+                  to: parent.email as string,
+                  parentName: parent.name,
+                  studentName: studentName,
+                  amount: amount,
+                  month: month,
+                  year: year,
+                  paymentUrl: redirectUrl,
+                })
+            : undefined,
+        sendSms:
+          parent.phone && (channel === 'sms' || channel === 'both')
+            ? () =>
+                sendPaymentLinkSms({
+                  toPhone: parent.phone as string,
+                  parentName: parent.name,
+                  studentName: studentName,
+                  amount: amount,
+                  month: month,
+                  year: year,
+                  paymentUrl: redirectUrl,
+                })
+            : undefined,
       })
 
-      if (emailResult.success) {
+      if (notificationResult.success) {
         results.sent++
       } else {
         results.failed++
         results.errors.push({
           studentId,
-          error: `Zamówienie utworzone, ale email nie został wysłany: ${emailResult.error}`,
+          error:
+            notificationResult.error ||
+            notificationResult.details?.email ||
+            notificationResult.details?.sms ||
+            'Zamówienie utworzone, ale powiadomienie nie zostało wysłane',
         })
       }
     }

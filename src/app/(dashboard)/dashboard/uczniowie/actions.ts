@@ -3,6 +3,9 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { sendGroupMessageEmail } from '@/lib/email/send'
+import type { NotificationChannel } from '@/lib/types/notifications'
+import { sendGroupMessageSms } from '@/lib/sms/send'
+import { sendWithChannel } from '@/lib/notifications/send-with-channel'
 import { linkParentToStudent as linkParentToStudentLib, unlinkParentFromStudent as unlinkParentFromStudentLib, createParent } from '@/lib/actions/parents'
 
 /**
@@ -431,7 +434,8 @@ export async function deleteStudent(id: string) {
 
 export async function sendGroupMessage(
   selectedStudentIds: string[],
-  message: string
+  message: string,
+  channel: NotificationChannel = 'email'
 ): Promise<{ success: boolean; error?: string; sentCount?: number; failedCount?: number }> {
   const supabase = await createClient()
 
@@ -474,7 +478,8 @@ export async function sendGroupMessage(
         id,
         first_name,
         last_name,
-        email
+        email,
+        phone
       )
     `)
     .in('student_id', studentIds)
@@ -486,17 +491,21 @@ export async function sendGroupMessage(
   }
 
   // Zgrupuj uczniów według rodzica
-  const parentStudentMap = new Map<string, {
-    parentId: string
-    parentName: string
-    parentEmail: string
-    studentNames: string[]
-  }>()
+  const parentStudentMap = new Map<
+    string,
+    {
+      parentId: string
+      parentName: string
+      parentEmail: string | null
+      parentPhone: string | null
+      studentNames: string[]
+    }
+  >()
 
   // Utwórz mapę student_id -> student dla szybkiego wyszukiwania
   const studentMap = new Map(students.map(s => [s.id, s]))
 
-  // Utwórz mapę student_id -> lista rodziców z emailami
+  // Utwórz mapę student_id -> lista rodziców z danymi kontaktowymi
   const studentParentsMap = new Map<string, Array<{
     id: string
     is_primary: boolean
@@ -504,7 +513,8 @@ export async function sendGroupMessage(
       id: string
       first_name: string
       last_name: string
-      email: string
+      email: string | null
+      phone: string | null
     }
   }>>()
 
@@ -516,10 +526,11 @@ export async function sendGroupMessage(
         id: string
         first_name: string
         last_name: string
-        email: string
+        email: string | null
+        phone: string | null
       } | null
 
-      if (!parent || !parent.email || !parent.email.trim()) continue
+      if (!parent) continue
 
       if (!studentParentsMap.has(sp.student_id)) {
         studentParentsMap.set(sp.student_id, [])
@@ -532,24 +543,34 @@ export async function sendGroupMessage(
           id: parent.id,
           first_name: parent.first_name,
           last_name: parent.last_name,
-          email: parent.email,
+            email: parent.email,
+            phone: parent.phone,
         },
       })
     }
   }
 
-  // Dla każdego ucznia wybierz rodzica: najpierw głównego z emailem, jeśli nie ma - pierwszego dostępnego z emailem
+  // Dla każdego ucznia wybierz rodzica: najpierw głównego z kontaktem, jeśli nie ma - pierwszego dostępnego
   for (const student of students) {
     const parents = studentParentsMap.get(student.id) || []
-    
+
     if (parents.length === 0) continue
 
-    // Najpierw szukaj głównego rodzica z emailem
-    let selectedParent = parents.find(p => p.is_primary && p.parent.email && p.parent.email.trim())
-    
-    // Jeśli nie ma głównego z emailem, użyj pierwszego dostępnego z emailem
+    // Najpierw szukaj głównego rodzica z emailem lub telefonem
+    let selectedParent = parents.find(
+      (p) =>
+        p.is_primary &&
+        ((p.parent.email && p.parent.email.trim()) ||
+          (p.parent.phone && p.parent.phone.trim()))
+    )
+
+    // Jeśli nie ma głównego z danymi kontaktowymi, użyj pierwszego dostępnego
     if (!selectedParent) {
-      selectedParent = parents.find(p => p.parent.email && p.parent.email.trim())
+      selectedParent = parents.find(
+        (p) =>
+          (p.parent.email && p.parent.email.trim()) ||
+          (p.parent.phone && p.parent.phone.trim())
+      )
     }
 
     if (!selectedParent) continue
@@ -564,35 +585,76 @@ export async function sendGroupMessage(
       parentStudentMap.set(parentKey, {
         parentId: selectedParent.parent.id,
         parentName: `${selectedParent.parent.first_name} ${selectedParent.parent.last_name}`,
-        parentEmail: selectedParent.parent.email,
+        parentEmail: selectedParent.parent.email || null,
+        parentPhone: selectedParent.parent.phone || null,
         studentNames: [studentName],
       })
     }
   }
 
-  // Sprawdź czy są rodzice z emailami
+  // Sprawdź czy są rodzice z co najmniej jednym kanałem kontaktu
   if (parentStudentMap.size === 0) {
-    return { success: false, error: 'Nie znaleziono rodziców z adresami email dla zaznaczonych uczniów' }
+    return {
+      success: false,
+      error:
+        'Nie znaleziono rodziców z danymi kontaktowymi (email/telefon) dla zaznaczonych uczniów',
+    }
   }
 
-  // Wyślij email do każdego rodzica
+  // Wyślij wiadomość do każdego rodzica według wybranego kanału
   let sentCount = 0
   let failedCount = 0
   const errors: string[] = []
 
+  // URL aplikacji do budowy absolutnego linku do obrazka
+  let appUrl = 'http://localhost:3000'
+  if (process.env.NEXT_PUBLIC_APP_URL) {
+    appUrl = process.env.NEXT_PUBLIC_APP_URL
+  } else if (process.env.VERCEL_URL) {
+    appUrl = `https://${process.env.VERCEL_URL}`
+  }
+  const headerImageUrl = `${appUrl}/akademia_wiedzy.png`
+
   for (const [_, data] of parentStudentMap) {
-    const result = await sendGroupMessageEmail({
-      to: data.parentEmail,
-      parentName: data.parentName,
-      studentNames: data.studentNames,
-      message: message.trim(),
+    const hasEmail = !!(data.parentEmail && data.parentEmail.trim())
+    const hasPhone = !!(data.parentPhone && data.parentPhone.trim())
+
+    const result = await sendWithChannel(channel, {
+      sendEmail:
+        hasEmail && (channel === 'email' || channel === 'both')
+          ? () =>
+              sendGroupMessageEmail({
+                to: data.parentEmail as string,
+                parentName: data.parentName,
+                studentNames: data.studentNames,
+                message: message.trim(),
+                headerImageUrl,
+              })
+          : undefined,
+      sendSms:
+        hasPhone && (channel === 'sms' || channel === 'both')
+          ? () =>
+              sendGroupMessageSms({
+                toPhone: data.parentPhone as string,
+                parentName: data.parentName,
+                studentNames: data.studentNames,
+                message: message.trim(),
+              })
+          : undefined,
     })
 
     if (result.success) {
       sentCount++
     } else {
       failedCount++
-      errors.push(`${data.parentName}: ${result.error || 'Nieznany błąd'}`)
+      errors.push(
+        `${data.parentName}: ${
+          result.error ||
+          result.details?.email ||
+          result.details?.sms ||
+          'Nieznany błąd'
+        }`
+      )
     }
   }
 
@@ -629,7 +691,8 @@ export async function sendGroupMessage(
  */
 export async function sendGroupMessageToAllMyStudents(
   tutorId: string,
-  message: string
+  message: string,
+  channel: NotificationChannel = 'email'
 ): Promise<{ success: boolean; error?: string; sentCount?: number; failedCount?: number }> {
   const supabase = await createClient()
 
@@ -656,7 +719,7 @@ export async function sendGroupMessageToAllMyStudents(
   const studentIds = assignments.map(a => a.student_id)
 
   // Użyj istniejącej funkcji sendGroupMessage
-  return await sendGroupMessage(studentIds, message)
+  return await sendGroupMessage(studentIds, message, channel)
 }
 
 /**

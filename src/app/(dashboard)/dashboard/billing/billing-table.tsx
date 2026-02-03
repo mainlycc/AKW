@@ -37,6 +37,7 @@ import {
   PaginationPrevious,
 } from '@/components/ui/pagination'
 import { StudentNameLink } from '@/components/student-name-link'
+import type { NotificationChannel } from '@/lib/types/notifications'
 
 interface Student {
   id: string
@@ -102,6 +103,7 @@ export function BillingTable({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false)
   const [paymentDialogStudentId, setPaymentDialogStudentId] = useState<string | undefined>()
+  const [channel, setChannel] = useState<NotificationChannel>('email')
   const currentDate = new Date()
   const years = Array.from(
     { length: 5 },
@@ -228,7 +230,7 @@ export function BillingTable({
     billingPeriodId: string
   ) => {
     try {
-      await sendReminderAction(studentId, billingPeriodId)
+      await sendReminderAction(studentId, billingPeriodId, channel)
       toast.success('Przypomnienie wysłane')
     } catch {
       toast.error('Nie udało się wysłać przypomnienia')
@@ -326,7 +328,7 @@ export function BillingTable({
     if (selectedIds.size === 0) return
 
     try {
-      await sendGroupRemindersAction(Array.from(selectedIds))
+      await sendGroupRemindersAction(Array.from(selectedIds), channel)
       toast.success(`Wysłano przypomnienia dla ${selectedIds.size} ${selectedIds.size === 1 ? 'rozliczenia' : 'rozliczeń'}`)
       setSelectedIds(new Set())
       router.refresh()
@@ -375,7 +377,7 @@ export function BillingTable({
             Wyślij przypomnienie {selectedIds.size > 0 && `(${selectedIds.size})`}
           </Button>
         </div>
-        <div className="grid grid-cols-2 gap-4 flex-shrink-0">
+        <div className="grid grid-cols-3 gap-4 flex-shrink-0">
           <div className="space-y-2">
             <label className="text-sm font-medium">Miesiąc</label>
             <Select
@@ -409,6 +411,22 @@ export function BillingTable({
                     {y}
                   </SelectItem>
                 ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Kanał przypomnień</label>
+            <Select
+              value={channel}
+              onValueChange={(v) => setChannel(v as NotificationChannel)}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="email">Email</SelectItem>
+                <SelectItem value="sms">SMS</SelectItem>
+                <SelectItem value="both">Email + SMS</SelectItem>
               </SelectContent>
             </Select>
           </div>

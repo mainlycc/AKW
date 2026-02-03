@@ -5,6 +5,7 @@ import {
   recalculateBillingsForPeriod,
   sendPaymentReminder,
 } from '@/lib/actions/billing'
+import type { NotificationChannel } from '@/lib/types/notifications'
 import { createClient } from '@/lib/supabase/server'
 
 export async function recalculateBillingsAction(month: number, year: number) {
@@ -14,9 +15,10 @@ export async function recalculateBillingsAction(month: number, year: number) {
 
 export async function sendReminderAction(
   studentId: string,
-  billingPeriodId: string
+  billingPeriodId: string,
+  channel: NotificationChannel = 'email'
 ) {
-  await sendPaymentReminder(studentId, billingPeriodId)
+  await sendPaymentReminder(studentId, billingPeriodId, channel)
   revalidatePath('/dashboard/billing')
 }
 
@@ -67,7 +69,10 @@ export async function markBillingsAsPaidAction(billingIds: string[]) {
   revalidatePath('/dashboard/billing')
 }
 
-export async function sendGroupRemindersAction(billingIds: string[]) {
+export async function sendGroupRemindersAction(
+  billingIds: string[],
+  channel: NotificationChannel = 'email'
+) {
   const supabase = await createClient()
   
   // Get billing records
@@ -80,9 +85,9 @@ export async function sendGroupRemindersAction(billingIds: string[]) {
     throw new Error(`Failed to fetch billings: ${fetchError.message}`)
   }
 
-  // Send reminder for each billing
+  // Send reminder for each billing (kanał email domyślny – kanał grupowy jest przekazywany z UI)
   for (const billing of billings || []) {
-    await sendPaymentReminder(billing.student_id, billing.billing_period_id)
+    await sendPaymentReminder(billing.student_id, billing.billing_period_id, channel)
   }
 
   revalidatePath('/dashboard/billing')

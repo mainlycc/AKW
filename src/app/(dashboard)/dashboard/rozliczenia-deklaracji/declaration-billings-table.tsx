@@ -31,6 +31,7 @@ import { useRouter } from 'next/navigation'
 import { useState, useMemo } from 'react'
 import { formatHours } from '@/lib/utils'
 import { sendPayUPaymentsAction } from './actions'
+import type { NotificationChannel } from '@/lib/types/notifications'
 import { toast } from 'sonner'
 import { IconCreditCard } from '@tabler/icons-react'
 
@@ -91,6 +92,7 @@ export function DeclarationBillingsTable({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [payuDialogOpen, setPayuDialogOpen] = useState(false)
   const [sendingPayments, setSendingPayments] = useState(false)
+  const [channel, setChannel] = useState<NotificationChannel>('email')
   const currentDate = new Date()
   const years = Array.from(
     { length: 5 },
@@ -174,7 +176,8 @@ export function DeclarationBillingsTable({
       const result = await sendPayUPaymentsAction(
         Array.from(selectedIds),
         currentMonth,
-        currentYear
+        currentYear,
+        channel
       )
 
       if (result.success) {
@@ -232,7 +235,7 @@ export function DeclarationBillingsTable({
             Wyślij płatność PayU {selectedIds.size > 0 && `(${selectedIds.size})`}
           </Button>
         </div>
-        <div className="grid grid-cols-2 gap-4 flex-shrink-0">
+        <div className="grid grid-cols-3 gap-4 flex-shrink-0">
           <div className="space-y-2">
             <label className="text-sm font-medium">Miesiąc</label>
             <Select
@@ -266,6 +269,22 @@ export function DeclarationBillingsTable({
                     {y}
                   </SelectItem>
                 ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Kanał powiadomień</label>
+            <Select
+              value={channel}
+              onValueChange={(v) => setChannel(v as NotificationChannel)}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="email">Email</SelectItem>
+                <SelectItem value="sms">SMS</SelectItem>
+                <SelectItem value="both">Email + SMS</SelectItem>
               </SelectContent>
             </Select>
           </div>

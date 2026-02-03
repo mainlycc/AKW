@@ -4,18 +4,20 @@ import { revalidatePath } from 'next/cache'
 import {
   sendPaymentReminder,
 } from '@/lib/actions/billing'
+import type { NotificationChannel } from '@/lib/types/notifications'
 import { createClient } from '@/lib/supabase/server'
 
 export async function sendReminderAction(
   studentId: string,
-  billingPeriodId: string
+  billingPeriodId: string,
+  channel: NotificationChannel = 'email'
 ) {
   try {
     console.log('[sendReminderAction] Called with:', {
       studentId,
       billingPeriodId,
     })
-    await sendPaymentReminder(studentId, billingPeriodId)
+    await sendPaymentReminder(studentId, billingPeriodId, channel)
     console.log('[sendReminderAction] Reminder sent successfully')
     revalidatePath('/dashboard/billing-from-reports')
   } catch (error) {
@@ -89,16 +91,19 @@ export async function markBillingsAsPaidAction(billingIds: string[]) {
   revalidatePath('/dashboard/billing-from-reports')
 }
 
-export async function sendGroupRemindersAction(billingIds: string[]) {
+export async function sendGroupRemindersAction(
+  billingIds: string[],
+  channel: NotificationChannel = 'email'
+) {
   // Extract student_id and billing_period_id from billing IDs
   const billingData = billingIds.map(id => {
     const [studentId, billingPeriodId] = id.split('-')
     return { studentId, billingPeriodId }
   })
 
-  // Send reminder for each billing
+  // Send reminder for each billing (kanał email domyślny – kanał grupowy jest przekazywany z UI)
   for (const { studentId, billingPeriodId } of billingData) {
-    await sendPaymentReminder(studentId, billingPeriodId)
+    await sendPaymentReminder(studentId, billingPeriodId, channel)
   }
 
   revalidatePath('/dashboard/billing-from-reports')

@@ -1,6 +1,8 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import type { NotificationChannel } from '@/lib/types/notifications'
+import { sendWithChannel } from '@/lib/notifications/send-with-channel'
 
 export type BillingStatus = 'paid' | 'partially_paid' | 'unpaid'
 
@@ -1439,7 +1441,8 @@ export async function getStudentBillingsFromReports(
  */
 export async function sendPaymentReminder(
   studentId: string,
-  billingPeriodId: string
+  billingPeriodId: string,
+  channel: NotificationChannel = 'email'
 ): Promise<void> {
   const supabase = await createClient()
 
@@ -1623,7 +1626,7 @@ export async function sendPaymentReminder(
     balance = totalDue - totalPaid
   }
 
-  // Get parent email
+  // Get parent email / phone
   const { data: parentData } = await supabase
     .from('student_parents')
     .select(`
@@ -1632,7 +1635,8 @@ export async function sendPaymentReminder(
         id,
         first_name,
         last_name,
-        email
+        email,
+        phone
       )
     `)
     .eq('student_id', studentId)
@@ -1641,47 +1645,75 @@ export async function sendPaymentReminder(
     .single()
 
   if (parentData && parentData.parents) {
-    const parent = Array.isArray(parentData.parents) ? parentData.parents[0] : parentData.parents
-    if (parent && parent.email) {
-      // Send email
+    const parent = Array.isArray(parentData.parents)
+      ? parentData.parents[0]
+      : parentData.parents
+
+    if (parent) {
+      const parentEmail = parent.email?.trim() || null
+      const parentPhone = parent.phone?.trim() || null
+
       const { sendPaymentReminderEmail } = await import('@/lib/email/send')
-      const emailResult = await sendPaymentReminderEmail({
-        to: parent.email,
-        parentName: `${parent.first_name} ${parent.last_name}`,
-        studentName: `${student.first_name} ${student.last_name}`,
-        month,
-        year,
-        totalDue,
-        totalPaid,
-        balance,
-        hours,
+      const { sendPaymentReminderSms } = await import('@/lib/sms/send')
+
+      const result = await sendWithChannel(channel, {
+        sendEmail:
+          parentEmail && (channel === 'email' || channel === 'both')
+            ? () =>
+                sendPaymentReminderEmail({
+                  to: parentEmail,
+                  parentName: `${parent.first_name} ${parent.last_name}`,
+                  studentName: `${student.first_name} ${student.last_name}`,
+                  month,
+                  year,
+                  totalDue,
+                  totalPaid,
+                  balance,
+                  hours,
+                })
+            : undefined,
+        sendSms:
+          parentPhone && (channel === 'sms' || channel === 'both')
+            ? () =>
+                sendPaymentReminderSms({
+                  toPhone: parentPhone,
+                  parentName: `${parent.first_name} ${parent.last_name}`,
+                  studentName: `${student.first_name} ${student.last_name}`,
+                  month,
+                  year,
+                  totalDue,
+                  totalPaid,
+                  balance,
+                  hours,
+                })
+            : undefined,
       })
 
-      if (emailResult.success) {
+      if (result.success) {
         // Update reminder record with sent_at timestamp
         await supabase
           .from('payment_reminders')
           .update({ sent_at: new Date().toISOString() })
           .eq('id', reminder?.id)
 
-        console.log('[sendPaymentReminder] Email sent successfully:', {
+        console.log('[sendPaymentReminder] Notification sent successfully:', {
           reminderId: reminder?.id,
-          email: parent.email,
-          messageId: emailResult.messageId,
+          email: parentEmail,
+          phone: parentPhone,
         })
       } else {
-        console.error('[sendPaymentReminder] Failed to send email:', {
+        console.error('[sendPaymentReminder] Failed to send notification:', {
           reminderId: reminder?.id,
-          email: parent.email,
-          error: emailResult.error,
+          email: parentEmail,
+          phone: parentPhone,
+          error: result.error,
+          details: result.details,
         })
-        // Don't throw - reminder record was created, email failure is logged
+        // Don't throw - reminder record was created, failure is logged
       }
     } else {
-      console.warn('[sendPaymentReminder] No parent email found:', {
+      console.warn('[sendPaymentReminder] Parent record without data:', {
         studentId,
-        hasParent: !!parent,
-        hasEmail: !!(parent && parent.email),
       })
     }
   } else {

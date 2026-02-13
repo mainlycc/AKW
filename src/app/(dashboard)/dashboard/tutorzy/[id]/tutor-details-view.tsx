@@ -252,12 +252,10 @@ export function TutorDetailsView({
               <p className="text-sm font-medium text-muted-foreground">Email</p>
               <p className="text-lg">{tutor.email}</p>
             </div>
-            {tutor.phone && (
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Telefon</p>
-                <p className="text-lg">{tutor.phone}</p>
-              </div>
-            )}
+            <div>
+              <p className="text-sm font-medium text-muted-foreground">Telefon</p>
+              <p className="text-lg">{tutor.phone || '-'}</p>
+            </div>
             {tutor.hourly_rate && (
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Stawka godzinowa</p>
@@ -371,11 +369,101 @@ export function TutorDetailsView({
                     const parentInfo = getPrimaryParentInfo(student)
                     const subjects = getStudentSubjects(student)
 
+                    // Dane dla dialogu ucznia – rodzice
+                    const dialogStudentParents =
+                      (student.student_parents || [])
+                        .filter((sp) => !!sp.parents)
+                        .map((sp) => ({
+                          id: sp.id,
+                          is_primary: sp.is_primary,
+                          parents: {
+                            id: sp.parents!.id,
+                            first_name: sp.parents!.first_name,
+                            last_name: sp.parents!.last_name,
+                            email: sp.parents!.email,
+                            phone: sp.parents!.phone,
+                            // StudentDialog oczekuje pola parent_type, ale w tym widoku
+                            // nie korzystamy z niego – ustawiamy neutralną wartość
+                            parent_type: "parent",
+                          },
+                        }))
+
+                    // Dane dla dialogu ucznia – przedmioty
+                    const assignmentLevels =
+                      (student.student_assignments || []).filter(
+                        (a) => a.subjects && a.subject_levels
+                      )
+
+                    const dialogStudentSubjects = Array.from(
+                      new Set(
+                        assignmentLevels
+                          .map((a) => a.subject_levels!.id)
+                          .filter((id): id is string => !!id)
+                      )
+                    )
+
+                    const subjectsMap = new Map<
+                      string,
+                      {
+                        id: string
+                        name: string
+                        color?: string | null
+                        subject_levels: {
+                          id: string
+                          level_name: string
+                          level_order: number
+                          price_per_hour: number
+                        }[]
+                      }
+                    >()
+
+                    assignmentLevels.forEach((a) => {
+                      const subject = a.subjects
+                      const level = a.subject_levels
+                      if (!subject || !level) return
+
+                      const existing = subjectsMap.get(subject.id)
+                      if (!existing) {
+                        subjectsMap.set(subject.id, {
+                          id: subject.id,
+                          name: subject.name,
+                          // Kolor może nie być dostępny, ale SubjectBadge sobie poradzi bez niego
+                          color: (subject as any).color ?? null,
+                          subject_levels: [
+                            {
+                              id: level.id,
+                              level_name: level.level_name,
+                              // W tym widoku nie korzystamy z kolejności ani stawki,
+                              // ale typ w StudentDialog ich wymaga
+                              level_order: 0,
+                              price_per_hour: 0,
+                            },
+                          ],
+                        })
+                      } else if (
+                        !existing.subject_levels.some(
+                          (l) => l.id === level.id
+                        )
+                      ) {
+                        existing.subject_levels.push({
+                          id: level.id,
+                          level_name: level.level_name,
+                          level_order: 0,
+                          price_per_hour: 0,
+                        })
+                      }
+                    })
+
+                    const dialogAllSubjects = Array.from(subjectsMap.values())
+
                     return (
                       <TableRow key={student.id}>
                         <TableCell className="font-medium">
                           <StudentNameLink
                             student={student}
+                            studentParents={dialogStudentParents}
+                            studentSubjects={dialogStudentSubjects}
+                            allSubjects={dialogAllSubjects}
                           />
                         </TableCell>
                         <TableCell>{parentInfo.email}</TableCell>

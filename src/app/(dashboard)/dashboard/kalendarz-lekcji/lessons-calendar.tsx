@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils"
 import type { SessionStatus } from "@/lib/types/database.types"
 import { updateSessionStatus } from "./actions"
 import { useRouter } from "next/navigation"
+import { StudentNameLink } from "@/components/student-name-link"
 
 interface Session {
   id: string
@@ -487,7 +488,10 @@ export function LessonsCalendar({ sessions, isAdmin = false }: LessonsCalendarPr
                       <div className="space-y-1 text-sm">
                         <div>
                           <span className="font-medium">Uczeń: </span>
-                          {session.students.first_name} {session.students.last_name}
+                          <StudentNameLink
+                            student={session.students}
+                            className="font-medium"
+                          />
                         </div>
                         {isAdmin && (
                           <div>

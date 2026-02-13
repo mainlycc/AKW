@@ -22,6 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { StudentNameLink } from "@/components/student-name-link"
 
 interface Assignment {
   id: string
@@ -143,7 +144,10 @@ export function AssignmentsManagement({
               filteredAssignments.map((assignment) => (
                 <TableRow key={assignment.id}>
                   <TableCell className="font-medium">
-                    {assignment.students.first_name} {assignment.students.last_name}
+                    <StudentNameLink
+                      student={assignment.students}
+                      className="font-medium"
+                    />
                   </TableCell>
                   <TableCell>{assignment.profiles.full_name}</TableCell>
                   <TableCell>

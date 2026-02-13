@@ -388,7 +388,7 @@ export function PublicBookingPage({ subjects }: PublicBookingPageProps) {
           <CardHeader>
             <CardTitle className="text-lg">Proces rezerwacji</CardTitle>
             <CardDescription>
-              Instrukcja krok po kroku z opisem emaili
+              Instrukcja krok po kroku z opisem płatności i emaili
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -401,37 +401,37 @@ export function PublicBookingPage({ subjects }: PublicBookingPageProps) {
                 <h4 className="text-sm font-semibold">Wypełnienie formularza</h4>
               </div>
               <p className="text-xs text-muted-foreground ml-8">
-                Wybór przedmiotu, poziomu, terminu i wprowadzenie danych ucznia.
+                Wybór przedmiotu, poziomu, terminu i wprowadzenie danych ucznia oraz kontaktowych.
               </p>
             </div>
 
             <Separator />
 
-            {/* Krok 2 - Pierwszy mail */}
+            {/* Krok 2 - Płatność */}
             <div className="space-y-2">
               <div className="flex items-center gap-2">
                 <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-semibold">
                   2
                 </div>
                 <div className="flex items-center gap-2">
-                  <Mail className="h-4 w-4 text-blue-600" />
-                  <h4 className="text-sm font-semibold">Pierwszy email</h4>
+                  <AlertCircle className="h-4 w-4 text-blue-600" />
+                  <h4 className="text-sm font-semibold">Płatność przez PayU</h4>
                 </div>
               </div>
               <div className="ml-8 space-y-2">
                 <p className="text-xs text-muted-foreground">
-                  Otrzymywany natychmiast po wysłaniu formularza.
+                  Po wysłaniu formularza zostaniesz przekierowany do systemu płatności PayU.
                 </p>
                 <div className="p-2 bg-blue-50 border border-blue-200 rounded-md space-y-1">
                   <div className="flex items-start gap-2">
                     <span className="text-xs font-semibold min-w-[60px]">Status:</span>
                     <span className="flex items-center gap-1 text-xs">
                       <Clock className="h-3 w-3 text-amber-600" />
-                      <span className="text-amber-700 font-medium">Oczekuje na potwierdzenie</span>
+                      <span className="text-amber-700 font-medium">Oczekuje na płatność</span>
                     </span>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Zawiera szczegóły rezerwacji i informację o oczekiwaniu na weryfikację przez administratora.
+                    Rezerwacja zostanie automatycznie potwierdzona po zakończeniu płatności.
                   </p>
                 </div>
               </div>
@@ -439,22 +439,22 @@ export function PublicBookingPage({ subjects }: PublicBookingPageProps) {
 
             <Separator />
 
-            {/* Krok 3 */}
+            {/* Krok 3 - Automatyczne potwierdzenie */}
             <div className="space-y-2">
               <div className="flex items-center gap-2">
                 <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-semibold">
                   3
                 </div>
-                <h4 className="text-sm font-semibold">Weryfikacja przez admina</h4>
+                <h4 className="text-sm font-semibold">Automatyczne potwierdzenie</h4>
               </div>
               <p className="text-xs text-muted-foreground ml-8">
-                Administrator sprawdza dostępność i zatwierdza rezerwację w panelu.
+                Po zakończeniu płatności rezerwacja jest automatycznie potwierdzana i slot zostaje zablokowany.
               </p>
             </div>
 
             <Separator />
 
-            {/* Krok 4 - Drugi mail */}
+            {/* Krok 4 - Email potwierdzający */}
             <div className="space-y-2">
               <div className="flex items-center gap-2">
                 <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-semibold">
@@ -462,23 +462,23 @@ export function PublicBookingPage({ subjects }: PublicBookingPageProps) {
                 </div>
                 <div className="flex items-center gap-2">
                   <CheckCircle2 className="h-4 w-4 text-green-600" />
-                  <h4 className="text-sm font-semibold">Drugi email</h4>
+                  <h4 className="text-sm font-semibold">Email potwierdzający</h4>
                 </div>
               </div>
               <div className="ml-8 space-y-2">
                 <p className="text-xs text-muted-foreground">
-                  Otrzymywany po zatwierdzeniu rezerwacji przez administratora.
+                  Otrzymywany automatycznie po zakończeniu płatności.
                 </p>
                 <div className="p-2 bg-green-50 border border-green-200 rounded-md space-y-1">
                   <div className="flex items-start gap-2">
                     <span className="text-xs font-semibold min-w-[60px]">Status:</span>
                     <span className="flex items-center gap-1 text-xs">
                       <CheckCircle2 className="h-3 w-3 text-green-600" />
-                      <span className="text-green-700 font-medium">Potwierdzona i zaakceptowana</span>
+                      <span className="text-green-700 font-medium">Potwierdzona</span>
                     </span>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Potwierdza, że rezerwacja jest oficjalnie zatwierdzona i slot został zablokowany.
+                    Zawiera szczegóły rezerwacji, dane tutora oraz potwierdzenie, że slot został zarezerwowany.
                   </p>
                 </div>
               </div>
@@ -491,17 +491,17 @@ export function PublicBookingPage({ subjects }: PublicBookingPageProps) {
               <h4 className="text-sm font-semibold">Podsumowanie</h4>
               <div className="space-y-2 text-xs">
                 <div className="flex items-start gap-2">
-                  <Mail className="h-3 w-3 text-blue-600 mt-0.5" />
+                  <AlertCircle className="h-3 w-3 text-blue-600 mt-0.5" />
                   <div>
-                    <p className="font-medium">Email 1:</p>
-                    <p className="text-muted-foreground">Potwierdzenie otrzymania - Status: &apos;Oczekuje&apos;</p>
+                    <p className="font-medium">Krok 2:</p>
+                    <p className="text-muted-foreground">Płatność przez PayU - Status: &apos;Oczekuje na płatność&apos;</p>
                   </div>
                 </div>
                 <div className="flex items-start gap-2">
                   <CheckCircle2 className="h-3 w-3 text-green-600 mt-0.5" />
                   <div>
-                    <p className="font-medium">Email 2:</p>
-                    <p className="text-muted-foreground">Finalne potwierdzenie - Status: &apos;Potwierdzona&apos;</p>
+                    <p className="font-medium">Krok 4:</p>
+                    <p className="text-muted-foreground">Email potwierdzający - Status: &apos;Potwierdzona&apos;</p>
                   </div>
                 </div>
               </div>

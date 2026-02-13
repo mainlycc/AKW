@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { getUserProfile } from '@/lib/actions/auth'
 import type { SessionStatus } from '@/lib/types/database.types'
+import { generateSessionsForAllBookedSlots } from '@/lib/actions/booked-slots'
 
 export async function updateSessionStatus(
   sessionId: string,
@@ -50,3 +51,11 @@ export async function updateSessionStatus(
   revalidatePath('/dashboard/kalendarz-lekcji')
 }
 
+export async function extendSessionsForAllBookedSlots() {
+  const profile = await getUserProfile()
+
+  if (!profile || profile.role !== 'admin') {
+    throw new Error('Unauthorized')
+  }  await generateSessionsForAllBookedSlots()
+  revalidatePath('/dashboard/kalendarz-lekcji')
+}

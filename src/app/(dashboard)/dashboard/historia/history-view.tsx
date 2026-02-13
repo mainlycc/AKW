@@ -13,6 +13,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { formatHours } from "@/lib/utils"
+import { StudentNameLink } from "@/components/student-name-link"
 
 interface Session {
   id: string
@@ -163,7 +164,10 @@ export function HistoryView({ sessions }: HistoryViewProps) {
                         {formatDate(session.session_date)}
                       </TableCell>
                       <TableCell>
-                        {session.students.first_name} {session.students.last_name}
+                        <StudentNameLink
+                          student={session.students}
+                          className="font-medium"
+                        />
                       </TableCell>
                       <TableCell>{session.student_assignments.subjects.name}</TableCell>
                       <TableCell>{session.student_assignments.subject_levels.level_name}</TableCell>

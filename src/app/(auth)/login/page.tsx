@@ -31,7 +31,12 @@ export default function LoginPage() {
     })
 
     if (error) {
-      setError(error.message)
+      // Tłumaczenie komunikatów błędów na polski
+      let errorMessage = error.message
+      if (error.message === 'Invalid login credentials') {
+        errorMessage = 'Nieprawidłowy email lub hasło'
+      }
+      setError(errorMessage)
       setLoading(false)
     } else {
       router.push('/dashboard')

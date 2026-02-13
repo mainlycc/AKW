@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { Button } from '@/components/ui/button'
 
 export default function PublicBookingLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -9,9 +10,9 @@ export default function PublicBookingLayout({ children }: { children: React.Reac
             Akademia Wiedzy
           </Link>
           <nav className="flex items-center gap-4">
-            <Link href="/login" className="text-sm text-muted-foreground hover:text-foreground">
-              Zaloguj się
-            </Link>
+            <Button asChild>
+              <Link href="/login">Zaloguj</Link>
+            </Button>
           </nav>
         </div>
       </header>

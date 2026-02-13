@@ -101,7 +101,12 @@ export async function createOrUpdateDeclaration(
     declarationId = declaration.id
   }
 
+  if (status === 'submitted' && entries.length > 0) {
+    await generateSessionsFromDeclarationEntries(tutorId, entries)
+  }
+
   revalidatePath('/dashboard/moje-deklaracje')
+  revalidatePath('/dashboard/kalendarz-lekcji')
   return declarationId
 }
 
@@ -195,3 +200,51 @@ export async function generateLessonsFromBookedSlots(
   return entries
 }
 
+async function generateSessionsFromDeclarationEntries(
+  tutorId: string,
+  entries: DeclarationEntry[]
+) {
+  const supabase = await createClient()
+
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+
+  for (const entry of entries) {
+    const entryDate = new Date(entry.session_date)
+    if (entryDate < today) {
+      continue
+    }
+
+    const sessionDateTime = `${entry.session_date}T${entry.start_time}:00`
+
+    const { data: existing, error: existingError } = await supabase
+      .from('tutoring_sessions')
+      .select('id')
+      .eq('assignment_id', entry.assignment_id)
+      .eq('session_date', sessionDateTime)
+      .maybeSingle()
+
+    if (existingError) {
+      throw existingError
+    }
+
+    if (existing) {
+      continue
+    }
+
+    const { error: insertError } = await supabase
+      .from('tutoring_sessions')
+      .insert({
+        assignment_id: entry.assignment_id,
+        tutor_id: tutorId,
+        student_id: entry.student_id,
+        session_date: sessionDateTime,
+        duration_minutes: entry.duration_minutes,
+        created_by: tutorId,
+      })
+
+    if (insertError) {
+      throw insertError
+    }
+  }
+}

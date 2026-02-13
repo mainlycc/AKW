@@ -230,9 +230,10 @@ export function StudentsTable({
     setConfirmDialogOpen(true)
   }
 
+  // Przy zamykaniu NIE czyścimy od razu `editingStudent`, żeby zawartość dialogu
+  // nie przeskakiwała na inny widok w trakcie animacji zamykania.
   const handleDialogClose = () => {
     setDialogOpen(false)
-    setEditingStudent(null)
   }
 
   const toggleSelectAll = () => {

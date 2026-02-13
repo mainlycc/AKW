@@ -34,6 +34,7 @@ import { sendPayUPaymentsAction } from './actions'
 import type { NotificationChannel } from '@/lib/types/notifications'
 import { toast } from 'sonner'
 import { IconCreditCard } from '@tabler/icons-react'
+import { StudentNameLink } from '@/components/student-name-link'
 
 interface Student {
   id: string
@@ -356,7 +357,9 @@ export function DeclarationBillingsTable({
                       />
                     </TableCell>
                     <TableCell className="font-medium">
-                      {billing.students.first_name} {billing.students.last_name}
+                      <StudentNameLink
+                        student={billing.students}
+                      />
                     </TableCell>
                     <TableCell>
                       {billing.parent 

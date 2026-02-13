@@ -32,6 +32,7 @@ import {
   PaginationPrevious,
   PaginationEllipsis,
 } from '@/components/ui/pagination'
+import { StudentNameLink } from '@/components/student-name-link'
 
 interface PaymentsTableProps {
   payments: PaymentWithParent[]
@@ -229,7 +230,13 @@ export function PaymentsTable({
                     {new Date(payment.payment_date).toLocaleDateString('pl-PL')}
                   </TableCell>
                   <TableCell>
-                    {payment.students.first_name} {payment.students.last_name}
+                    <StudentNameLink
+                      student={{
+                        id: payment.student_id,
+                        first_name: payment.students.first_name,
+                        last_name: payment.students.last_name,
+                      }}
+                    />
                   </TableCell>
                   <TableCell>
                     {payment.parent ? (

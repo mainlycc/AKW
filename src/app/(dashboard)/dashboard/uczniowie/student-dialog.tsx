@@ -36,6 +36,8 @@ import { IconTrash, IconPlus, IconChevronDown } from "@tabler/icons-react"
 import { format } from "date-fns"
 import { pl } from "date-fns/locale"
 import { ConfirmDialog } from "@/components/confirm-dialog"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { formatHours } from "@/lib/utils"
 
 interface Parent {
   id: string
@@ -96,6 +98,16 @@ interface AdminSelectedSubjectLevel {
   levelId: string
 }
 
+interface LessonHistoryItem {
+  id: string
+  session_date: string
+  duration_minutes: number
+  notes: string | null
+  tutor_name: string | null
+  subject_name: string | null
+  level_name: string | null
+}
+
 interface StudentDialogProps {
   open: boolean
   onClose: () => void
@@ -154,6 +166,9 @@ export function StudentDialog({
   const [confirmDialogContent, setConfirmDialogContent] = useState<{ title: string; description: string; onConfirm: () => void }>({ title: '', description: '', onConfirm: () => {} })
   const [addParentOpen, setAddParentOpen] = useState(false)
   const [notesOpen, setNotesOpen] = useState(false)
+  const [lessonHistory, setLessonHistory] = useState<LessonHistoryItem[] | null>(null)
+  const [lessonHistoryLoading, setLessonHistoryLoading] = useState(false)
+  const [lessonHistoryError, setLessonHistoryError] = useState<string | null>(null)
 
   const getLevelsForSubject = (subjectId: string) => {
     const subject = allSubjects.find(s => s.id === subjectId)
@@ -161,16 +176,18 @@ export function StudentDialog({
     return subject.subject_levels.sort((a, b) => a.level_order - b.level_order)
   }
 
-  // Przy każdym otwarciu dialogu ustaw tryb:
+  // Przy każdym OTWARCIU dialogu ustaw tryb:
   // - istniejący uczeń -> podgląd
   // - nowy uczeń       -> edycja
+  // Zależność tylko od `open`, żeby uniknąć mrugania widokiem przy zmianie `student`
   useEffect(() => {
-    if (open) {
-      setIsEditMode(!student)
-      setAddParentOpen(false)
-      setNotesOpen(false)
-    }
-  }, [open, student?.id])
+    if (!open) return
+    setIsEditMode(!student)
+    setAddParentOpen(false)
+    setNotesOpen(false)
+    setLessonHistory(null)
+    setLessonHistoryError(null)
+  }, [open])
 
   // Update formData when defaultStudentRate changes
   useEffect(() => {
@@ -182,71 +199,114 @@ export function StudentDialog({
     }
   }, [defaultStudentRate, student, open])
 
+  // Inicjalizacja danych formularza przy OTWARCIU dialogu.
+  // Zależność tylko od `open`, żeby uniknąć zmiany widoku przy technicznych zmianach `student` podczas zamykania.
   useEffect(() => {
-    if (open) {
-      if (student) {
-        // Editing existing student - reset parent data (parents are added via handleAddParent)
-        setFormData({
-          first_name: student.first_name,
-          last_name: student.last_name,
-          hourly_rate: student.hourly_rate ?? defaultStudentRate,
-        })
-        setParentData({
-          first_name: '',
-          last_name: '',
-          email: '',
-          phone: '',
-        })
-        setSelectedSubjectLevels(new Set(studentSubjects))
+    if (!open) return
 
-        // Inicjalizacja wyboru przedmiotów dla admina na podstawie istniejących przedmiotów ucznia
-        if (!isTutor) {
-          const initialSelections: AdminSelectedSubjectLevel[] = []
-          studentSubjects.forEach((levelId, index) => {
-            const subject = allSubjects.find(s =>
-              s.subject_levels.some(level => level.id === levelId)
-            )
-            if (subject) {
-              initialSelections.push({
-                id: `existing-${index}`,
-                subjectId: subject.id,
-                levelId,
-              })
-            }
-          })
-          setAdminSelections(initialSelections)
-        }
-      } else {
-        // Creating new student - allow parent data in form
-        setFormData({
-          first_name: '',
-          last_name: '',
-          hourly_rate: defaultStudentRate,
+    if (student) {
+      // Edycja istniejącego ucznia
+      setFormData({
+        first_name: student.first_name,
+        last_name: student.last_name,
+        hourly_rate: student.hourly_rate ?? defaultStudentRate,
+      })
+      setParentData({
+        first_name: '',
+        last_name: '',
+        email: '',
+        phone: '',
+      })
+      setSelectedSubjectLevels(new Set(studentSubjects))
+
+      // Inicjalizacja wyboru przedmiotów dla admina na podstawie istniejących przedmiotów ucznia
+      if (!isTutor) {
+        const initialSelections: AdminSelectedSubjectLevel[] = []
+        studentSubjects.forEach((levelId, index) => {
+          const subject = allSubjects.find(s =>
+            s.subject_levels.some(level => level.id === levelId)
+          )
+          if (subject) {
+            initialSelections.push({
+              id: `existing-${index}`,
+              subjectId: subject.id,
+              levelId,
+            })
+          }
         })
-        setParentData({
-          first_name: '',
-          last_name: '',
-          email: '',
-          phone: '',
-        })
-        setSelectedSubjectLevels(new Set())
-        if (!isTutor && allSubjects.length > 0) {
-          const firstSubject = allSubjects[0]
-          const firstLevel = firstSubject.subject_levels[0]
-          setAdminSelections(firstSubject && firstLevel ? [{
-            id: `new-${Date.now()}`,
-            subjectId: firstSubject.id,
-            levelId: firstLevel.id,
-          }] : [])
-        } else {
-          setAdminSelections([])
-        }
-        setTutorSelectedSubjectId('')
-        setTutorSelectedLevelId('')
+        setAdminSelections(initialSelections)
       }
-      setNewNote('')
+    } else {
+      // Tworzenie nowego ucznia
+      setFormData({
+        first_name: '',
+        last_name: '',
+        hourly_rate: defaultStudentRate,
+      })
+      setParentData({
+        first_name: '',
+        last_name: '',
+        email: '',
+        phone: '',
+      })
+      setSelectedSubjectLevels(new Set())
+      if (!isTutor && allSubjects.length > 0) {
+        const firstSubject = allSubjects[0]
+        const firstLevel = firstSubject.subject_levels[0]
+        setAdminSelections(firstSubject && firstLevel ? [{
+          id: `new-${Date.now()}`,
+          subjectId: firstSubject.id,
+          levelId: firstLevel.id,
+        }] : [])
+      } else {
+        setAdminSelections([])
+      }
+      setTutorSelectedSubjectId('')
+      setTutorSelectedLevelId('')
     }
+    setNewNote('')
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
+
+  // Historia lekcji ucznia – ładowana przy otwarciu dialogu
+  useEffect(() => {
+    if (!open || !student?.id) return
+
+    const controller = new AbortController()
+
+    const loadHistory = async () => {
+      try {
+        setLessonHistoryLoading(true)
+        setLessonHistoryError(null)
+
+        const res = await fetch(`/api/students/${student.id}/lesson-history`, {
+          signal: controller.signal,
+        })
+
+        if (!res.ok) {
+          throw new Error('Nie udało się pobrać historii lekcji')
+        }
+
+        const data = await res.json() as { sessions: LessonHistoryItem[] }
+        setLessonHistory(data.sessions || [])
+      } catch (error) {
+        if ((error as Error).name === 'AbortError') return
+        console.error('Error loading lesson history:', error)
+        setLessonHistoryError(
+          error instanceof Error ? error.message : 'Błąd podczas pobierania historii lekcji'
+        )
+      } finally {
+        if (!controller.signal.aborted) {
+          setLessonHistoryLoading(false)
+        }
+      }
+    }
+
+    loadHistory()
+
+    return () => {
+      controller.abort()
+    }
   }, [open, student?.id])
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -668,6 +728,107 @@ export function StudentDialog({
                   </div>
                 ) : (
                   <p className="text-xs text-muted-foreground italic">Brak notatek</p>
+                )}
+              </div>
+
+              {/* Historia lekcji */}
+              <div className="rounded-lg border bg-card p-4 space-y-3 md:col-span-2">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-semibold text-sm">Historia lekcji</h3>
+                  {lessonHistory && lessonHistory.length > 0 && (
+                    <Badge variant="secondary" className="text-xs">
+                      {lessonHistory.length}
+                    </Badge>
+                  )}
+                </div>
+
+                {lessonHistoryLoading && (
+                  <p className="text-xs text-muted-foreground italic">
+                    Ładowanie historii lekcji...
+                  </p>
+                )}
+
+                {lessonHistoryError && !lessonHistoryLoading && (
+                  <p className="text-xs text-destructive">
+                    {lessonHistoryError}
+                  </p>
+                )}
+
+                {!lessonHistoryLoading && !lessonHistoryError && (
+                  <>
+                    {lessonHistory && lessonHistory.length > 0 ? (
+                      <div className="space-y-2">
+                        {/* Podsumowanie */}
+                        <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                          <span>
+                            Łącznie lekcji: <span className="font-semibold text-foreground">{lessonHistory.length}</span>
+                          </span>
+                          <span>
+                            Łącznie godzin:{" "}
+                            <span className="font-semibold text-foreground">
+                              {formatHours(
+                                lessonHistory.reduce(
+                                  (sum, s) => sum + (s.duration_minutes || 0) / 60,
+                                  0
+                                )
+                              )}
+                              {" "}h
+                            </span>
+                          </span>
+                        </div>
+
+                        {/* Lista ostatnich lekcji */}
+                        <div className="space-y-1 max-h-40 overflow-y-auto mt-1">
+                          {lessonHistory.slice(0, 20).map((lesson) => (
+                            <div
+                              key={lesson.id}
+                              className="flex flex-col gap-0.5 p-2 rounded-md bg-muted/40"
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-xs font-medium">
+                                  {format(new Date(lesson.session_date), 'dd.MM.yyyy HH:mm', {
+                                    locale: pl,
+                                  })}
+                                </span>
+                                <span className="text-xs text-muted-foreground">
+                                  {lesson.duration_minutes} min
+                                </span>
+                              </div>
+                              <div className="flex flex-wrap items-center gap-1 text-[11px] text-muted-foreground">
+                                {lesson.subject_name && (
+                                  <span className="font-medium text-foreground">
+                                    {lesson.subject_name}
+                                  </span>
+                                )}
+                                {lesson.level_name && (
+                                  <span>· {lesson.level_name}</span>
+                                )}
+                                {lesson.tutor_name && (
+                                  <span>· Tutor: {lesson.tutor_name}</span>
+                                )}
+                              </div>
+                              {lesson.notes && (
+                                <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-2">
+                                  {lesson.notes}
+                                </p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+
+                        {lessonHistory.length > 20 && (
+                          <p className="text-[11px] text-muted-foreground">
+                            Wyświetlono 20 z {lessonHistory.length} lekcji. Pełną historię znajdziesz w zakładce{" "}
+                            <span className="font-medium">Sesje / Historia</span>.
+                          </p>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-muted-foreground italic">
+                        Brak odbytych lekcji dla tego ucznia.
+                      </p>
+                    )}
+                  </>
                 )}
               </div>
             </div>

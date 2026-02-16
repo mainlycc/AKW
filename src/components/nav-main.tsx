@@ -51,7 +51,7 @@ export function NavMain({
                 <SidebarMenuButton tooltip={item.title} asChild>
                   <Link href={item.url}>
                     {item.icon && <item.icon />}
-                    <span>{item.title}</span>
+                    <span className="text-base">{item.title}</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
@@ -74,7 +74,7 @@ export function NavMain({
                 <SidebarMenuButton tooltip={dashboardItem.title} asChild>
                   <Link href={dashboardItem.url}>
                     {dashboardItem.icon && <dashboardItem.icon />}
-                    <span className="font-semibold text-base">{dashboardItem.title}</span>
+                    <span className="font-semibold text-lg">{dashboardItem.title}</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
@@ -108,7 +108,7 @@ function NavGroup({ group }: { group: NavGroup }) {
                       open && "rotate-90"
                     )}
                   />
-                  <span className="font-semibold text-base">{group.title}</span>
+                  <span className="font-semibold text-lg">{group.title}</span>
                 </SidebarMenuButton>
               </CollapsibleTrigger>
               <CollapsibleContent>
@@ -118,7 +118,7 @@ function NavGroup({ group }: { group: NavGroup }) {
                       <SidebarMenuSubButton asChild>
                         <Link href={item.url}>
                           {item.icon && <item.icon />}
-                          <span>{item.title}</span>
+                          <span className="text-base">{item.title}</span>
                         </Link>
                       </SidebarMenuSubButton>
                     </SidebarMenuSubItem>

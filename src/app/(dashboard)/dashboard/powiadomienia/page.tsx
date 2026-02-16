@@ -1,6 +1,8 @@
 import { getUserProfile } from '@/lib/actions/auth'
-import { getNotifications, markAsRead, markAllAsRead } from '@/lib/actions/notifications'
+import { getNotifications, getNotificationsCount } from '@/lib/actions/notifications'
 import { NotificationsList } from './notifications-list'
+
+const ITEMS_PER_PAGE = 10
 
 export default async function NotificationsPage() {
   const profile = await getUserProfile()
@@ -9,7 +11,10 @@ export default async function NotificationsPage() {
     return null
   }
 
-  const notifications = await getNotifications(100)
+  const [notifications, totalCount] = await Promise.all([
+    getNotifications(ITEMS_PER_PAGE, 0),
+    getNotificationsCount(),
+  ])
 
   return (
     <div className="space-y-4">
@@ -21,7 +26,11 @@ export default async function NotificationsPage() {
         </div>
       </div>
 
-      <NotificationsList initialNotifications={notifications} />
+      <NotificationsList 
+        initialNotifications={notifications} 
+        initialTotalCount={totalCount}
+        itemsPerPage={ITEMS_PER_PAGE}
+      />
     </div>
   )
 }

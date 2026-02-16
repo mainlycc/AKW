@@ -72,14 +72,17 @@ export async function createNotification(params: CreateNotificationParams): Prom
 /**
  * Gets notifications for the current user
  */
-export async function getNotifications(limit: number = 50): Promise<Notification[]> {
+export async function getNotifications(
+  limit: number = 50,
+  offset: number = 0
+): Promise<Notification[]> {
   const supabase = await createClient()
 
   const { data, error } = await supabase
     .from('notifications')
     .select('*')
     .order('created_at', { ascending: false })
-    .limit(limit)
+    .range(offset, offset + limit - 1)
 
   if (error) {
     console.error('Error fetching notifications:', error)
@@ -87,6 +90,24 @@ export async function getNotifications(limit: number = 50): Promise<Notification
   }
 
   return (data || []) as Notification[]
+}
+
+/**
+ * Gets total count of notifications for the current user
+ */
+export async function getNotificationsCount(): Promise<number> {
+  const supabase = await createClient()
+
+  const { count, error } = await supabase
+    .from('notifications')
+    .select('id', { count: 'exact', head: true })
+
+  if (error) {
+    console.error('Error fetching notifications count:', error)
+    throw error
+  }
+
+  return count || 0
 }
 
 /**
@@ -141,6 +162,27 @@ export async function markAllAsRead(): Promise<void> {
 
   if (error) {
     console.error('Error marking all notifications as read:', error)
+    throw error
+  }
+
+  revalidatePath('/dashboard/powiadomienia')
+  revalidatePath('/dashboard', 'layout')
+}
+
+
+/**
+ * Deletes all notifications for the current user
+ */
+export async function deleteAllNotifications(): Promise<void> {
+  const supabase = await createClient()
+
+  const { error } = await supabase
+    .from('notifications')
+    .delete()
+    .neq('id', '00000000-0000-0000-0000-000000000000')
+
+  if (error) {
+    console.error('Error deleting all notifications:', error)
     throw error
   }
 

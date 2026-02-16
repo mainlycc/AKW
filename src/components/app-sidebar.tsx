@@ -234,7 +234,7 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
       <SidebarHeader className="p-3">
         <Link href="/dashboard" className="flex items-center justify-center w-full">
           <Image
-            src="/logoWA.png"
+            src="/logoAW.png"
             alt="Akademia Wiedzy"
             width={140}
             height={56}

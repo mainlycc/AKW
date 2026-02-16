@@ -181,8 +181,19 @@ export async function createAvailabilityTemplate(
     }
   })
 
+  // Usuń duplikaty - jeśli po normalizacji kilka slotów ma ten sam dzień i czas rozpoczęcia, zostaw tylko jeden
+  const uniqueSlotsMap = new Map<string, TimeSlot>()
+  for (const slot of normalizedSlots) {
+    const key = `${slot.day}-${slot.startTime}`
+    // Jeśli slot już istnieje, preferuj dostępny slot (isAvailable = true)
+    if (!uniqueSlotsMap.has(key) || slot.isAvailable) {
+      uniqueSlotsMap.set(key, slot)
+    }
+  }
+  const deduplicatedSlots = Array.from(uniqueSlotsMap.values())
+
   // Walidacja
-  validateSlots(normalizedSlots)
+  validateSlots(deduplicatedSlots)
 
   // Sprawdź najwyższą wersję
   const { data: existingTemplates } = await supabase
@@ -210,7 +221,7 @@ export async function createAvailabilityTemplate(
   if (templateError) throw templateError
 
   // Dodaj sloty
-  const slotsToInsert = normalizedSlots.map((slot) => ({
+  const slotsToInsert = deduplicatedSlots.map((slot) => ({
     template_id: template.id,
     day_of_week: slot.day,
     start_time: normalizeTimeForDb(slot.startTime),

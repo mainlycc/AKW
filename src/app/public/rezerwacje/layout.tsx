@@ -12,7 +12,7 @@ export default function PublicBookingLayout({ children }: { children: React.Reac
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
           <Link href="/" className="flex items-center">
             <Image
-              src="/logoWA.png"
+              src="/logoAW.png"
               alt="Akademia Wiedzy"
               width={80}
               height={32}

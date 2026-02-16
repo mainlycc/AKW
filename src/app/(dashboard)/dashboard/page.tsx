@@ -524,6 +524,20 @@ export default async function DashboardPage() {
   // Renderowanie dla admina - oryginalna kolejność
   return (
     <div className="space-y-4">
+      <Card>
+        <CardHeader>
+          <CardTitle>Witamy w systemie Akademia Wiedzy</CardTitle>
+          <CardDescription>
+            System zarządzania e-korepetycjami
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground">
+            Jako administrator masz pełny dostęp do zarządzania uczniami, tutorami, przedmiotami oraz raportami.
+          </p>
+        </CardContent>
+      </Card>
+
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -581,20 +595,6 @@ export default async function DashboardPage() {
           </CardContent>
         </Card>
       </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Witamy w systemie Akademia Wiedzy</CardTitle>
-          <CardDescription>
-            System zarządzania e-korepetycjami
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground">
-            Jako administrator masz pełny dostęp do zarządzania uczniami, tutorami, przedmiotami oraz raportami.
-          </p>
-        </CardContent>
-      </Card>
     </div>
   )
 }

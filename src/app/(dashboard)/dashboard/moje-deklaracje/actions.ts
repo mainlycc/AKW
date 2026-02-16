@@ -230,9 +230,7 @@ async function generateSessionsFromDeclarationEntries(
 
     if (existing) {
       continue
-    }
-
-    const { error: insertError } = await supabase
+    }    const { error: insertError } = await supabase
       .from('tutoring_sessions')
       .insert({
         assignment_id: entry.assignment_id,
@@ -241,9 +239,7 @@ async function generateSessionsFromDeclarationEntries(
         session_date: sessionDateTime,
         duration_minutes: entry.duration_minutes,
         created_by: tutorId,
-      })
-
-    if (insertError) {
+      })    if (insertError) {
       throw insertError
     }
   }

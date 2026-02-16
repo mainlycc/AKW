@@ -1,6 +1,7 @@
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
 import { AppSidebar } from "@/components/app-sidebar"
 import { SiteHeader } from "@/components/site-header"
+import { AppFooter } from "@/components/app-footer"
 import { Card } from "@/components/ui/card"
 import { getUserProfile, getUser } from "@/lib/actions/auth"
 import { redirect } from "next/navigation"
@@ -36,13 +37,14 @@ export default async function DashboardLayout({
   return (
     <SidebarProvider>
       <AppSidebar user={userData} />
-      <SidebarInset>
+      <SidebarInset className="flex flex-col min-h-screen">
         <Card className="m-2 sm:m-4 flex flex-1 flex-col overflow-hidden py-0">
           <SiteHeader />
           <div className="flex flex-1 flex-col gap-4 p-2 sm:p-4 pt-2 sm:pt-4">
             {children}
           </div>
         </Card>
+        <AppFooter />
       </SidebarInset>
     </SidebarProvider>
   )

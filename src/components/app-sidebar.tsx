@@ -1,6 +1,8 @@
 "use client"
 
 import * as React from "react"
+import Image from "next/image"
+import Link from "next/link"
 import {
   IconBook,
   IconCalendar,
@@ -229,20 +231,17 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
 
   return (
     <Sidebar collapsible="offcanvas" {...props}>
-      <SidebarHeader>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              asChild
-              className="data-[slot=sidebar-menu-button]:!p-1.5"
-            >
-              <a href="/dashboard">
-                <IconSchool className="!size-5" />
-                <span className="text-base font-semibold">Akademia Wiedzy</span>
-              </a>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
+      <SidebarHeader className="p-3">
+        <Link href="/dashboard" className="flex items-center justify-center w-full">
+          <Image
+            src="/logoWA.png"
+            alt="Akademia Wiedzy"
+            width={140}
+            height={56}
+            className="h-auto w-full max-w-[140px] object-contain"
+            priority
+          />
+        </Link>
       </SidebarHeader>
       <SidebarContent>
         {user.role === 'admin' ? (

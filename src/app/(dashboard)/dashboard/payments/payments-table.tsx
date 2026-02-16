@@ -18,11 +18,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { IconEdit, IconDownload } from '@tabler/icons-react'
+import { IconEdit, IconDownload, IconPlus } from '@tabler/icons-react'
 import { PaymentDialog } from './payment-dialog'
 import { exportPaymentsToCSV, type PaymentFilters } from '@/lib/actions/payments'
 import { toast } from 'sonner'
 import type { PaymentWithParent } from '@/lib/actions/payments'
+import Link from 'next/link'
 import {
   Pagination,
   PaginationContent,
@@ -196,10 +197,18 @@ export function PaymentsTable({
             />
           </div>
         </div>
-        <Button onClick={handleExport} variant="outline">
-          <IconDownload className="h-4 w-4 mr-2" />
-          Eksport CSV
-        </Button>
+        <div className="flex gap-2">
+          <Button asChild>
+            <Link href="/dashboard/payments/new">
+              <IconPlus className="h-4 w-4 mr-2" />
+              Dodaj płatność
+            </Link>
+          </Button>
+          <Button onClick={handleExport} variant="outline">
+            <IconDownload className="h-4 w-4 mr-2" />
+            Eksport CSV
+          </Button>
+        </div>
       </div>
 
       {/* Table */}

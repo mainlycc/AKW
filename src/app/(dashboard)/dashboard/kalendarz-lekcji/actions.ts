@@ -52,9 +52,7 @@ export async function updateSessionStatus(
 }
 
 export async function extendSessionsForAllBookedSlots() {
-  const profile = await getUserProfile()
-
-  if (!profile || profile.role !== 'admin') {
+  const profile = await getUserProfile()  if (!profile || profile.role !== 'admin') {
     throw new Error('Unauthorized')
   }  await generateSessionsForAllBookedSlots()
   revalidatePath('/dashboard/kalendarz-lekcji')

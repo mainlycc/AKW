@@ -142,8 +142,47 @@ export async function createAvailabilityTemplate(
 ): Promise<TutorAvailabilityData> {
   const supabase = await createClient()
 
+  // Normalizuj i popraw sloty przed walidacją
+  const normalizedSlots: TimeSlot[] = slots.map((slot) => {
+    const normalizedStart = normalizeTimeForDb(slot.startTime)
+    let startMinutes = timeToMinutes(normalizedStart)
+    
+    // Zaokrąglij czas rozpoczęcia w dół do najbliższej pełnej godziny
+    const correctedStartMinutes = Math.floor(startMinutes / SLOT_DURATION_MINUTES) * SLOT_DURATION_MINUTES
+    const correctedStartHours = Math.floor(correctedStartMinutes / 60)
+    const correctedStartMins = correctedStartMinutes % 60
+    const correctedStart = `${correctedStartHours.toString().padStart(2, '0')}:${correctedStartMins.toString().padStart(2, '0')}`
+    
+    // Oblicz czas zakończenia jako czas rozpoczęcia + 60 minut
+    const expectedEndMinutes = correctedStartMinutes + SLOT_DURATION_MINUTES
+    const expectedEndHours = Math.floor(expectedEndMinutes / 60)
+    const expectedEndMins = expectedEndMinutes % 60
+    const expectedEnd = `${expectedEndHours.toString().padStart(2, '0')}:${expectedEndMins.toString().padStart(2, '0')}`
+    
+    const normalizedEnd = normalizeTimeForDb(slot.endTime)
+    const endMinutes = timeToMinutes(normalizedEnd)
+    
+    // Sprawdź czy potrzebna jest korekta
+    const needsCorrection = startMinutes !== correctedStartMinutes || endMinutes !== expectedEndMinutes
+    
+    if (needsCorrection) {
+      console.warn(`Poprawiam slot ${normalizedStart}-${normalizedEnd} na ${correctedStart}-${expectedEnd}`)
+      return {
+        ...slot,
+        startTime: correctedStart,
+        endTime: expectedEnd,
+      }
+    }
+    
+    return {
+      ...slot,
+      startTime: normalizedStart,
+      endTime: normalizedEnd,
+    }
+  })
+
   // Walidacja
-  validateSlots(slots)
+  validateSlots(normalizedSlots)
 
   // Sprawdź najwyższą wersję
   const { data: existingTemplates } = await supabase
@@ -171,7 +210,7 @@ export async function createAvailabilityTemplate(
   if (templateError) throw templateError
 
   // Dodaj sloty
-  const slotsToInsert = slots.map((slot) => ({
+  const slotsToInsert = normalizedSlots.map((slot) => ({
     template_id: template.id,
     day_of_week: slot.day,
     start_time: normalizeTimeForDb(slot.startTime),

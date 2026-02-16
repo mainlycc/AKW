@@ -30,7 +30,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
-import { CheckCircle2, Mail, Clock, AlertCircle } from 'lucide-react'
+import { CheckCircle2, Mail, Clock, AlertCircle, Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface PublicBookingPageProps {
@@ -242,167 +242,186 @@ export function PublicBookingPage({ subjects }: PublicBookingPageProps) {
   }
 
   return (
-    <div className="space-y-8">
-      <div className="space-y-3 text-center">
-        <h1 className="text-3xl font-semibold sm:text-4xl">Zarezerwuj korepetycje</h1>
-        <p className="text-muted-foreground">
-          Wybierz przedmiot i poziom, a my znajdziemy najbliższy wolny termin u dostępnego tutora.
-        </p>
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Krok 1: Preferencje</CardTitle>
-          <CardDescription>Możesz przeglądać dostępność w 14-dniowych zakresach.</CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4 sm:flex-row">
-          <div className="flex flex-1 flex-col gap-2">
-            <Label>Przedmiot</Label>
-            <Select value={selectedSubjectId} onValueChange={handleSubjectChange}>
-              <SelectTrigger>
-                <SelectValue placeholder="Wybierz przedmiot" />
-              </SelectTrigger>
-              <SelectContent>
-                {subjects.map((subject) => (
-                  <SelectItem key={subject.id} value={subject.id}>
-                    {subject.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex flex-1 flex-col gap-2">
-            <Label>Poziom</Label>
-            <Select
-              value={selectedLevelId}
-              onValueChange={handleLevelChange}
-              disabled={availableLevels.length === 0}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder={availableLevels.length ? 'Wybierz poziom' : 'Brak poziomów'} />
-              </SelectTrigger>
-              <SelectContent>
-                {availableLevels.map((level) => (
-                  <SelectItem key={level.id} value={level.id}>
-                    {level.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex flex-1 flex-col gap-2">
-            <Label>Data początkowa</Label>
-            <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                onClick={() => {
-                  const prev = subDays(parseISO(rangeStart), 7)
-                  const value = format(prev, 'yyyy-MM-dd')
-                  setRangeStart(value)
-                  if (selectedLevelId) {
-                    fetchSlots(selectedLevelId, value)
-                  }
-                }}
-              >
-                ‹
-              </Button>
-              <Input
-                type="date"
-                value={rangeStart}
-                onChange={(event) => handleRangeChange(event.target.value)}
-                min={format(new Date(), 'yyyy-MM-dd')}
-              />
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                onClick={() => {
-                  const next = addDays(parseISO(rangeStart), 7)
-                  const value = format(next, 'yyyy-MM-dd')
-                  setRangeStart(value)
-                  if (selectedLevelId) {
-                    fetchSlots(selectedLevelId, value)
-                  }
-                }}
-              >
-                ›
-              </Button>
-            </div>
-          </div>
-          <div className="flex flex-1 flex-col gap-2">
-            <Label>Data końcowa</Label>
-            <Input value={rangeEnd} readOnly />
-          </div>
-          <div className="flex items-end">
-            <Button
-              type="button"
-              onClick={() => {
-                if (selectedLevelId) {
-                  fetchSlots(selectedLevelId, rangeStart)
-                } else {
-                  toast.error('Najpierw wybierz przedmiot i poziom.')
-                }
-              }}
-              disabled={!selectedLevelId || loadingSlots}
-            >
-              {loadingSlots ? 'Ładowanie...' : 'Pokaż terminy'}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
+    <div className="space-y-8 pb-8">
       <div className="grid gap-6 lg:grid-cols-[1fr_400px]">
-        <Card>
-          <CardHeader>
-            <CardTitle>Krok 2: Wybierz slot</CardTitle>
-            <CardDescription>
-              Kliknij w dowolny wolny termin (zielony), aby przejść do formularza rezerwacji.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {loadingSlots && (
-              <p className="text-sm text-muted-foreground">Ładuję terminy...</p>
-            )}
-            {!loadingSlots && !initialised && (
-              <p className="text-sm text-muted-foreground">
-                Wybierz przedmiot i poziom, aby zobaczyć dostępne sloty.
-              </p>
-            )}
-            {!loadingSlots && initialised && slots.length === 0 && (
-              <p className="text-sm text-muted-foreground">
-                Brak wolnych terminów w wybranym zakresie. Spróbuj zmienić daty lub poziom.
-              </p>
-            )}
-            <PublicSlotGrid
-              rangeStart={rangeStart}
-              slotMap={slotMap}
-              onSelect={openBooking}
-            />
-          </CardContent>
-        </Card>
+        {/* Lewy panel - Kroki rezerwacji */}
+        <div className="space-y-6">
+          {/* Krok 1: Preferencje */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center gap-3">
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground text-sm font-semibold">
+                  1
+                </div>
+                <div>
+                  <CardTitle className="text-lg">Krok 1: Preferencje</CardTitle>
+                  <CardDescription className="mt-1 text-base">
+                    Wybierz przedmiot i poziom, a my znajdziemy najbliższy wolny termin u dostępnego tutora.
+                  </CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-4 sm:grid-cols-3">
+                <div className="flex flex-col gap-2">
+                  <Label className="text-sm font-semibold uppercase tracking-wide">Przedmiot</Label>
+                  <Select value={selectedSubjectId} onValueChange={handleSubjectChange}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Wybierz przedmiot" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {subjects.map((subject) => (
+                        <SelectItem key={subject.id} value={subject.id}>
+                          {subject.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex flex-col gap-2">
+                  <Label className="text-sm font-semibold uppercase tracking-wide">Poziom</Label>
+                  <Select
+                    value={selectedLevelId}
+                    onValueChange={handleLevelChange}
+                    disabled={availableLevels.length === 0}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder={availableLevels.length ? 'Wybierz poziom' : 'Brak poziomów'} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableLevels.map((level) => (
+                        <SelectItem key={level.id} value={level.id}>
+                          {level.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex flex-col gap-2">
+                  <Label className="text-sm font-semibold uppercase tracking-wide">Od daty</Label>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="h-9 w-9"
+                      onClick={() => {
+                        const prev = subDays(parseISO(rangeStart), 7)
+                        const value = format(prev, 'yyyy-MM-dd')
+                        setRangeStart(value)
+                        if (selectedLevelId) {
+                          fetchSlots(selectedLevelId, value)
+                        }
+                      }}
+                    >
+                      ‹
+                    </Button>
+                    <Input
+                      type="date"
+                      value={rangeStart}
+                      onChange={(event) => handleRangeChange(event.target.value)}
+                      min={format(new Date(), 'yyyy-MM-dd')}
+                      className="h-9"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="h-9 w-9"
+                      onClick={() => {
+                        const next = addDays(parseISO(rangeStart), 7)
+                        const value = format(next, 'yyyy-MM-dd')
+                        setRangeStart(value)
+                        if (selectedLevelId) {
+                          fetchSlots(selectedLevelId, value)
+                        }
+                      }}
+                    >
+                      ›
+                    </Button>
+                  </div>
+                </div>
+              </div>
+              <div className="flex justify-end">
+                <Button
+                  type="button"
+                  onClick={() => {
+                    if (selectedLevelId) {
+                      fetchSlots(selectedLevelId, rangeStart)
+                    } else {
+                      toast.error('Najpierw wybierz przedmiot i poziom.')
+                    }
+                  }}
+                  disabled={!selectedLevelId || loadingSlots}
+                  className="gap-2"
+                >
+                  <Search className="h-4 w-4" />
+                  {loadingSlots ? 'Ładowanie...' : 'Pokaż terminy'}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
 
-        {/* Instrukcja procesu rezerwacji */}
+          {/* Krok 2: Wybierz slot */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center gap-3">
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground text-sm font-semibold">
+                  2
+                </div>
+                <div>
+                  <CardTitle className="text-lg">Krok 2: Wybierz slot</CardTitle>
+                  <CardDescription className="mt-1 text-base">
+                    Kliknij w dostępny termin, aby kontynuować
+                  </CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {loadingSlots && (
+                <p className="text-base text-muted-foreground">Ładuję terminy...</p>
+              )}
+              {!loadingSlots && !initialised && (
+                <p className="text-base text-muted-foreground">
+                  Wybierz przedmiot i poziom, aby zobaczyć dostępne sloty.
+                </p>
+              )}
+              {!loadingSlots && initialised && slots.length === 0 && (
+                <p className="text-base text-muted-foreground">
+                  Brak wolnych terminów w wybranym zakresie. Spróbuj zmienić daty lub poziom.
+                </p>
+              )}
+              <PublicSlotGrid
+                rangeStart={rangeStart}
+                slotMap={slotMap}
+                onSelect={openBooking}
+              />
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Prawy panel - Jak to działa */}
         <Card className="lg:sticky lg:top-4 lg:h-fit">
           <CardHeader>
-            <CardTitle className="text-lg">Proces rezerwacji</CardTitle>
-            <CardDescription>
-              Instrukcja krok po kroku z opisem płatności i emaili
-            </CardDescription>
+            <CardTitle className="text-xl">Jak to działa?</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-6">
             {/* Krok 1 */}
             <div className="space-y-2">
               <div className="flex items-center gap-2">
-                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-semibold">
+                <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-primary-foreground text-sm font-semibold">
                   1
                 </div>
-                <h4 className="text-sm font-semibold">Wypełnienie formularza</h4>
+                <h4 className="text-base font-semibold">Wypełnienie formularza</h4>
               </div>
-              <p className="text-xs text-muted-foreground ml-8">
-                Wybór przedmiotu, poziomu, terminu i wprowadzenie danych ucznia oraz kontaktowych.
-              </p>
+              <div className="ml-9 space-y-1">
+                <p className="text-sm text-muted-foreground">
+                  Wybierz przedmiot, poziom oraz zakres dat, a następnie kliknij &quot;Pokaż terminy&quot;.
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Z kalendarza wybierz dogodny termin (zielony slot) i wypełnij formularz z danymi ucznia oraz kontaktowymi.
+                </p>
+              </div>
             </div>
 
             <Separator />
@@ -410,98 +429,53 @@ export function PublicBookingPage({ subjects }: PublicBookingPageProps) {
             {/* Krok 2 - Płatność */}
             <div className="space-y-2">
               <div className="flex items-center gap-2">
-                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-semibold">
+                <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-primary-foreground text-sm font-semibold">
                   2
                 </div>
-                <div className="flex items-center gap-2">
-                  <AlertCircle className="h-4 w-4 text-blue-600" />
-                  <h4 className="text-sm font-semibold">Płatność przez PayU</h4>
-                </div>
+                <h4 className="text-base font-semibold">Płatność przez PayU</h4>
               </div>
-              <div className="ml-8 space-y-2">
-                <p className="text-xs text-muted-foreground">
+              <div className="ml-9 space-y-2">
+                <p className="text-sm text-muted-foreground">
                   Po wysłaniu formularza zostaniesz przekierowany do systemu płatności PayU.
                 </p>
-                <div className="p-2 bg-blue-50 border border-blue-200 rounded-md space-y-1">
+                <div className="p-2.5 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-md">
                   <div className="flex items-start gap-2">
-                    <span className="text-xs font-semibold min-w-[60px]">Status:</span>
-                    <span className="flex items-center gap-1 text-xs">
-                      <Clock className="h-3 w-3 text-amber-600" />
-                      <span className="text-amber-700 font-medium">Oczekuje na płatność</span>
-                    </span>
+                    <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-500 mt-0.5 flex-shrink-0" />
+                    <div className="space-y-1">
+                      <p className="text-sm font-semibold text-amber-900 dark:text-amber-100">Status: OCZEKUJE NA PŁATNOŚĆ</p>
+                      <p className="text-sm text-muted-foreground">
+                        Rezerwacja wstępna wygasa po 30 minutach.
+                      </p>
+                    </div>
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    Rezerwacja zostanie automatycznie potwierdzona po zakończeniu płatności.
-                  </p>
                 </div>
               </div>
             </div>
 
             <Separator />
 
-            {/* Krok 3 - Automatyczne potwierdzenie */}
+            {/* Krok 3 - Potwierdzenie */}
             <div className="space-y-2">
               <div className="flex items-center gap-2">
-                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-semibold">
+                <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-primary-foreground text-sm font-semibold">
                   3
                 </div>
-                <h4 className="text-sm font-semibold">Automatyczne potwierdzenie</h4>
+                <h4 className="text-base font-semibold">Automatyczne potwierdzenie</h4>
               </div>
-              <p className="text-xs text-muted-foreground ml-8">
-                Po zakończeniu płatności rezerwacja jest automatycznie potwierdzana i slot zostaje zablokowany.
-              </p>
-            </div>
-
-            <Separator />
-
-            {/* Krok 4 - Email potwierdzający */}
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-semibold">
-                  4
-                </div>
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 className="h-4 w-4 text-green-600" />
-                  <h4 className="text-sm font-semibold">Email potwierdzający</h4>
-                </div>
-              </div>
-              <div className="ml-8 space-y-2">
-                <p className="text-xs text-muted-foreground">
-                  Otrzymywany automatycznie po zakończeniu płatności.
+              <div className="ml-9 space-y-2">
+                <p className="text-sm text-muted-foreground">
+                  Po zakończeniu płatności rezerwacja jest automatycznie potwierdzana i slot zostaje zablokowany.
                 </p>
-                <div className="p-2 bg-green-50 border border-green-200 rounded-md space-y-1">
-                  <div className="flex items-start gap-2">
-                    <span className="text-xs font-semibold min-w-[60px]">Status:</span>
-                    <span className="flex items-center gap-1 text-xs">
-                      <CheckCircle2 className="h-3 w-3 text-green-600" />
-                      <span className="text-green-700 font-medium">Potwierdzona</span>
-                    </span>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Zawiera szczegóły rezerwacji, dane tutora oraz potwierdzenie, że slot został zarezerwowany.
+                <div className="space-y-2">
+                  <p className="text-sm font-semibold">Email potwierdzający</p>
+                  <p className="text-sm text-muted-foreground">
+                    Otrzymasz wiadomość ze wszystkimi szczegółami rezerwacji, danymi tutora oraz linkiem do spotkania.
                   </p>
-                </div>
-              </div>
-            </div>
-
-            <Separator />
-
-            {/* Podsumowanie */}
-            <div className="space-y-2 pt-2">
-              <h4 className="text-sm font-semibold">Podsumowanie</h4>
-              <div className="space-y-2 text-xs">
-                <div className="flex items-start gap-2">
-                  <AlertCircle className="h-3 w-3 text-blue-600 mt-0.5" />
-                  <div>
-                    <p className="font-medium">Krok 2:</p>
-                    <p className="text-muted-foreground">Płatność przez PayU - Status: &apos;Oczekuje na płatność&apos;</p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-2">
-                  <CheckCircle2 className="h-3 w-3 text-green-600 mt-0.5" />
-                  <div>
-                    <p className="font-medium">Krok 4:</p>
-                    <p className="text-muted-foreground">Email potwierdzający - Status: &apos;Potwierdzona&apos;</p>
+                  <div className="p-2.5 bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 rounded-md">
+                    <div className="flex items-start gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-500 mt-0.5 flex-shrink-0" />
+                      <p className="text-sm font-semibold text-green-900 dark:text-green-100">Status: POTWIERDZONA</p>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -513,18 +487,18 @@ export function PublicBookingPage({ subjects }: PublicBookingPageProps) {
       <Dialog open={!!booking} onOpenChange={(open) => !open && setBooking(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Potwierdź rezerwację</DialogTitle>
-            <DialogDescription>
+            <DialogTitle className="text-lg">Potwierdź rezerwację</DialogTitle>
+            <DialogDescription className="text-base">
               Podaj dane kontaktowe, abyśmy mogli potwierdzić rezerwację.
             </DialogDescription>
           </DialogHeader>
 
           {booking && (
             <div className="space-y-3">
-              <p className="rounded-md bg-muted px-3 py-2 text-sm">
+              <p className="rounded-md bg-muted px-3 py-2 text-base">
                 Wybrany termin: <strong>{formatLabel(booking.slot)}</strong>
               </p>
-              <p className="text-xs text-muted-foreground px-3">
+              <p className="text-sm text-muted-foreground px-3">
                 Przedmiot: <strong>{selectedSubject?.name ?? '—'}</strong>{' '}
                 {selectedLevelName && <>· Poziom: <strong>{selectedLevelName}</strong></>}
               </p>
@@ -651,13 +625,13 @@ function PublicSlotGrid({ rangeStart, slotMap, onSelect }: PublicSlotGridProps) 
     <div className="overflow-x-auto">
       <div className="min-w-max">
         <div className="grid grid-cols-8 gap-1 mb-2">
-          <div className="text-xs font-medium text-muted-foreground p-2 text-right">
+          <div className="text-sm font-medium text-muted-foreground p-2 text-right">
             Czas
           </div>
           {daysToDisplay.map((day) => (
             <div key={day.isoDate} className="text-center p-2">
-              <div className="text-xs font-medium">{day.label}</div>
-              <div className="text-[10px] text-muted-foreground">
+              <div className="text-sm font-medium">{day.label}</div>
+              <div className="text-xs text-muted-foreground">
                 {format(parseISO(day.isoDate), 'dd.MM')}
               </div>
             </div>
@@ -667,7 +641,7 @@ function PublicSlotGrid({ rangeStart, slotMap, onSelect }: PublicSlotGridProps) 
         <div className="space-y-px">
           {allTimeSlots.map((timeSlot) => (
             <div key={timeSlot.start} className="grid grid-cols-8 gap-1">
-              <div className="flex items-center justify-end pr-2 text-xs text-muted-foreground">
+              <div className="flex items-center justify-end pr-2 text-sm text-muted-foreground">
                 {timeSlot.start}
               </div>
 
@@ -705,7 +679,7 @@ function PublicSlotGrid({ rangeStart, slotMap, onSelect }: PublicSlotGridProps) 
                     onClick={() => onSelect(slot)}
                     className={cn(
                       'h-6 rounded border-2 transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1 cursor-pointer',
-                      'bg-green-500/20 border-green-500 hover:bg-green-500/30'
+                      'bg-green-100 dark:bg-green-900/30 border-green-400 dark:border-green-600 hover:bg-green-200 dark:hover:bg-green-900/50'
                     )}
                     title={formatLabel(slot)}
                   />
@@ -715,9 +689,9 @@ function PublicSlotGrid({ rangeStart, slotMap, onSelect }: PublicSlotGridProps) 
           ))}
         </div>
 
-        <div className="flex items-center gap-4 mt-4 text-xs text-muted-foreground">
+        <div className="flex items-center gap-4 mt-4 text-sm text-muted-foreground">
           <div className="flex items-center gap-2">
-            <div className="w-6 h-6 bg-green-500/20 border-2 border-green-500 rounded" />
+            <div className="w-6 h-6 bg-green-100 dark:bg-green-900/30 border-2 border-green-400 dark:border-green-600 rounded" />
             <span>Dostępny slot</span>
           </div>
           <div className="flex items-center gap-2">

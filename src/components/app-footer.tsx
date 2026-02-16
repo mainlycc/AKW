@@ -2,8 +2,8 @@ import Link from "next/link"
 
 export function AppFooter() {
   return (
-    <footer className="border-t bg-background py-2">
-      <div className="container mx-auto px-4">
+    <footer className="bg-background py-2 mt-auto">
+      <div className="mx-auto px-4 sm:px-6">
         <div className="flex items-center justify-center text-sm text-muted-foreground">
           <span>© {new Date().getFullYear()} Akademia Wiedzy. </span>
           <Link 

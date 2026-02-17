@@ -248,7 +248,7 @@ export async function updateDefaultRates(
 
     if (shouldUpdateStudents) {
       const updateForLevel = async (level: 1 | 2 | 3, rate: number | null) => {
-        if (rate === null) return
+        if (rate === null) return { success: true as const }
 
         let query = supabase.from('students').update({
           hourly_rate: rate,

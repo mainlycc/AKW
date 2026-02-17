@@ -79,8 +79,8 @@ interface StudentWithRelations {
   parent_phone: string | null
   notes: string | null
   hourly_rate: number | null
-  rate_level?: number
-  hourly_rate_is_overridden?: boolean
+  rate_level: number
+  hourly_rate_is_overridden: boolean
   created_at: string
   updated_at: string
   student_parents?: StudentParent[]

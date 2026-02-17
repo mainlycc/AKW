@@ -492,6 +492,8 @@ export async function bookPublicSlot(payload: PublicBookingPayload) {
         parent_email: email,
         parent_phone: phone,
         notes,
+        rate_level: 1,
+        hourly_rate_is_overridden: false,
         hourly_rate: defaultRate,
       })
       .select('id')

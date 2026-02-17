@@ -121,6 +121,7 @@ interface StudentDialogProps {
   isTutor?: boolean
   tutorId?: string
   defaultStudentRate?: number
+  defaultStudentRatesByLevel?: { 1: number; 2: number; 3: number }
   tutorSubjectLevels?: TutorSubjectLevel[]
   currentUserId?: string
 }
@@ -138,6 +139,7 @@ export function StudentDialog({
   isTutor = false,
   tutorId,
   defaultStudentRate = 50,
+  defaultStudentRatesByLevel,
   tutorSubjectLevels = [],
   currentUserId,
 }: StudentDialogProps) {
@@ -145,10 +147,18 @@ export function StudentDialog({
   const [isEditMode, setIsEditMode] = useState<boolean>(!student)
   const [loading, setLoading] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const getDefaultRateForLevel = (level: 1 | 2 | 3) => {
+    if (defaultStudentRatesByLevel) {
+      return defaultStudentRatesByLevel[level]
+    }
+    return defaultStudentRate
+  }
   const [formData, setFormData] = useState({
     first_name: '',
     last_name: '',
-    hourly_rate: defaultStudentRate,
+    rate_level: 1 as 1 | 2 | 3,
+    hourly_rate_is_overridden: false,
+    hourly_rate: getDefaultRateForLevel(1),
   })
   const [parentData, setParentData] = useState({
     first_name: '',
@@ -189,15 +199,16 @@ export function StudentDialog({
     setLessonHistoryError(null)
   }, [open])
 
-  // Update formData when defaultStudentRate changes
+  // Update formData when default rates change (only for NEW student and only when override is OFF)
   useEffect(() => {
-    if (!student && open) {
+    if (!student && open && formData.hourly_rate_is_overridden === false) {
       setFormData(prev => ({
         ...prev,
-        hourly_rate: prev.hourly_rate === 50 ? defaultStudentRate : prev.hourly_rate
+        hourly_rate: getDefaultRateForLevel(prev.rate_level),
       }))
     }
-  }, [defaultStudentRate, student, open])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [defaultStudentRate, defaultStudentRatesByLevel, student, open])
 
   // Inicjalizacja danych formularza przy OTWARCIU dialogu.
   // Zależność tylko od `open`, żeby uniknąć zmiany widoku przy technicznych zmianach `student` podczas zamykania.
@@ -209,6 +220,8 @@ export function StudentDialog({
       setFormData({
         first_name: student.first_name,
         last_name: student.last_name,
+        rate_level: ((student as unknown as { rate_level?: number }).rate_level ?? 1) as 1 | 2 | 3,
+        hourly_rate_is_overridden: (student as unknown as { hourly_rate_is_overridden?: boolean }).hourly_rate_is_overridden ?? false,
         hourly_rate: student.hourly_rate ?? defaultStudentRate,
       })
       setParentData({
@@ -241,7 +254,9 @@ export function StudentDialog({
       setFormData({
         first_name: '',
         last_name: '',
-        hourly_rate: defaultStudentRate,
+        rate_level: 1,
+        hourly_rate_is_overridden: false,
+        hourly_rate: getDefaultRateForLevel(1),
       })
       setParentData({
         first_name: '',
@@ -267,6 +282,17 @@ export function StudentDialog({
     setNewNote('')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
+
+  // Jeśli override jest wyłączony, stawka powinna automatycznie wynikać z poziomu
+  useEffect(() => {
+    if (!open) return
+    if (formData.hourly_rate_is_overridden) return
+    setFormData(prev => ({
+      ...prev,
+      hourly_rate: getDefaultRateForLevel(prev.rate_level),
+    }))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData.rate_level, formData.hourly_rate_is_overridden, open, defaultStudentRatesByLevel, defaultStudentRate])
 
   // Historia lekcji ucznia – ładowana przy otwarciu dialogu
   useEffect(() => {
@@ -328,6 +354,8 @@ export function StudentDialog({
             first_name: formData.first_name,
             last_name: formData.last_name,
             hourly_rate: formData.hourly_rate,
+            rate_level: formData.rate_level,
+            hourly_rate_is_overridden: formData.hourly_rate_is_overridden,
             subject_level_id: tutorSelectedLevelId,
             parent: parentData.email || parentData.first_name || parentData.last_name ? {
               first_name: parentData.first_name,
@@ -876,8 +904,10 @@ export function StudentDialog({
             {/* Podstawowe dane */}
             <div className="space-y-2">
               <h3 className="font-semibold text-sm text-primary">Dane podstawowe</h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <div className="space-y-1.5">
+              {/* Uwaga: modal ma wąską szerokość (sm:max-w-[500px]), więc 4 kolumny przy md potrafią powodować nachodzenie treści.
+                  Trzymamy maks 2 kolumny dla stabilnego układu na desktopie. */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1.5 min-w-0">
                   <Label htmlFor="first_name" className="text-xs">Imię</Label>
                   <Input
                     id="first_name"
@@ -888,7 +918,7 @@ export function StudentDialog({
                     className="h-9"
                   />
                 </div>
-                <div className="space-y-1.5">
+                <div className="space-y-1.5 min-w-0">
                   <Label htmlFor="last_name" className="text-xs">Nazwisko</Label>
                   <Input
                     id="last_name"
@@ -899,7 +929,33 @@ export function StudentDialog({
                     className="h-9"
                   />
                 </div>
-                <div className="space-y-1.5">
+                <div className="space-y-1.5 min-w-0">
+                  <Label className="text-xs">Poziom ucznia</Label>
+                  <Select
+                    value={String(formData.rate_level)}
+                    onValueChange={(value) => {
+                      const nextLevel = (parseInt(value, 10) || 1) as 1 | 2 | 3
+                      setFormData((prev) => ({
+                        ...prev,
+                        rate_level: nextLevel,
+                        ...(prev.hourly_rate_is_overridden
+                          ? {}
+                          : { hourly_rate: getDefaultRateForLevel(nextLevel) }),
+                      }))
+                    }}
+                    disabled={loading || deleting}
+                  >
+                    <SelectTrigger className="h-9">
+                      <SelectValue placeholder="Wybierz poziom" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="1">1 – Podstawowa</SelectItem>
+                      <SelectItem value="2">2 – Średnia (podstawa)</SelectItem>
+                      <SelectItem value="3">3 – Średnia (rozszerzenie)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5 min-w-0">
                   <Label htmlFor="hourly_rate" className="text-xs">Stawka/h (PLN)</Label>
                   <Input
                     id="hourly_rate"
@@ -907,11 +963,37 @@ export function StudentDialog({
                     step="0.01"
                     min="0"
                     value={formData.hourly_rate}
-                    onChange={(e) => setFormData({ ...formData, hourly_rate: parseFloat(e.target.value) || defaultStudentRate })}
+                    onChange={(e) => {
+                      const parsed = parseFloat(e.target.value)
+                      const fallback = formData.hourly_rate_is_overridden
+                        ? defaultStudentRate
+                        : getDefaultRateForLevel(formData.rate_level)
+                      setFormData({
+                        ...formData,
+                        hourly_rate: Number.isNaN(parsed) ? fallback : parsed,
+                      })
+                    }}
                     required
-                    disabled={loading || deleting}
+                    disabled={loading || deleting || !formData.hourly_rate_is_overridden}
                     className="h-9"
                   />
+                  <label className="flex items-start gap-2 pt-1 cursor-pointer select-none min-w-0">
+                    <Checkbox
+                      checked={formData.hourly_rate_is_overridden}
+                      onCheckedChange={(checked) => {
+                        const next = checked === true
+                        setFormData((prev) => ({
+                          ...prev,
+                          hourly_rate_is_overridden: next,
+                          ...(next ? {} : { hourly_rate: getDefaultRateForLevel(prev.rate_level) }),
+                        }))
+                      }}
+                      disabled={loading || deleting}
+                    />
+                    <span className="text-xs text-muted-foreground leading-snug break-words">
+                      Ustaw indywidualną stawkę (override)
+                    </span>
+                  </label>
                 </div>
               </div>
             </div>

@@ -85,6 +85,7 @@ interface StudentsTableProps {
   allSubjects?: { id: string; name: string; subject_levels: { id: string; level_name: string; level_order: number; price_per_hour: number }[] }[]
   tutorId?: string
   defaultStudentRate?: number
+  defaultStudentRatesByLevel?: { 1: number; 2: number; 3: number }
   tutorSubjectLevels?: { subject_level_id: string; subjects: { id: string; name: string } | null; subject_levels: { id: string; level_name: string } | null }[]
   currentUserId?: string
 }
@@ -98,6 +99,7 @@ export function StudentsTable({
   allSubjects = [],
   tutorId,
   defaultStudentRate = 50,
+  defaultStudentRatesByLevel,
   tutorSubjectLevels = [],
   currentUserId,
 }: StudentsTableProps) {
@@ -543,6 +545,7 @@ export function StudentsTable({
         isTutor={isTutor}
         tutorId={tutorId}
         defaultStudentRate={defaultStudentRate}
+        defaultStudentRatesByLevel={defaultStudentRatesByLevel}
         tutorSubjectLevels={tutorSubjectLevels}
         currentUserId={currentUserId}
       />

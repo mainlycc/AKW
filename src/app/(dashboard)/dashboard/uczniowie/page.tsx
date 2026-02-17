@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server"
 import { getUserProfile } from "@/lib/actions/auth"
 import { getTutorSubjectLevels } from "@/lib/actions/tutor"
-import { getDefaultStudentRate } from "../stawki/actions"
+import { getDefaultStudentRateForLevel } from "../stawki/actions"
 import { StudentsTable } from "./students-table"
 
 interface Parent {
@@ -79,6 +79,8 @@ interface StudentWithRelations {
   parent_phone: string | null
   notes: string | null
   hourly_rate: number | null
+  rate_level?: number
+  hourly_rate_is_overridden?: boolean
   created_at: string
   updated_at: string
   student_parents?: StudentParent[]
@@ -199,7 +201,13 @@ export default async function StudentsPage() {
   }
 
   // Get default student rate from system settings (needed for mergeDuplicateStudents)
-  const defaultStudentRate = await getDefaultStudentRate()
+  const [rate1, rate2, rate3] = await Promise.all([
+    getDefaultStudentRateForLevel(1),
+    getDefaultStudentRateForLevel(2),
+    getDefaultStudentRateForLevel(3),
+  ])
+  const defaultStudentRate = rate1
+  const defaultStudentRatesByLevel = { 1: rate1, 2: rate2, 3: rate3 } as const
 
   // Łączenie duplikatów uczniów (tych samych imię i nazwisko, ale różne student_id)
   const mergeDuplicateStudents = (studentsList: StudentWithRelations[], defaultRate: number): StudentWithRelations[] => {
@@ -305,6 +313,9 @@ export default async function StudentsPage() {
           ...firstStudent,
           id: firstStudent.id, // Używamy ID pierwszego (najstarszego) rekordu
           hourly_rate: maxHourlyRate,
+          // Jeśli scaliliśmy duplikaty i wybraliśmy max stawkę, traktujemy to jako override,
+          // żeby nie nadpisać tej wartości automatycznie stawką z poziomu przy edycji.
+          hourly_rate_is_overridden: true,
           updated_at: latestUpdatedAt,
           student_parents: mergedParents,
           student_notes: allNotes,
@@ -357,6 +368,7 @@ export default async function StudentsPage() {
         allSubjects={allSubjects}
         tutorId={profile.id}
         defaultStudentRate={defaultStudentRate}
+        defaultStudentRatesByLevel={defaultStudentRatesByLevel}
         tutorSubjectLevels={tutorSubjectLevels}
         currentUserId={profile.id}
       />

@@ -14,7 +14,9 @@ export function RatesManagement() {
   const [loading, setLoading] = useState(false)
   const [initialRates, setInitialRates] = useState<DefaultRates | null>(null)
   const [rates, setRates] = useState<DefaultRates>({
-    default_student_rate: 50.00,
+    default_student_rate_level_1: 50.0,
+    default_student_rate_level_2: 50.0,
+    default_student_rate_level_3: 50.0,
     default_tutor_rate: null,
   })
   const [hasChanges, setHasChanges] = useState(false)
@@ -37,19 +39,36 @@ export function RatesManagement() {
   useEffect(() => {
     if (initialRates) {
       const changed =
-        rates.default_student_rate !== initialRates.default_student_rate ||
+        rates.default_student_rate_level_1 !== initialRates.default_student_rate_level_1 ||
+        rates.default_student_rate_level_2 !== initialRates.default_student_rate_level_2 ||
+        rates.default_student_rate_level_3 !== initialRates.default_student_rate_level_3 ||
         rates.default_tutor_rate !== initialRates.default_tutor_rate
       setHasChanges(changed)
     }
   }, [rates, initialRates])
 
-  const handleStudentRateChange = (value: string) => {
+  const handleStudentRateLevelChange = (
+    level: 1 | 2 | 3,
+    value: string
+  ) => {
     const numValue = value === '' ? null : parseFloat(value)
     if (value === '' || (!isNaN(numValue!) && numValue! >= 0)) {
-      setRates({
-        ...rates,
-        default_student_rate: numValue,
-      })
+      if (level === 1) {
+        setRates({
+          ...rates,
+          default_student_rate_level_1: numValue,
+        })
+      } else if (level === 2) {
+        setRates({
+          ...rates,
+          default_student_rate_level_2: numValue,
+        })
+      } else {
+        setRates({
+          ...rates,
+          default_student_rate_level_3: numValue,
+        })
+      }
     }
   }
 
@@ -71,7 +90,9 @@ export function RatesManagement() {
 
     try {
       const result = await updateDefaultRates(
-        rates.default_student_rate,
+        rates.default_student_rate_level_1,
+        rates.default_student_rate_level_2,
+        rates.default_student_rate_level_3,
         rates.default_tutor_rate,
         updateAllStudents
       )
@@ -127,13 +148,13 @@ export function RatesManagement() {
                   onCheckedChange={(checked) => setUpdateAllStudents(checked === true)}
                 />
                 <span className="text-sm text-amber-800 dark:text-amber-200">
-                  Zaktualizuj wszystkich studentów do nowej domyślnej stawki (włącznie z tymi, którzy już mają ustawioną stawkę)
+                  Nadpisz także indywidualne stawki uczniów (zresetuj override i ustaw stawkę wg poziomu)
                 </span>
               </label>
               <p className="text-xs text-amber-700 dark:text-amber-300">
                 {updateAllStudents
-                  ? 'Uwaga: Wszyscy studenci otrzymają nową domyślną stawkę, nawet jeśli mają już ustawioną indywidualną stawkę.'
-                  : 'Domyślnie aktualizowani są tylko studenci bez ustawionej stawki (NULL).'}
+                  ? 'Uwaga: Wszyscy uczniowie otrzymają nowe stawki wg poziomu, nawet jeśli mieli ustawioną indywidualną stawkę. Indywidualne nadpisania zostaną wyłączone.'
+                  : 'Domyślnie aktualizowani są tylko uczniowie bez indywidualnej stawki (override wyłączony).'}
               </p>
             </div>
           </div>
@@ -144,32 +165,56 @@ export function RatesManagement() {
             <CardHeader>
               <div className="flex items-center gap-2">
                 <IconCurrency className="h-5 w-5 text-primary" />
-                <CardTitle>Domyślna stawka dla studentów</CardTitle>
+                <CardTitle>Domyślne stawki dla uczniów (wg poziomu)</CardTitle>
               </div>
               <CardDescription>
-                Stawka godzinowa używana przy tworzeniu nowych studentów
+                Stawki godzinowe używane przy tworzeniu nowych uczniów
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="student_rate">Stawka (PLN/h)</Label>
+                <Label htmlFor="student_rate_level_1">Poziom 1 – Szkoła podstawowa (PLN/h)</Label>
                 <Input
-                  id="student_rate"
+                  id="student_rate_level_1"
                   type="number"
                   step="0.01"
                   min="0"
-                  value={rates.default_student_rate ?? ''}
-                  onChange={(e) => handleStudentRateChange(e.target.value)}
+                  value={rates.default_student_rate_level_1 ?? ''}
+                  onChange={(e) => handleStudentRateLevelChange(1, e.target.value)}
                   placeholder="50.00"
                   disabled={loading}
                   required
                 />
-                <p className="text-xs text-muted-foreground">
-                  Aktualna wartość:{' '}
-                  <span className="font-medium">
-                    {rates.default_student_rate ? `${rates.default_student_rate.toFixed(0)}` : 'Nie ustawiono'} PLN
-                  </span>
-                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="student_rate_level_2">Poziom 2 – Szkoła średnia podstawa (PLN/h)</Label>
+                <Input
+                  id="student_rate_level_2"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={rates.default_student_rate_level_2 ?? ''}
+                  onChange={(e) => handleStudentRateLevelChange(2, e.target.value)}
+                  placeholder="50.00"
+                  disabled={loading}
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="student_rate_level_3">Poziom 3 – Szkoła średnia rozszerzenie (PLN/h)</Label>
+                <Input
+                  id="student_rate_level_3"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={rates.default_student_rate_level_3 ?? ''}
+                  onChange={(e) => handleStudentRateLevelChange(3, e.target.value)}
+                  placeholder="50.00"
+                  disabled={loading}
+                  required
+                />
               </div>
             </CardContent>
           </Card>

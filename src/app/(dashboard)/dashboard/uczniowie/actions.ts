@@ -7,6 +7,14 @@ import type { NotificationChannel } from '@/lib/types/notifications'
 import { sendGroupMessageSms } from '@/lib/sms/send'
 import { sendWithChannel } from '@/lib/notifications/send-with-channel'
 import { linkParentToStudent as linkParentToStudentLib, unlinkParentFromStudent as unlinkParentFromStudentLib, createParent } from '@/lib/actions/parents'
+import { getDefaultStudentRateForLevel } from '../stawki/actions'
+
+const normalizeRateLevel = (level: unknown): 1 | 2 | 3 => {
+  const n = typeof level === 'number' ? level : parseInt(String(level ?? ''), 10)
+  if (n === 2) return 2
+  if (n === 3) return 3
+  return 1
+}
 
 /**
  * Check if a student with the same first and last name already exists
@@ -47,6 +55,8 @@ export async function createStudent(
     first_name: string
     last_name: string
     hourly_rate?: number
+    rate_level?: 1 | 2 | 3
+    hourly_rate_is_overridden?: boolean
   },
   parentData?: {
     first_name: string
@@ -70,29 +80,23 @@ export async function createStudent(
     )
   }
 
-  // Get default rate from system_settings if not provided
-  let defaultRate = 50.00 // fallback
-  if (data.hourly_rate === undefined) {
-    const { data: setting } = await supabase
-      .from('system_settings')
-      .select('value')
-      .eq('key', 'default_student_rate')
-      .maybeSingle()
-    
-    if (setting?.value) {
-      const parsedRate = parseFloat(setting.value)
-      if (!isNaN(parsedRate)) {
-        defaultRate = parsedRate
-      }
-    }
-  }
+  const rateLevel = normalizeRateLevel(data.rate_level)
+  const wantsOverride = data.hourly_rate_is_overridden === true
+  const defaultRate = await getDefaultStudentRateForLevel(rateLevel)
+  const hourlyRate =
+    wantsOverride && data.hourly_rate !== undefined && !Number.isNaN(data.hourly_rate)
+      ? data.hourly_rate
+      : defaultRate
+  const isOverridden = wantsOverride && hourlyRate !== defaultRate
 
   const { data: student, error } = await supabase
     .from('students')
     .insert({
       first_name: data.first_name.trim(),
       last_name: data.last_name.trim(),
-      hourly_rate: data.hourly_rate ?? defaultRate,
+      rate_level: rateLevel,
+      hourly_rate: hourlyRate,
+      hourly_rate_is_overridden: isOverridden,
     })
     .select()
     .single()
@@ -136,6 +140,8 @@ export async function createStudentWithAssignment(
     last_name: string
     subject_level_id: string
     hourly_rate?: number
+    rate_level?: 1 | 2 | 3
+    hourly_rate_is_overridden?: boolean
     parent?: {
       first_name: string
       last_name: string
@@ -244,22 +250,14 @@ export async function createStudentWithAssignment(
     return existingStudent
   }
 
-  // Get default rate from system_settings if not provided
-  let defaultRate = 50.00 // fallback
-  if (data.hourly_rate === undefined) {
-    const { data: setting } = await supabase
-      .from('system_settings')
-      .select('value')
-      .eq('key', 'default_student_rate')
-      .maybeSingle()
-    
-    if (setting?.value) {
-      const parsedRate = parseFloat(setting.value)
-      if (!isNaN(parsedRate)) {
-        defaultRate = parsedRate
-      }
-    }
-  }
+  const rateLevel = normalizeRateLevel(data.rate_level)
+  const wantsOverride = data.hourly_rate_is_overridden === true
+  const defaultRate = await getDefaultStudentRateForLevel(rateLevel)
+  const hourlyRate =
+    wantsOverride && data.hourly_rate !== undefined && !Number.isNaN(data.hourly_rate)
+      ? data.hourly_rate
+      : defaultRate
+  const isOverridden = wantsOverride && hourlyRate !== defaultRate
 
   // Create new student
   const { data: student, error: studentError } = await supabase
@@ -267,7 +265,9 @@ export async function createStudentWithAssignment(
     .insert({
       first_name: data.first_name.trim(),
       last_name: data.last_name.trim(),
-      hourly_rate: data.hourly_rate ?? defaultRate,
+      rate_level: rateLevel,
+      hourly_rate: hourlyRate,
+      hourly_rate_is_overridden: isOverridden,
     })
     .select()
     .single()
@@ -343,6 +343,8 @@ export async function updateStudent(
     first_name: string
     last_name: string
     hourly_rate?: number
+    rate_level?: 1 | 2 | 3
+    hourly_rate_is_overridden?: boolean
   }
 ) {
   const supabase = await createClient()
@@ -365,12 +367,33 @@ export async function updateStudent(
     first_name: string
     last_name: string
     hourly_rate?: number
+    rate_level?: 1 | 2 | 3
+    hourly_rate_is_overridden?: boolean
   } = {
     first_name: data.first_name.trim(),
     last_name: data.last_name.trim(),
   }
 
-  if (data.hourly_rate !== undefined) {
+  if (data.rate_level !== undefined) {
+    updateData.rate_level = normalizeRateLevel(data.rate_level)
+  }
+
+  if (data.hourly_rate_is_overridden !== undefined) {
+    const wantsOverride = data.hourly_rate_is_overridden === true
+    const levelForDefault = normalizeRateLevel(data.rate_level ?? 1)
+    const defaultRate = await getDefaultStudentRateForLevel(levelForDefault)
+
+    if (wantsOverride) {
+      updateData.hourly_rate_is_overridden = true
+      if (data.hourly_rate !== undefined) {
+        updateData.hourly_rate = data.hourly_rate
+      }
+    } else {
+      updateData.hourly_rate_is_overridden = false
+      updateData.hourly_rate = defaultRate
+    }
+  } else if (data.hourly_rate !== undefined) {
+    // Backward compatibility: if old callers still pass hourly_rate only
     updateData.hourly_rate = data.hourly_rate
   }
 

@@ -66,10 +66,10 @@ export function generateBookingConfirmationEmail(data: BookingConfirmationEmailD
     </div>
     
     <div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0;">
-      <strong>📋 Status:</strong> <span style="color: #856404;">Oczekuje na potwierdzenie</span>
+      <strong>💳 Status:</strong> <span style="color: #856404;">Oczekuje na płatność</span>
       <p style="margin: 10px 0 0 0; font-size: 14px;">
-        Twoja rezerwacja została przyjęta i oczekuje na potwierdzenie przez administratora. 
-        Skontaktujemy się z Tobą wkrótce w celu potwierdzenia szczegółów.
+        Twoja rezerwacja została utworzona. Aby potwierdzić rezerwację, prosimy o dokonanie płatności. 
+        Zostaniesz przekierowany do strony płatności, gdzie będziesz mógł bezpiecznie dokonać transakcji.
       </p>
     </div>
     

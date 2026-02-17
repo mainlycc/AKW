@@ -169,7 +169,6 @@ export async function markAllAsRead(): Promise<void> {
   revalidatePath('/dashboard', 'layout')
 }
 
-
 /**
  * Deletes all notifications for the current user
  */
@@ -179,7 +178,6 @@ export async function deleteAllNotifications(): Promise<void> {
   const { error } = await supabase
     .from('notifications')
     .delete()
-    .neq('id', '00000000-0000-0000-0000-000000000000')
 
   if (error) {
     console.error('Error deleting all notifications:', error)
@@ -189,4 +187,3 @@ export async function deleteAllNotifications(): Promise<void> {
   revalidatePath('/dashboard/powiadomienia')
   revalidatePath('/dashboard', 'layout')
 }
-

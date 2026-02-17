@@ -207,6 +207,7 @@ async function generateSessionsFromDeclarationEntries(
   const supabase = await createClient()
 
   const today = new Date()
+  // Normalize "today" to midnight for date-only comparisons
   today.setHours(0, 0, 0, 0)
 
   for (const entry of entries) {
@@ -245,4 +246,3 @@ async function generateSessionsFromDeclarationEntries(
     }
   }
 }
-

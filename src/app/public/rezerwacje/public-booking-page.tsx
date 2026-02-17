@@ -60,6 +60,10 @@ export function PublicBookingPage({ subjects }: PublicBookingPageProps) {
   const [loadingSlots, startSlotsTransition] = useTransition()
   const [booking, setBooking] = useState<PendingBooking | null>(null)
   const [isBooking, startBookingTransition] = useTransition()
+  const [tutorSelection, setTutorSelection] = useState<{
+    slots: SubjectLevelSlot[]
+    onSelect: (slot: SubjectLevelSlot) => void
+  } | null>(null)
 
   const [formData, setFormData] = useState({
     studentFirstName: '',
@@ -108,6 +112,7 @@ export function PublicBookingPage({ subjects }: PublicBookingPageProps) {
   }
 
   const handleSubjectChange = (subjectId: string) => {
+    console.log('[PublicBookingPage] Subject changed to:', subjectId)
     setSelectedSubjectId(subjectId)
     const firstLevel = subjects.find((subject) => subject.id === subjectId)?.levels?.[0]?.id ?? ''
     setSelectedLevelId(firstLevel)
@@ -203,12 +208,14 @@ export function PublicBookingPage({ subjects }: PublicBookingPageProps) {
 
   const initialised = slots.length > 0 || loadingSlots
   const slotMap = useMemo(() => {
-    const map = new Map<string, SubjectLevelSlot>()
+    const map = new Map<string, SubjectLevelSlot[]>()
     for (const slot of slots) {
+      if (!slot.isAvailable) continue
       const key = `${slot.date}-${slot.startTime.substring(0, 5)}`
-      if (!map.has(key) && slot.isAvailable) {
-        map.set(key, slot)
+      if (!map.has(key)) {
+        map.set(key, [])
       }
+      map.get(key)!.push(slot)
     }
     return map
   }, [slots])
@@ -225,7 +232,15 @@ export function PublicBookingPage({ subjects }: PublicBookingPageProps) {
 
   useEffect(() => {
     console.log('[PublicBookingPage] Subjects received:', subjects.length, subjects)
-  }, [subjects])
+    console.log('[PublicBookingPage] Current selectedSubjectId:', selectedSubjectId)
+    // Upewnij się, że selectedSubjectId jest poprawnie ustawione
+    if (subjects.length > 0 && (!selectedSubjectId || !subjects.some(s => s.id === selectedSubjectId))) {
+      console.log('[PublicBookingPage] Resetting selectedSubjectId to first subject')
+      setSelectedSubjectId(subjects[0].id)
+      const firstLevel = subjects[0]?.levels?.[0]?.id ?? ''
+      setSelectedLevelId(firstLevel)
+    }
+  }, [subjects, selectedSubjectId])
 
   if (subjects.length === 0) {
     return (
@@ -265,8 +280,12 @@ export function PublicBookingPage({ subjects }: PublicBookingPageProps) {
               <div className="grid gap-4 sm:grid-cols-3">
                 <div className="flex flex-col gap-2">
                   <Label className="text-sm font-semibold uppercase tracking-wide">Przedmiot</Label>
-                  <Select value={selectedSubjectId} onValueChange={handleSubjectChange}>
-                    <SelectTrigger>
+                  <Select 
+                    value={selectedSubjectId || undefined} 
+                    onValueChange={handleSubjectChange}
+                    disabled={subjects.length === 0}
+                  >
+                    <SelectTrigger className="w-full">
                       <SelectValue placeholder="Wybierz przedmiot" />
                     </SelectTrigger>
                     <SelectContent>
@@ -394,7 +413,12 @@ export function PublicBookingPage({ subjects }: PublicBookingPageProps) {
               <PublicSlotGrid
                 rangeStart={rangeStart}
                 slotMap={slotMap}
-                onSelect={openBooking}
+                onSelect={(slot) => {
+                  openBooking(slot)
+                }}
+                onMultipleSlots={(slots) => {
+                  setTutorSelection({ slots, onSelect: openBooking })
+                }}
               />
             </CardContent>
           </Card>
@@ -483,6 +507,43 @@ export function PublicBookingPage({ subjects }: PublicBookingPageProps) {
           </CardContent>
         </Card>
       </div>
+
+      {/* Dialog wyboru tutora gdy jest więcej niż jeden slot */}
+      <Dialog open={!!tutorSelection} onOpenChange={(open) => !open && setTutorSelection(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="text-lg">Wybierz tutora</DialogTitle>
+            <DialogDescription className="text-base">
+              Dla wybranego terminu dostępni są następujący tutorzy. Wybierz jednego z nich.
+            </DialogDescription>
+          </DialogHeader>
+          {tutorSelection && (
+            <div className="space-y-2">
+              {tutorSelection.slots.map((slot) => (
+                <button
+                  key={slot.tutorId}
+                  type="button"
+                  onClick={() => {
+                    tutorSelection.onSelect(slot)
+                    setTutorSelection(null)
+                  }}
+                  className="w-full text-left p-3 rounded-lg border-2 border-border hover:border-primary hover:bg-accent transition-colors"
+                >
+                  <div className="font-semibold">{slot.tutorName || 'Tutor'}</div>
+                  <div className="text-sm text-muted-foreground">
+                    {formatLabel(slot)}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setTutorSelection(null)}>
+              Anuluj
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={!!booking} onOpenChange={(open) => !open && setBooking(null)}>
         <DialogContent>
@@ -581,14 +642,15 @@ export function PublicBookingPage({ subjects }: PublicBookingPageProps) {
 
 interface PublicSlotGridProps {
   rangeStart: string
-  slotMap: Map<string, SubjectLevelSlot>
+  slotMap: Map<string, SubjectLevelSlot[]>
   onSelect: (slot: SubjectLevelSlot) => void
+  onMultipleSlots: (slots: SubjectLevelSlot[]) => void
 }
 
 const HOURS_START = 8
 const HOURS_END = 21
 
-function PublicSlotGrid({ rangeStart, slotMap, onSelect }: PublicSlotGridProps) {
+function PublicSlotGrid({ rangeStart, slotMap, onSelect, onMultipleSlots }: PublicSlotGridProps) {
   const startDate = parseISO(rangeStart)
   const daysToDisplay = useMemo(() => {
     return Array.from({ length: 7 }, (_, index) => {
@@ -659,8 +721,8 @@ function PublicSlotGrid({ rangeStart, slotMap, onSelect }: PublicSlotGridProps) 
                 }
 
                 const key = `${day.isoDate}-${timeSlot.start}`
-                const slot = slotMap.get(key)
-                const isAvailable = !!slot
+                const availableSlots = slotMap.get(key) || []
+                const isAvailable = availableSlots.length > 0
 
                 if (!isAvailable) {
                   return (
@@ -672,17 +734,39 @@ function PublicSlotGrid({ rangeStart, slotMap, onSelect }: PublicSlotGridProps) 
                   )
                 }
 
+                // Jeśli jest tylko jeden slot, kliknij bezpośrednio
+                // Jeśli jest więcej, pokaż pierwszy (użytkownik może wybrać inny w dialogu)
+                const primarySlot = availableSlots[0]
+                const slotCount = availableSlots.length
+                const titleText = slotCount === 1 
+                  ? formatLabel(primarySlot)
+                  : `${slotCount} dostępnych tutorów: ${availableSlots.map(s => s.tutorName || 'Tutor').join(', ')}`
+
                 return (
                   <button
                     key={key}
                     type="button"
-                    onClick={() => onSelect(slot)}
+                    onClick={() => {
+                      if (slotCount === 1) {
+                        onSelect(primarySlot)
+                      } else {
+                        // Jeśli jest więcej slotów, pokaż dialog wyboru tutora
+                        onMultipleSlots(availableSlots)
+                      }
+                    }}
                     className={cn(
                       'h-6 rounded border-2 transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1 cursor-pointer',
-                      'bg-green-100 dark:bg-green-900/30 border-green-400 dark:border-green-600 hover:bg-green-200 dark:hover:bg-green-900/50'
+                      'bg-green-100 dark:bg-green-900/30 border-green-400 dark:border-green-600 hover:bg-green-200 dark:hover:bg-green-900/50',
+                      slotCount > 1 && 'relative'
                     )}
-                    title={formatLabel(slot)}
-                  />
+                    title={titleText}
+                  >
+                    {slotCount > 1 && (
+                      <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] font-semibold text-primary-foreground">
+                        {slotCount}
+                      </span>
+                    )}
+                  </button>
                 )
               })}
             </div>

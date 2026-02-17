@@ -10,6 +10,7 @@ import { format, parseISO } from 'date-fns'
 import { pl } from 'date-fns/locale'
 import { createNotification } from '@/lib/actions/notifications'
 import { getDefaultStudentRate } from '@/app/(dashboard)/dashboard/stawki/actions'
+import { sendBookingConfirmationEmail } from '@/lib/email/send'
 
 interface TutorProfile {
   id: string
@@ -643,6 +644,52 @@ export async function bookPublicSlot(payload: PublicBookingPayload) {
   } catch (notificationError) {
     // Logujemy błąd, ale nie przerywamy procesu rezerwacji
     console.error('Failed to create notification:', notificationError)
+  }
+
+  // Wyślij email z potwierdzeniem rezerwacji (oczekującej na płatność)
+  if (
+    email &&
+    tutorData.data &&
+    subjectData.data &&
+    levelData.data
+  ) {
+    try {
+      const formattedDate = format(parseISO(payload.date), 'd MMMM yyyy', { locale: pl })
+      const timeRange = `${startTime.substring(0, 5)}-${endTime.substring(0, 5)}`
+      const studentFullName = `${firstName} ${lastName}`
+
+      const emailResult = await sendBookingConfirmationEmail({
+        to: email,
+        studentName: studentFullName,
+        tutorName: tutorData.data.full_name,
+        subject: subjectData.data.name,
+        level: levelData.data.level_name,
+        date: formattedDate,
+        time: timeRange,
+        duration: SLOT_DURATION_MINUTES,
+      })
+
+      if (!emailResult.success) {
+        console.error('Booking confirmation email failed:', {
+          error: emailResult.error,
+          email: email,
+          bookingId: bookingRequest.id,
+        })
+      } else {
+        console.log('Booking confirmation email sent successfully:', {
+          messageId: emailResult.messageId,
+          email: email,
+          bookingId: bookingRequest.id,
+        })
+      }
+    } catch (emailError) {
+      // Logujemy błąd, ale nie przerywamy procesu rezerwacji
+      console.error('Failed to send booking confirmation email:', {
+        error: emailError instanceof Error ? emailError.message : String(emailError),
+        email: email,
+        bookingId: bookingRequest.id,
+      })
+    }
   }
 
   revalidatePath('/public/rezerwacje')

@@ -8,6 +8,7 @@ import { generateTutorGroupMessageEmail, type TutorGroupMessageEmailData } from 
 import { generatePaymentReminderEmail, type PaymentReminderEmailData } from './templates/payment-reminder-email'
 import { generatePaymentLinkEmail, type PaymentLinkEmailData } from './templates/payment-link-email'
 import { generateReportReminderEmail, type ReportReminderEmailData } from './templates/report-reminder-email'
+import { generateTutorBookingNotificationEmail, type TutorBookingNotificationEmailData } from './templates/tutor-booking-notification-email'
 
 export interface SendInvitationEmailParams {
   to: string
@@ -672,6 +673,100 @@ export async function sendReportReminderEmail({
     return { success: true, messageId: data?.id }
   } catch (error) {
     console.error('Unexpected error sending report reminder email:', {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      email: to,
+      environment: process.env.NODE_ENV,
+      vercel: !!process.env.VERCEL,
+    })
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Nieoczekiwany błąd podczas wysyłania emaila' 
+    }
+  }
+}
+
+export interface SendTutorBookingNotificationEmailParams extends TutorBookingNotificationEmailData {
+  to: string
+}
+
+export async function sendTutorBookingNotificationEmail({
+  to,
+  tutorName,
+  studentName,
+  subject,
+  level,
+  date,
+  time,
+  duration,
+  contactEmail,
+  contactPhone,
+  notes,
+}: SendTutorBookingNotificationEmailParams): Promise<SendEmailResult> {
+  try {
+    const resendApiKey = process.env.RESEND_API_KEY
+    if (!resendApiKey) {
+      const errorMsg = 'RESEND_API_KEY is not set in environment variables'
+      console.error('Tutor booking notification email sending failed:', {
+        error: errorMsg,
+        environment: process.env.NODE_ENV,
+        vercel: !!process.env.VERCEL,
+        vercelEnv: process.env.VERCEL_ENV,
+        hasFromEmail: !!FROM_EMAIL,
+      })
+      return { success: false, error: errorMsg }
+    }
+
+    if (!resendApiKey.startsWith('re_')) {
+      const errorMsg = 'RESEND_API_KEY appears to be invalid (should start with "re_")'
+      console.error('Tutor booking notification email sending failed:', {
+        error: errorMsg,
+        keyPrefix: resendApiKey.substring(0, 5),
+        keyLength: resendApiKey.length,
+      })
+      return { success: false, error: errorMsg }
+    }
+
+    const resend = new Resend(resendApiKey)
+    const html = generateTutorBookingNotificationEmail({
+      tutorName,
+      studentName,
+      subject,
+      level,
+      date,
+      time,
+      duration,
+      contactEmail,
+      contactPhone,
+      notes,
+    })
+    
+    const { data, error } = await resend.emails.send({
+      from: FROM_EMAIL,
+      to: [to],
+      subject: `Nowa rezerwacja - ${studentName} - ${subject} (${level}) - ${date}`,
+      html,
+    })
+
+    if (error) {
+      console.error('Resend API error (tutor booking notification):', {
+        message: error.message,
+        name: error.name,
+        email: to,
+        fromEmail: FROM_EMAIL,
+      })
+      return { success: false, error: error.message }
+    }
+
+    console.log('Tutor booking notification email sent successfully:', {
+      messageId: data?.id,
+      email: to,
+      tutorName,
+      studentName,
+    })
+    return { success: true, messageId: data?.id }
+  } catch (error) {
+    console.error('Unexpected error sending tutor booking notification email:', {
       error: error instanceof Error ? error.message : String(error),
       stack: error instanceof Error ? error.stack : undefined,
       email: to,

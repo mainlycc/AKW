@@ -1,4 +1,4 @@
-# Porównanie Funkcji z Umowy vs Implementacja
+ st po# Porównanie Funkcji z Umowy vs Implementacja
 ## Data: 21.11.2025
 
 ---

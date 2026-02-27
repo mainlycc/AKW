@@ -10,7 +10,7 @@ import { format, parseISO } from 'date-fns'
 import { pl } from 'date-fns/locale'
 import { createNotification } from '@/lib/actions/notifications'
 import { getDefaultStudentRate } from '@/app/(dashboard)/dashboard/stawki/actions'
-import { sendBookingConfirmationEmail } from '@/lib/email/send'
+import { sendBookingConfirmationEmail, sendTutorBookingNotificationEmail } from '@/lib/email/send'
 
 interface TutorProfile {
   id: string
@@ -596,7 +596,7 @@ export async function bookPublicSlot(payload: PublicBookingPayload) {
   const [tutorData, subjectData, levelData] = await Promise.all([
     admin
       .from('profiles')
-      .select('full_name')
+      .select('full_name, email')
       .eq('id', payload.tutorId)
       .single(),
     admin
@@ -689,6 +689,55 @@ export async function bookPublicSlot(payload: PublicBookingPayload) {
       console.error('Failed to send booking confirmation email:', {
         error: emailError instanceof Error ? emailError.message : String(emailError),
         email: email,
+        bookingId: bookingRequest.id,
+      })
+    }
+  }
+
+  // Wyślij email z powiadomieniem do tutora o nowej rezerwacji
+  if (
+    tutorData.data?.email &&
+    tutorData.data &&
+    subjectData.data &&
+    levelData.data
+  ) {
+    try {
+      const formattedDate = format(parseISO(payload.date), 'd MMMM yyyy', { locale: pl })
+      const timeRange = `${startTime.substring(0, 5)}-${endTime.substring(0, 5)}`
+      const studentFullName = `${firstName} ${lastName}`
+
+      const tutorEmailResult = await sendTutorBookingNotificationEmail({
+        to: tutorData.data.email,
+        tutorName: tutorData.data.full_name,
+        studentName: studentFullName,
+        subject: subjectData.data.name,
+        level: levelData.data.level_name,
+        date: formattedDate,
+        time: timeRange,
+        duration: SLOT_DURATION_MINUTES,
+        contactEmail: email,
+        contactPhone: phone,
+        notes,
+      })
+
+      if (!tutorEmailResult.success) {
+        console.error('Tutor booking notification email failed:', {
+          error: tutorEmailResult.error,
+          tutorEmail: tutorData.data.email,
+          bookingId: bookingRequest.id,
+        })
+      } else {
+        console.log('Tutor booking notification email sent successfully:', {
+          messageId: tutorEmailResult.messageId,
+          tutorEmail: tutorData.data.email,
+          bookingId: bookingRequest.id,
+        })
+      }
+    } catch (tutorEmailError) {
+      // Logujemy błąd, ale nie przerywamy procesu rezerwacji
+      console.error('Failed to send tutor booking notification email:', {
+        error: tutorEmailError instanceof Error ? tutorEmailError.message : String(tutorEmailError),
+        tutorEmail: tutorData.data.email,
         bookingId: bookingRequest.id,
       })
     }

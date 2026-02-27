@@ -8,10 +8,26 @@ import { createClient } from '@/lib/supabase/server'
 export async function requestPasswordReset(email: string) {
   try {
     const supabase = await createClient()
-    
-    // Supabase automatycznie wyśle email z linkiem do resetu
+
+    // Ustal bazowy URL aplikacji:
+    // 1) NEXT_PUBLIC_APP_URL (jeśli ustawiony – używany i lokalnie, i na produkcji)
+    // 2) VERCEL_URL w produkcji
+    // 3) localhost w development
+    let baseUrl = 'http://localhost:3000'
+
+    if (process.env.NEXT_PUBLIC_APP_URL) {
+      baseUrl = process.env.NEXT_PUBLIC_APP_URL
+    } else if (process.env.VERCEL_ENV === 'production' && process.env.VERCEL_URL) {
+      baseUrl = `https://${process.env.VERCEL_URL}`
+    }
+
+    // Usuń ewentualny końcowy "/" żeby uniknąć podwójnych slashy
+    baseUrl = baseUrl.replace(/\/+$/, '')
+
+    // Supabase automatycznie wyśle email z linkiem do resetu,
+    // który po kliknięciu przekieruje na stronę /reset-password
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/reset-password`,
+      redirectTo: `${baseUrl}/reset-password`,
     })
 
     if (error) {

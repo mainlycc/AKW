@@ -258,6 +258,14 @@ export function PublicBookingPage({ subjects }: PublicBookingPageProps) {
 
   return (
     <div className="space-y-8 pb-8">
+      {/* Informacja o automatycznym przypisywaniu korepetytora */}
+      <div className="flex items-start gap-3 rounded-lg border border-blue-200 bg-blue-50 p-4 dark:border-blue-800 dark:bg-blue-950/40">
+        <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-blue-600 dark:text-blue-400" />
+        <p className="text-sm text-blue-800 dark:text-blue-300">
+          System automatycznie przypisuje właściwego korepetytora do wybranego przedmiotu i poziomu.
+          Wystarczy, że wybierzesz interesujący Cię przedmiot oraz poziom, a my dopasujemy najlepszego dostępnego korepetytora.
+        </p>
+      </div>
       <div className="grid gap-6 lg:grid-cols-[1fr_400px]">
         {/* Lewy panel - Kroki rezerwacji */}
         <div className="space-y-6">
@@ -684,8 +692,8 @@ function PublicSlotGrid({ rangeStart, slotMap, onSelect, onMultipleSlots }: Publ
   }
 
   return (
-    <div className="overflow-x-auto">
-      <div className="min-w-max">
+    <div>
+      <div>
         <div className="grid grid-cols-8 gap-1 mb-2">
           <div className="text-sm font-medium text-muted-foreground p-2 text-right">
             Czas

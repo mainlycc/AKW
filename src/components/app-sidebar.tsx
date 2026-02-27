@@ -108,11 +108,6 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
       title: "Lekcje",
       items: [
         {
-          title: "Sesje",
-          url: "/dashboard/sesje",
-          icon: IconCalendar,
-        },
-        {
           title: "Kalendarz lekcji",
           url: "/dashboard/kalendarz-lekcji",
           icon: IconCalendarTime,
@@ -121,11 +116,6 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
           title: "Publiczne rezerwacje",
           url: "/dashboard/rezerwacje-publiczne",
           icon: IconCalendarPlus,
-        },
-        {
-          title: "Raporty sesji",
-          url: "/dashboard/raporty",
-          icon: IconFileReport,
         },
       ],
     },
@@ -201,11 +191,6 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
       title: "Moi Uczniowie",
       url: "/dashboard/uczniowie",
       icon: IconUsers,
-    },
-    {
-      title: "Sesje",
-      url: "/dashboard/sesje",
-      icon: IconCalendar,
     },
     {
       title: "Historia",

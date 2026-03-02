@@ -54,25 +54,23 @@ interface Student {
 
 interface BillingFromReportsTableProps {
   billings: StudentBillingWithParent[]
-  currentMonth: number
-  currentYear: number
   students: Student[]
 }
 
-const months = [
-  { value: 1, label: 'Styczeń' },
-  { value: 2, label: 'Luty' },
-  { value: 3, label: 'Marzec' },
-  { value: 4, label: 'Kwiecień' },
-  { value: 5, label: 'Maj' },
-  { value: 6, label: 'Czerwiec' },
-  { value: 7, label: 'Lipiec' },
-  { value: 8, label: 'Sierpień' },
-  { value: 9, label: 'Wrzesień' },
-  { value: 10, label: 'Październik' },
-  { value: 11, label: 'Listopad' },
-  { value: 12, label: 'Grudzień' },
-]
+const monthNames: Record<number, string> = {
+  1: 'Styczeń',
+  2: 'Luty',
+  3: 'Marzec',
+  4: 'Kwiecień',
+  5: 'Maj',
+  6: 'Czerwiec',
+  7: 'Lipiec',
+  8: 'Sierpień',
+  9: 'Wrzesień',
+  10: 'Październik',
+  11: 'Listopad',
+  12: 'Grudzień',
+}
 
 const statusLabels: Record<BillingStatus, string> = {
   paid: 'Opłacone',
@@ -88,120 +86,153 @@ const statusColors: Record<BillingStatus, string> = {
 
 const ITEMS_PER_PAGE = 50
 
+type SortField = 'month' | 'student' | 'subject' | 'tutor' | 'balance' | 'status'
+type SortDirection = 'asc' | 'desc'
+
 export function BillingFromReportsTable({
   billings,
-  currentMonth,
-  currentYear,
   students,
 }: BillingFromReportsTableProps) {
   const router = useRouter()
   const [currentPage, setCurrentPage] = useState(1)
   const [search, setSearch] = useState('')
-  const [sortBy, setSortBy] = useState<'subject' | 'tutor' | 'status' | 'balance' | null>(null)
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
+  const [sortField, setSortField] = useState<SortField>('month')
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false)
   const [paymentDialogStudentId, setPaymentDialogStudentId] = useState<string | undefined>()
+  const [paymentDialogMonth, setPaymentDialogMonth] = useState(new Date().getMonth() + 1)
+  const [paymentDialogYear, setPaymentDialogYear] = useState(new Date().getFullYear())
   const [channel, setChannel] = useState<NotificationChannel>('email')
-  const currentDate = new Date()
-  const years = Array.from(
-    { length: 5 },
-    (_, i) => currentDate.getFullYear() - 2 + i
-  )
+  const [monthFilter, setMonthFilter] = useState<string>('all')
 
-  // Filtrowanie po wyszukiwaniu
-  const filteredBillings = useMemo(() => {
-    if (!search.trim()) {
-      return billings
+  // Gather unique month/year combinations from billings
+  const availableMonths = useMemo(() => {
+    const set = new Map<string, { month: number; year: number; label: string }>()
+    for (const b of billings) {
+      const key = `${b.billing_periods.year}::${b.billing_periods.month}`
+      if (!set.has(key)) {
+        set.set(key, {
+          month: b.billing_periods.month,
+          year: b.billing_periods.year,
+          label: `${monthNames[b.billing_periods.month]} ${b.billing_periods.year}`,
+        })
+      }
     }
-    
-    const searchLower = search.toLowerCase()
-    return billings.filter((billing) => {
-      const studentName = `${billing.students.first_name} ${billing.students.last_name}`.toLowerCase()
-      
-      // Search in all parents (if available) or fallback to single parent
-      const allParents = billing.parents && billing.parents.length > 0 
-        ? billing.parents 
-        : billing.parent 
-          ? [billing.parent] 
-          : []
-      
-      const parentNames = allParents
-        .map(p => `${p.first_name} ${p.last_name}`.toLowerCase())
-        .join(' ')
-      const parentEmails = allParents
-        .map(p => p.email?.toLowerCase() || '')
-        .join(' ')
-      
-      const subjectNames = billing.categories && billing.categories.length > 0
-        ? billing.categories.map(c => c.subject_name.toLowerCase()).join(' ')
-        : ''
-      const tutorNames = billing.tutors && billing.tutors.length > 0
-        ? billing.tutors.map(t => t.full_name.toLowerCase()).join(' ')
-        : ''
-      
-      return (
-        studentName.includes(searchLower) ||
-        parentNames.includes(searchLower) ||
-        parentEmails.includes(searchLower) ||
-        subjectNames.includes(searchLower) ||
-        tutorNames.includes(searchLower)
+    return Array.from(set.entries())
+      .sort((a, b) => {
+        if (b[1].year !== a[1].year) return b[1].year - a[1].year
+        return b[1].month - a[1].month
+      })
+      .map(([key, value]) => ({ key, ...value }))
+  }, [billings])
+
+  // Filtrowanie
+  const filteredBillings = useMemo(() => {
+    let result = billings
+
+    // Filter by month
+    if (monthFilter !== 'all') {
+      const [filterYear, filterMonth] = monthFilter.split('::').map(Number)
+      result = result.filter(
+        (b) => b.billing_periods.month === filterMonth && b.billing_periods.year === filterYear
       )
-    })
-  }, [billings, search])
+    }
+
+    // Filter by search
+    if (search.trim()) {
+      const searchLower = search.toLowerCase()
+      result = result.filter((billing) => {
+        const studentName = `${billing.students.first_name} ${billing.students.last_name}`.toLowerCase()
+        
+        const allParents = billing.parents && billing.parents.length > 0 
+          ? billing.parents 
+          : billing.parent 
+            ? [billing.parent] 
+            : []
+        
+        const parentNames = allParents
+          .map(p => `${p.first_name} ${p.last_name}`.toLowerCase())
+          .join(' ')
+        const parentEmails = allParents
+          .map(p => p.email?.toLowerCase() || '')
+          .join(' ')
+        
+        const subjectNames = billing.categories && billing.categories.length > 0
+          ? billing.categories.map(c => c.subject_name.toLowerCase()).join(' ')
+          : ''
+        const tutorNames = billing.tutors && billing.tutors.length > 0
+          ? billing.tutors.map(t => t.full_name.toLowerCase()).join(' ')
+          : ''
+        
+        return (
+          studentName.includes(searchLower) ||
+          parentNames.includes(searchLower) ||
+          parentEmails.includes(searchLower) ||
+          subjectNames.includes(searchLower) ||
+          tutorNames.includes(searchLower)
+        )
+      })
+    }
+
+    return result
+  }, [billings, search, monthFilter])
 
   // Sortowanie
   const sortedBillings = useMemo(() => {
-    const sorted = [...filteredBillings].sort((a, b) => {
-      if (sortBy === 'subject') {
-        const aSubject = a.categories && a.categories.length > 0 ? a.categories[0].subject_name : ''
-        const bSubject = b.categories && b.categories.length > 0 ? b.categories[0].subject_name : ''
-        if (!aSubject && !bSubject) return 0
-        if (!aSubject) return 1
-        if (!bSubject) return -1
-        const comparison = aSubject.localeCompare(bSubject, 'pl', { sensitivity: 'base' })
-        return sortDirection === 'asc' ? comparison : -comparison
-      }
-      
-      if (sortBy === 'tutor') {
-        const aTutors = a.tutors && a.tutors.length > 0 
-          ? a.tutors.map(t => t.full_name).join(', ')
-          : ''
-        const bTutors = b.tutors && b.tutors.length > 0
-          ? b.tutors.map(t => t.full_name).join(', ')
-          : ''
-        if (!aTutors && !bTutors) return 0
-        if (!aTutors) return 1
-        if (!bTutors) return -1
-        const comparison = aTutors.localeCompare(bTutors, 'pl', { sensitivity: 'base' })
-        return sortDirection === 'asc' ? comparison : -comparison
-      }
-      
-      if (sortBy === 'status') {
-        const statusOrder: Record<BillingStatus, number> = {
-          paid: 1,
-          partially_paid: 2,
-          unpaid: 3,
+    return [...filteredBillings].sort((a, b) => {
+      let cmp = 0
+      switch (sortField) {
+        case 'month': {
+          if (a.billing_periods.year !== b.billing_periods.year) {
+            cmp = a.billing_periods.year - b.billing_periods.year
+          } else {
+            cmp = a.billing_periods.month - b.billing_periods.month
+          }
+          break
         }
-        const aStatus = statusOrder[a.status] || 0
-        const bStatus = statusOrder[b.status] || 0
-        const comparison = aStatus - bStatus
-        return sortDirection === 'asc' ? comparison : -comparison
+        case 'student': {
+          const nameA = `${a.students.last_name} ${a.students.first_name}`.toLowerCase()
+          const nameB = `${b.students.last_name} ${b.students.first_name}`.toLowerCase()
+          cmp = nameA.localeCompare(nameB, 'pl', { sensitivity: 'base' })
+          break
+        }
+        case 'subject': {
+          const aSubject = a.categories && a.categories.length > 0 ? a.categories[0].subject_name : ''
+          const bSubject = b.categories && b.categories.length > 0 ? b.categories[0].subject_name : ''
+          if (!aSubject && !bSubject) cmp = 0
+          else if (!aSubject) cmp = 1
+          else if (!bSubject) cmp = -1
+          else cmp = aSubject.localeCompare(bSubject, 'pl', { sensitivity: 'base' })
+          break
+        }
+        case 'tutor': {
+          const aTutors = a.tutors && a.tutors.length > 0 
+            ? a.tutors.map(t => t.full_name).join(', ')
+            : ''
+          const bTutors = b.tutors && b.tutors.length > 0
+            ? b.tutors.map(t => t.full_name).join(', ')
+            : ''
+          if (!aTutors && !bTutors) cmp = 0
+          else if (!aTutors) cmp = 1
+          else if (!bTutors) cmp = -1
+          else cmp = aTutors.localeCompare(bTutors, 'pl', { sensitivity: 'base' })
+          break
+        }
+        case 'balance':
+          cmp = (a.balance || 0) - (b.balance || 0)
+          break
+        case 'status': {
+          const statusOrder: Record<BillingStatus, number> = { unpaid: 0, partially_paid: 1, paid: 2 }
+          cmp = statusOrder[a.status] - statusOrder[b.status]
+          break
+        }
       }
-      
-      if (sortBy === 'balance') {
-        const aBalance = a.balance || 0
-        const bBalance = b.balance || 0
-        const comparison = aBalance - bBalance
-        return sortDirection === 'asc' ? comparison : -comparison
-      }
-      
-      return 0
+      return sortDirection === 'asc' ? cmp : -cmp
     })
-    return sorted
-  }, [filteredBillings, sortBy, sortDirection])
+  }, [filteredBillings, sortField, sortDirection])
 
-  // Calculate pagination
+  // Pagination
   const totalPages = Math.ceil(sortedBillings.length / ITEMS_PER_PAGE)
   const paginatedBillings = useMemo(() => {
     const startIndex = (currentPage - 1) * ITEMS_PER_PAGE
@@ -209,49 +240,25 @@ export function BillingFromReportsTable({
     return sortedBillings.slice(startIndex, endIndex)
   }, [sortedBillings, currentPage])
 
-  // Reset to page 1 when billings change (e.g., when month/year changes)
+  // Reset page on filter/sort change
   useEffect(() => {
     setCurrentPage(1)
-  }, [currentMonth, currentYear, sortBy, sortDirection, search])
+  }, [sortField, sortDirection, search, monthFilter])
 
-  const handleSortBySubject = () => {
-    if (sortBy === 'subject') {
-      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc')
     } else {
-      setSortBy('subject')
-      setSortDirection('asc')
+      setSortField(field)
+      setSortDirection(field === 'month' ? 'desc' : 'asc')
     }
-    setCurrentPage(1)
   }
 
-  const handleSortByTutor = () => {
-    if (sortBy === 'tutor') {
-      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
-    } else {
-      setSortBy('tutor')
-      setSortDirection('asc')
-    }
-    setCurrentPage(1)
-  }
-
-  const handleSortByStatus = () => {
-    if (sortBy === 'status') {
-      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
-    } else {
-      setSortBy('status')
-      setSortDirection('asc')
-    }
-    setCurrentPage(1)
-  }
-
-  const handleSortByBalance = () => {
-    if (sortBy === 'balance') {
-      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
-    } else {
-      setSortBy('balance')
-      setSortDirection('asc')
-    }
-    setCurrentPage(1)
+  const SortIcon = ({ field }: { field: SortField }) => {
+    if (sortField !== field) return <IconArrowsSort className="h-4 w-4 opacity-50" />
+    return sortDirection === 'asc'
+      ? <IconArrowUp className="h-4 w-4" />
+      : <IconArrowDown className="h-4 w-4" />
   }
 
   const handleSendReminder = async (
@@ -259,10 +266,6 @@ export function BillingFromReportsTable({
     billingPeriodId: string
   ) => {
     try {
-      console.log('[handleSendReminder] Sending reminder:', {
-        studentId,
-        billingPeriodId,
-      })
       await sendReminderAction(studentId, billingPeriodId, channel)
       toast.success('Przypomnienie wysłane')
     } catch (error) {
@@ -272,8 +275,10 @@ export function BillingFromReportsTable({
     }
   }
 
-  const handleAddPayment = (studentId: string, _billingPeriodId: string) => {
-    setPaymentDialogStudentId(studentId)
+  const handleAddPayment = (billing: StudentBillingWithParent) => {
+    setPaymentDialogStudentId(billing.student_id)
+    setPaymentDialogMonth(billing.billing_periods.month)
+    setPaymentDialogYear(billing.billing_periods.year)
     setPaymentDialogOpen(true)
   }
 
@@ -292,29 +297,15 @@ export function BillingFromReportsTable({
     )
   }
 
-  const handleMonthChange = (newMonth: number) => {
-    router.push(
-      `/dashboard/billing-from-reports?month=${newMonth}&year=${currentYear}`
-    )
-  }
-
-  const handleYearChange = (newYear: number) => {
-    router.push(
-      `/dashboard/billing-from-reports?month=${currentMonth}&year=${newYear}`
-    )
-  }
-
   const toggleSelectAll = () => {
     const currentPageIds = new Set(paginatedBillings.map(b => b.id))
     const allCurrentPageSelected = paginatedBillings.every(b => selectedIds.has(b.id))
     
     if (allCurrentPageSelected) {
-      // Odznacz wszystkie z aktualnej strony
       const newSelected = new Set(selectedIds)
       currentPageIds.forEach(id => newSelected.delete(id))
       setSelectedIds(newSelected)
     } else {
-      // Zaznacz wszystkie z aktualnej strony
       const newSelected = new Set(selectedIds)
       currentPageIds.forEach(id => newSelected.add(id))
       setSelectedIds(newSelected)
@@ -370,13 +361,28 @@ export function BillingFromReportsTable({
             onChange={(e) => setSearch(e.target.value)}
             className="max-w-sm"
           />
+          <Select
+            value={monthFilter}
+            onValueChange={setMonthFilter}
+          >
+            <SelectTrigger className="w-[220px]">
+              <SelectValue placeholder="Wszystkie miesiące" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Wszystkie miesiące</SelectItem>
+              {availableMonths.map((m) => (
+                <SelectItem key={m.key} value={m.key}>
+                  {m.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Button
             onClick={handleMarkAsPaid}
             variant="outline"
             size="sm"
             disabled={selectedIds.size === 0}
           >
-            <IconMail className="mr-2 h-4 w-4" />
             Ustaw jako opłacone {selectedIds.size > 0 && `(${selectedIds.size})`}
           </Button>
           <Button
@@ -389,50 +395,14 @@ export function BillingFromReportsTable({
             Wyślij przypomnienie {selectedIds.size > 0 && `(${selectedIds.size})`}
           </Button>
         </div>
-        <div className="grid grid-cols-3 gap-4 flex-shrink-0">
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Miesiąc</label>
-            <Select
-              value={currentMonth.toString()}
-              onValueChange={(v) => handleMonthChange(parseInt(v))}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {months.map((m) => (
-                  <SelectItem key={m.value} value={m.value.toString()}>
-                    {m.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Rok</label>
-            <Select
-              value={currentYear.toString()}
-              onValueChange={(v) => handleYearChange(parseInt(v))}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {years.map((y) => (
-                  <SelectItem key={y} value={y.toString()}>
-                    {y}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+        <div className="flex-shrink-0">
           <div className="space-y-2">
             <label className="text-sm font-medium">Kanał przypomnień</label>
             <Select
               value={channel}
               onValueChange={(v) => setChannel(v as NotificationChannel)}
             >
-              <SelectTrigger>
+              <SelectTrigger className="w-[160px]">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -456,89 +426,62 @@ export function BillingFromReportsTable({
                   onCheckedChange={toggleSelectAll}
                 />
               </TableHead>
-              <TableHead>Uczeń</TableHead>
               <TableHead>
                 <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    handleSortBySubject()
-                  }}
+                  onClick={() => handleSort('month')}
+                  className="flex items-center gap-1 hover:text-foreground transition-colors"
+                >
+                  Okres
+                  <SortIcon field="month" />
+                </button>
+              </TableHead>
+              <TableHead>
+                <button
+                  onClick={() => handleSort('student')}
+                  className="flex items-center gap-1 hover:text-foreground transition-colors"
+                >
+                  Uczeń
+                  <SortIcon field="student" />
+                </button>
+              </TableHead>
+              <TableHead>
+                <button
+                  onClick={() => handleSort('subject')}
                   className="flex items-center gap-1 hover:text-foreground transition-colors"
                 >
                   Przedmiot
-                  {sortBy === 'subject' ? (
-                    sortDirection === 'asc' ? (
-                      <IconArrowUp className="h-4 w-4" />
-                    ) : (
-                      <IconArrowDown className="h-4 w-4" />
-                    )
-                  ) : (
-                    <IconArrowsSort className="h-4 w-4 opacity-50" />
-                  )}
+                  <SortIcon field="subject" />
                 </button>
               </TableHead>
               <TableHead>
                 <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    handleSortByTutor()
-                  }}
+                  onClick={() => handleSort('tutor')}
                   className="flex items-center gap-1 hover:text-foreground transition-colors"
                 >
                   Tutor
-                  {sortBy === 'tutor' ? (
-                    sortDirection === 'asc' ? (
-                      <IconArrowUp className="h-4 w-4" />
-                    ) : (
-                      <IconArrowDown className="h-4 w-4" />
-                    )
-                  ) : (
-                    <IconArrowsSort className="h-4 w-4 opacity-50" />
-                  )}
+                  <SortIcon field="tutor" />
                 </button>
               </TableHead>
               <TableHead>Rodzic</TableHead>
-              <TableHead className="text-right">Godz. (miesiąc)</TableHead>
+              <TableHead className="text-right">Godz.</TableHead>
               <TableHead className="text-right">Należność</TableHead>
               <TableHead className="text-right">Zapłacono</TableHead>
               <TableHead className="text-right">
                 <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    handleSortByBalance()
-                  }}
+                  onClick={() => handleSort('balance')}
                   className="flex items-center gap-1 hover:text-foreground transition-colors ml-auto"
                 >
                   Saldo
-                  {sortBy === 'balance' ? (
-                    sortDirection === 'asc' ? (
-                      <IconArrowUp className="h-4 w-4" />
-                    ) : (
-                      <IconArrowDown className="h-4 w-4" />
-                    )
-                  ) : (
-                    <IconArrowsSort className="h-4 w-4 opacity-50" />
-                  )}
+                  <SortIcon field="balance" />
                 </button>
               </TableHead>
               <TableHead>
                 <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    handleSortByStatus()
-                  }}
+                  onClick={() => handleSort('status')}
                   className="flex items-center gap-1 hover:text-foreground transition-colors"
                 >
                   Stan rozliczenia
-                  {sortBy === 'status' ? (
-                    sortDirection === 'asc' ? (
-                      <IconArrowUp className="h-4 w-4" />
-                    ) : (
-                      <IconArrowDown className="h-4 w-4" />
-                    )
-                  ) : (
-                    <IconArrowsSort className="h-4 w-4 opacity-50" />
-                  )}
+                  <SortIcon field="status" />
                 </button>
               </TableHead>
               <TableHead className="text-right">Akcje</TableHead>
@@ -547,9 +490,9 @@ export function BillingFromReportsTable({
           <TableBody>
             {filteredBillings.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={11} className="text-center text-muted-foreground">
+                <TableCell colSpan={12} className="text-center text-muted-foreground">
                   {billings.length === 0 
-                    ? 'Brak rozliczeń dla wybranego okresu'
+                    ? 'Brak rozliczeń do wyświetlenia'
                     : 'Brak wyników wyszukiwania'}
                 </TableCell>
               </TableRow>
@@ -561,6 +504,11 @@ export function BillingFromReportsTable({
                       checked={selectedIds.has(billing.id)}
                       onCheckedChange={() => toggleSelectOne(billing.id)}
                     />
+                  </TableCell>
+                  <TableCell>
+                    <span className="whitespace-nowrap text-sm">
+                      {monthNames[billing.billing_periods.month]} {billing.billing_periods.year}
+                    </span>
                   </TableCell>
                   <TableCell className="font-medium">
                     <StudentNameLink
@@ -663,12 +611,7 @@ export function BillingFromReportsTable({
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() =>
-                          handleAddPayment(
-                            billing.student_id,
-                            billing.billing_period_id
-                          )
-                        }
+                        onClick={() => handleAddPayment(billing)}
                         title="Dodaj płatność"
                       >
                         <IconPlus className="h-4 w-4" />
@@ -721,29 +664,6 @@ export function BillingFromReportsTable({
                 />
               </PaginationItem>
 
-              {/* First page */}
-              {currentPage > 3 && (
-                <>
-                  <PaginationItem>
-                    <PaginationLink
-                      href="#"
-                      onClick={(e) => {
-                        e.preventDefault()
-                        setCurrentPage(1)
-                      }}
-                    >
-                      1
-                    </PaginationLink>
-                  </PaginationItem>
-                  {currentPage > 4 && (
-                    <PaginationItem>
-                      <PaginationEllipsis />
-                    </PaginationItem>
-                  )}
-                </>
-              )}
-
-              {/* Page numbers around current page */}
               {Array.from({ length: totalPages }, (_, i) => i + 1)
                 .filter(
                   (page) =>
@@ -752,7 +672,6 @@ export function BillingFromReportsTable({
                     (page >= currentPage - 1 && page <= currentPage + 1)
                 )
                 .map((page, index, array) => {
-                  // Add ellipsis if there's a gap
                   const showEllipsisBefore =
                     index > 0 && page - array[index - 1] > 1
 
@@ -805,12 +724,11 @@ export function BillingFromReportsTable({
         open={paymentDialogOpen}
         onClose={handlePaymentDialogClose}
         students={students}
-        currentMonth={currentMonth}
-        currentYear={currentYear}
+        currentMonth={paymentDialogMonth}
+        currentYear={paymentDialogYear}
         initialStudentId={paymentDialogStudentId}
         onSuccess={handlePaymentSuccess}
       />
     </div>
   )
 }
-

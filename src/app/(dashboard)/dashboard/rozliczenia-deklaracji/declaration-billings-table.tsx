@@ -33,7 +33,7 @@ import { formatHours } from '@/lib/utils'
 import { sendPayUPaymentsAction } from './actions'
 import type { NotificationChannel } from '@/lib/types/notifications'
 import { toast } from 'sonner'
-import { IconCreditCard } from '@tabler/icons-react'
+import { IconCreditCard, IconArrowUp, IconArrowDown, IconArrowsSort } from '@tabler/icons-react'
 import { StudentNameLink } from '@/components/student-name-link'
 
 interface Student {
@@ -51,25 +51,23 @@ interface Student {
 
 interface DeclarationBillingsTableProps {
   billings: StudentBillingWithParent[]
-  currentMonth: number
-  currentYear: number
   students: Student[]
 }
 
-const months = [
-  { value: 1, label: 'Styczeń' },
-  { value: 2, label: 'Luty' },
-  { value: 3, label: 'Marzec' },
-  { value: 4, label: 'Kwiecień' },
-  { value: 5, label: 'Maj' },
-  { value: 6, label: 'Czerwiec' },
-  { value: 7, label: 'Lipiec' },
-  { value: 8, label: 'Sierpień' },
-  { value: 9, label: 'Wrzesień' },
-  { value: 10, label: 'Październik' },
-  { value: 11, label: 'Listopad' },
-  { value: 12, label: 'Grudzień' },
-]
+const monthNames: Record<number, string> = {
+  1: 'Styczeń',
+  2: 'Luty',
+  3: 'Marzec',
+  4: 'Kwiecień',
+  5: 'Maj',
+  6: 'Czerwiec',
+  7: 'Lipiec',
+  8: 'Sierpień',
+  9: 'Wrzesień',
+  10: 'Październik',
+  11: 'Listopad',
+  12: 'Grudzień',
+}
 
 const statusLabels: Record<BillingStatus, string> = {
   paid: 'Opłacone',
@@ -83,10 +81,11 @@ const statusColors: Record<BillingStatus, string> = {
   unpaid: 'bg-red-500/10 text-red-700 dark:text-red-400',
 }
 
+type SortField = 'month' | 'student' | 'hours' | 'total_due' | 'balance' | 'status'
+type SortDirection = 'asc' | 'desc'
+
 export function DeclarationBillingsTable({
   billings,
-  currentMonth,
-  currentYear,
 }: DeclarationBillingsTableProps) {
   const router = useRouter()
   const [search, setSearch] = useState('')
@@ -94,46 +93,117 @@ export function DeclarationBillingsTable({
   const [payuDialogOpen, setPayuDialogOpen] = useState(false)
   const [sendingPayments, setSendingPayments] = useState(false)
   const [channel, setChannel] = useState<NotificationChannel>('email')
-  const currentDate = new Date()
-  const years = Array.from(
-    { length: 5 },
-    (_, i) => currentDate.getFullYear() - 2 + i
-  )
+  const [monthFilter, setMonthFilter] = useState<string>('all')
+  const [sortField, setSortField] = useState<SortField>('month')
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
+
+  // Gather unique month/year combinations from billings
+  const availableMonths = useMemo(() => {
+    const set = new Map<string, { month: number; year: number; label: string }>()
+    for (const b of billings) {
+      const key = `${b.billing_periods.year}-${b.billing_periods.month}`
+      if (!set.has(key)) {
+        set.set(key, {
+          month: b.billing_periods.month,
+          year: b.billing_periods.year,
+          label: `${monthNames[b.billing_periods.month]} ${b.billing_periods.year}`,
+        })
+      }
+    }
+    // Sort by year desc, month desc
+    return Array.from(set.entries())
+      .sort((a, b) => {
+        if (b[1].year !== a[1].year) return b[1].year - a[1].year
+        return b[1].month - a[1].month
+      })
+      .map(([key, value]) => ({ key, ...value }))
+  }, [billings])
 
   const filteredBillings = useMemo(() => {
-    if (!search.trim()) {
-      return billings
-    }
-    
-    const searchLower = search.toLowerCase()
-    return billings.filter((billing) => {
-      const studentName = `${billing.students.first_name} ${billing.students.last_name}`.toLowerCase()
-      const parent = billing.parent
-      const parentName = parent ? `${parent.first_name} ${parent.last_name}`.toLowerCase() : ''
-      const parentEmail = parent?.email?.toLowerCase() || ''
-      const tutorNames = billing.tutors && billing.tutors.length > 0
-        ? billing.tutors.map(t => t.full_name.toLowerCase()).join(' ')
-        : ''
-      
-      return (
-        studentName.includes(searchLower) ||
-        parentName.includes(searchLower) ||
-        parentEmail.includes(searchLower) ||
-        tutorNames.includes(searchLower)
-      )
-    })
-  }, [billings, search])
+    let result = billings
 
-  const handleMonthChange = (newMonth: number) => {
-    router.push(
-      `/dashboard/rozliczenia-deklaracji?month=${newMonth}&year=${currentYear}`
-    )
+    // Filter by month
+    if (monthFilter !== 'all') {
+      const [filterYear, filterMonth] = monthFilter.split('-').map(Number)
+      result = result.filter(
+        (b) => b.billing_periods.month === filterMonth && b.billing_periods.year === filterYear
+      )
+    }
+
+    // Filter by search
+    if (search.trim()) {
+      const searchLower = search.toLowerCase()
+      result = result.filter((billing) => {
+        const studentName = `${billing.students.first_name} ${billing.students.last_name}`.toLowerCase()
+        const parent = billing.parent
+        const parentName = parent ? `${parent.first_name} ${parent.last_name}`.toLowerCase() : ''
+        const parentEmail = parent?.email?.toLowerCase() || ''
+        const tutorNames = billing.tutors && billing.tutors.length > 0
+          ? billing.tutors.map(t => t.full_name.toLowerCase()).join(' ')
+          : ''
+
+        return (
+          studentName.includes(searchLower) ||
+          parentName.includes(searchLower) ||
+          parentEmail.includes(searchLower) ||
+          tutorNames.includes(searchLower)
+        )
+      })
+    }
+
+    // Sort
+    result = [...result].sort((a, b) => {
+      let cmp = 0
+      switch (sortField) {
+        case 'month': {
+          if (a.billing_periods.year !== b.billing_periods.year) {
+            cmp = a.billing_periods.year - b.billing_periods.year
+          } else {
+            cmp = a.billing_periods.month - b.billing_periods.month
+          }
+          break
+        }
+        case 'student': {
+          const nameA = `${a.students.last_name} ${a.students.first_name}`.toLowerCase()
+          const nameB = `${b.students.last_name} ${b.students.first_name}`.toLowerCase()
+          cmp = nameA.localeCompare(nameB)
+          break
+        }
+        case 'hours':
+          cmp = (a.hours || 0) - (b.hours || 0)
+          break
+        case 'total_due':
+          cmp = (a.total_due || 0) - (b.total_due || 0)
+          break
+        case 'balance':
+          cmp = (a.balance || 0) - (b.balance || 0)
+          break
+        case 'status': {
+          const order: Record<BillingStatus, number> = { unpaid: 0, partially_paid: 1, paid: 2 }
+          cmp = order[a.status] - order[b.status]
+          break
+        }
+      }
+      return sortDirection === 'asc' ? cmp : -cmp
+    })
+
+    return result
+  }, [billings, search, monthFilter, sortField, sortDirection])
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortField(field)
+      setSortDirection(field === 'month' ? 'desc' : 'asc')
+    }
   }
 
-  const handleYearChange = (newYear: number) => {
-    router.push(
-      `/dashboard/rozliczenia-deklaracji?month=${currentMonth}&year=${newYear}`
-    )
+  const SortIcon = ({ field }: { field: SortField }) => {
+    if (sortField !== field) return <IconArrowsSort className="h-3 w-3 ml-1 opacity-40" />
+    return sortDirection === 'asc'
+      ? <IconArrowUp className="h-3 w-3 ml-1" />
+      : <IconArrowDown className="h-3 w-3 ml-1" />
   }
 
   const totalStats = useMemo(() => {
@@ -145,12 +215,16 @@ export function DeclarationBillingsTable({
     }
   }, [filteredBillings])
 
-  const toggleSelectOne = (studentId: string) => {
+  // For selection, key = studentId::month::year
+  const getBillingKey = (b: StudentBillingWithParent) =>
+    `${b.student_id}::${b.billing_periods.month}::${b.billing_periods.year}`
+
+  const toggleSelectOne = (key: string) => {
     const newSelected = new Set(selectedIds)
-    if (newSelected.has(studentId)) {
-      newSelected.delete(studentId)
+    if (newSelected.has(key)) {
+      newSelected.delete(key)
     } else {
-      newSelected.add(studentId)
+      newSelected.add(key)
     }
     setSelectedIds(newSelected)
   }
@@ -159,7 +233,7 @@ export function DeclarationBillingsTable({
     if (selectedIds.size === filteredBillings.length) {
       setSelectedIds(new Set())
     } else {
-      setSelectedIds(new Set(filteredBillings.map(b => b.student_id)))
+      setSelectedIds(new Set(filteredBillings.map(getBillingKey)))
     }
   }
 
@@ -172,12 +246,28 @@ export function DeclarationBillingsTable({
       return
     }
 
+    // Group selected billings by month/year to send payments per period
+    const selectedBillingsList = filteredBillings.filter(b => selectedIds.has(getBillingKey(b)))
+    
+    // For now, we need a single month/year for PayU payments
+    // Check if all selected are from the same month
+    const uniquePeriods = new Set(selectedBillingsList.map(b => `${b.billing_periods.month}-${b.billing_periods.year}`))
+    if (uniquePeriods.size > 1) {
+      toast.error('Wybierz uczniów z tego samego miesiąca, aby wysłać płatności PayU')
+      return
+    }
+
+    const firstSelected = selectedBillingsList[0]
+    const payMonth = firstSelected.billing_periods.month
+    const payYear = firstSelected.billing_periods.year
+    const studentIdsToSend = selectedBillingsList.map(b => b.student_id)
+
     setSendingPayments(true)
     try {
       const result = await sendPayUPaymentsAction(
-        Array.from(selectedIds),
-        currentMonth,
-        currentYear,
+        studentIdsToSend,
+        payMonth,
+        payYear,
         channel
       )
 
@@ -208,7 +298,7 @@ export function DeclarationBillingsTable({
   }
 
   const selectedBillings = useMemo(() => {
-    return filteredBillings.filter(b => selectedIds.has(b.student_id))
+    return filteredBillings.filter(b => selectedIds.has(getBillingKey(b)))
   }, [filteredBillings, selectedIds])
 
   const selectedTotal = useMemo(() => {
@@ -226,6 +316,22 @@ export function DeclarationBillingsTable({
             onChange={(e) => setSearch(e.target.value)}
             className="max-w-sm"
           />
+          <Select
+            value={monthFilter}
+            onValueChange={setMonthFilter}
+          >
+            <SelectTrigger className="w-[220px]">
+              <SelectValue placeholder="Wszystkie miesiące" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Wszystkie miesiące</SelectItem>
+              {availableMonths.map((m) => (
+                <SelectItem key={m.key} value={m.key}>
+                  {m.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Button
             onClick={() => setPayuDialogOpen(true)}
             variant="default"
@@ -236,50 +342,14 @@ export function DeclarationBillingsTable({
             Wyślij płatność PayU {selectedIds.size > 0 && `(${selectedIds.size})`}
           </Button>
         </div>
-        <div className="grid grid-cols-3 gap-4 flex-shrink-0">
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Miesiąc</label>
-            <Select
-              value={currentMonth.toString()}
-              onValueChange={(v) => handleMonthChange(parseInt(v))}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {months.map((m) => (
-                  <SelectItem key={m.value} value={m.value.toString()}>
-                    {m.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Rok</label>
-            <Select
-              value={currentYear.toString()}
-              onValueChange={(v) => handleYearChange(parseInt(v))}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {years.map((y) => (
-                  <SelectItem key={y} value={y.toString()}>
-                    {y}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+        <div className="flex-shrink-0">
           <div className="space-y-2">
             <label className="text-sm font-medium">Kanał powiadomień</label>
             <Select
               value={channel}
               onValueChange={(v) => setChannel(v as NotificationChannel)}
             >
-              <SelectTrigger>
+              <SelectTrigger className="w-[160px]">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -324,20 +394,69 @@ export function DeclarationBillingsTable({
                   aria-label="Wybierz wszystkie"
                 />
               </TableHead>
-              <TableHead>Uczeń</TableHead>
+              <TableHead>
+                <button
+                  className="flex items-center hover:text-foreground transition-colors"
+                  onClick={() => handleSort('month')}
+                >
+                  Okres
+                  <SortIcon field="month" />
+                </button>
+              </TableHead>
+              <TableHead>
+                <button
+                  className="flex items-center hover:text-foreground transition-colors"
+                  onClick={() => handleSort('student')}
+                >
+                  Uczeń
+                  <SortIcon field="student" />
+                </button>
+              </TableHead>
               <TableHead>Rodzic</TableHead>
-              <TableHead className="text-right">Godziny</TableHead>
+              <TableHead className="text-right">
+                <button
+                  className="flex items-center justify-end hover:text-foreground transition-colors ml-auto"
+                  onClick={() => handleSort('hours')}
+                >
+                  Godziny
+                  <SortIcon field="hours" />
+                </button>
+              </TableHead>
               <TableHead className="text-right">Stawka</TableHead>
-              <TableHead className="text-right">Do zapłaty</TableHead>
+              <TableHead className="text-right">
+                <button
+                  className="flex items-center justify-end hover:text-foreground transition-colors ml-auto"
+                  onClick={() => handleSort('total_due')}
+                >
+                  Do zapłaty
+                  <SortIcon field="total_due" />
+                </button>
+              </TableHead>
               <TableHead className="text-right">Zapłacono</TableHead>
-              <TableHead className="text-right">Pozostało</TableHead>
-              <TableHead>Status</TableHead>
+              <TableHead className="text-right">
+                <button
+                  className="flex items-center justify-end hover:text-foreground transition-colors ml-auto"
+                  onClick={() => handleSort('balance')}
+                >
+                  Pozostało
+                  <SortIcon field="balance" />
+                </button>
+              </TableHead>
+              <TableHead>
+                <button
+                  className="flex items-center hover:text-foreground transition-colors"
+                  onClick={() => handleSort('status')}
+                >
+                  Status
+                  <SortIcon field="status" />
+                </button>
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {filteredBillings.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={9} className="text-center text-muted-foreground">
+                <TableCell colSpan={10} className="text-center text-muted-foreground">
                   Brak rozliczeń do wyświetlenia
                 </TableCell>
               </TableRow>
@@ -346,15 +465,21 @@ export function DeclarationBillingsTable({
                 const hourlyRate = billing.hours && billing.hours > 0
                   ? (billing.total_due || 0) / billing.hours
                   : 0
+                const key = getBillingKey(billing)
 
                 return (
-                  <TableRow key={billing.student_id}>
+                  <TableRow key={key}>
                     <TableCell className="w-12">
                       <Checkbox
-                        checked={selectedIds.has(billing.student_id)}
-                        onCheckedChange={() => toggleSelectOne(billing.student_id)}
+                        checked={selectedIds.has(key)}
+                        onCheckedChange={() => toggleSelectOne(key)}
                         aria-label="Wybierz wiersz"
                       />
+                    </TableCell>
+                    <TableCell>
+                      <span className="whitespace-nowrap text-sm">
+                        {monthNames[billing.billing_periods.month]} {billing.billing_periods.year}
+                      </span>
                     </TableCell>
                     <TableCell className="font-medium">
                       <StudentNameLink
@@ -362,7 +487,7 @@ export function DeclarationBillingsTable({
                       />
                     </TableCell>
                     <TableCell>
-                      {billing.parent 
+                      {billing.parent
                         ? `${billing.parent.first_name} ${billing.parent.last_name}`
                         : '-'}
                     </TableCell>
@@ -440,4 +565,3 @@ export function DeclarationBillingsTable({
     </div>
   )
 }
-

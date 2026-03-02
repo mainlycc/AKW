@@ -1,13 +1,9 @@
 import { getUserProfile } from '@/lib/actions/auth'
-import { getStudentBillingsFromDeclarations } from '@/lib/actions/billing'
+import { getAllStudentBillingsFromDeclarations } from '@/lib/actions/billing'
 import { DeclarationBillingsTable } from './declaration-billings-table'
 import { createClient } from '@/lib/supabase/server'
 
-export default async function DeclarationBillingsPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ month?: string; year?: string }>
-}) {
+export default async function DeclarationBillingsPage() {
   const profile = await getUserProfile()
 
   if (!profile || profile.role !== 'admin') {
@@ -20,17 +16,9 @@ export default async function DeclarationBillingsPage({
     )
   }
 
-  const params = await searchParams
-  const currentDate = new Date()
-  const monthParam = params.month ? parseInt(params.month) : currentDate.getMonth() + 1
-  const yearParam = params.year ? parseInt(params.year) : currentDate.getFullYear()
-  
-  const month = (monthParam >= 1 && monthParam <= 12) ? monthParam : currentDate.getMonth() + 1
-  const year = (yearParam >= 2000 && yearParam <= 2100) ? yearParam : currentDate.getFullYear()
-
   let billings
   try {
-    billings = await getStudentBillingsFromDeclarations(month, year)
+    billings = await getAllStudentBillingsFromDeclarations()
   } catch (error) {
     console.error('Error fetching billings from declarations:', error)
     return (
@@ -148,16 +136,13 @@ export default async function DeclarationBillingsPage({
     <div className="space-y-4">
       <div>
         <p className="text-muted-foreground">
-          Przegląd należności i płatności dla wybranego okresu (obliczone na podstawie zatwierdzonych deklaracji)
+          Przegląd należności i płatności dla wszystkich okresów (obliczone na podstawie zatwierdzonych deklaracji)
         </p>
       </div>
       <DeclarationBillingsTable
         billings={billings}
-        currentMonth={month}
-        currentYear={year}
         students={students}
       />
     </div>
   )
 }
-

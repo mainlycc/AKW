@@ -41,15 +41,19 @@ export async function markBillingsAsPaidAction(billingIds: string[]) {
   }
 
   // Get billing records to update
-  // Note: billing IDs from reports are temporary (student_id-period_id format)
-  // We need to extract student_id and billing_period_id from them
+  // Note: billing IDs from reports use :: separator (student_id::period_id or student_id::period_id::merged)
   const billingData = billingIds.map(id => {
-    const [studentId, billingPeriodId] = id.split('-')
-    return { studentId, billingPeriodId, originalId: id }
+    const parts = id.split('::')
+    return { studentId: parts[0], billingPeriodId: parts[1], originalId: id }
   })
 
   // For each billing, add a payment for the remaining balance
   for (const { studentId, billingPeriodId } of billingData) {
+    if (!studentId || !billingPeriodId) {
+      console.warn(`Invalid billing ID format, skipping: studentId=${studentId}, billingPeriodId=${billingPeriodId}`)
+      continue
+    }
+
     // Get actual billing record from database
     const { data: billing, error: fetchError } = await supabase
       .from('student_billings')
@@ -59,10 +63,87 @@ export async function markBillingsAsPaidAction(billingIds: string[]) {
       .single()
 
     if (fetchError || !billing) {
-      // If billing doesn't exist, create it first
-      // This can happen when billing is calculated from reports but not yet saved
-      // For now, we'll skip it or create a basic record
-      console.warn(`Billing not found for student ${studentId}, period ${billingPeriodId}`)
+      // If billing doesn't exist in student_billings table, create a payment directly
+      // Get the billing period to calculate amount from reports
+      console.warn(`Billing not found in student_billings for student ${studentId}, period ${billingPeriodId}. Checking payments table...`)
+      
+      // Get existing payments for this student+period
+      const { data: existingPayments } = await supabase
+        .from('payments')
+        .select('amount')
+        .eq('student_id', studentId)
+        .eq('billing_period_id', billingPeriodId)
+
+      const existingPaid = existingPayments?.reduce((sum, p) => sum + parseFloat(p.amount?.toString() || '0'), 0) || 0
+
+      // Get hours from reports to calculate what's owed
+      const { data: reportEntries } = await supabase
+        .from('monthly_report_entries')
+        .select(`
+          hours,
+          monthly_reports!inner (
+            month,
+            year,
+            status
+          )
+        `)
+        .eq('student_id', studentId)
+
+      // Get student hourly rate
+      const { data: student } = await supabase
+        .from('students')
+        .select('hourly_rate')
+        .eq('id', studentId)
+        .single()
+
+      const hourlyRate = student?.hourly_rate ? parseFloat(student.hourly_rate.toString()) : 50
+      
+      // Filter by billing period and sum hours
+      const { data: periodData } = await supabase
+        .from('billing_periods')
+        .select('month, year')
+        .eq('id', billingPeriodId)
+        .single()
+
+      if (!periodData) {
+        console.warn(`Billing period not found: ${billingPeriodId}`)
+        continue
+      }
+
+      // Calculate total due from report entries for this period
+      let totalHours = 0
+      if (reportEntries) {
+        for (const entry of reportEntries) {
+          const report = Array.isArray(entry.monthly_reports) ? entry.monthly_reports[0] : entry.monthly_reports
+          if (report && 
+              (report as any).month === periodData.month && 
+              (report as any).year === periodData.year &&
+              ['approved', 'paid'].includes((report as any).status)) {
+            totalHours += parseFloat(entry.hours?.toString() || '0')
+          }
+        }
+      }
+
+      const totalDue = totalHours * hourlyRate
+      const remainingBalance = totalDue - existingPaid
+
+      if (remainingBalance > 0) {
+        const { error: paymentError } = await supabase
+          .from('payments')
+          .insert({
+            student_id: studentId,
+            billing_period_id: billingPeriodId,
+            amount: remainingBalance,
+            payment_method: 'transfer',
+            payment_date: new Date().toISOString().split('T')[0],
+            notes: 'Oznaczono jako opłacone przez administratora',
+            created_by: user.id,
+          })
+
+        if (paymentError) {
+          throw new Error(`Failed to create payment for student ${studentId}: ${paymentError.message}`)
+        }
+      }
       continue
     }
 
@@ -76,7 +157,7 @@ export async function markBillingsAsPaidAction(billingIds: string[]) {
           student_id: billing.student_id,
           billing_period_id: billing.billing_period_id,
           amount: remainingBalance,
-          payment_method: 'transfer', // Default to transfer for manual marking
+          payment_method: 'transfer',
           payment_date: new Date().toISOString().split('T')[0],
           notes: 'Oznaczono jako opłacone przez administratora',
           created_by: user.id,
@@ -95,17 +176,17 @@ export async function sendGroupRemindersAction(
   billingIds: string[],
   channel: NotificationChannel = 'email'
 ) {
-  // Extract student_id and billing_period_id from billing IDs
+  // Extract student_id and billing_period_id from billing IDs (:: separator)
   const billingData = billingIds.map(id => {
-    const [studentId, billingPeriodId] = id.split('-')
-    return { studentId, billingPeriodId }
+    const parts = id.split('::')
+    return { studentId: parts[0], billingPeriodId: parts[1] }
   })
 
-  // Send reminder for each billing (kanał email domyślny – kanał grupowy jest przekazywany z UI)
+  // Send reminder for each billing
   for (const { studentId, billingPeriodId } of billingData) {
+    if (!studentId || !billingPeriodId) continue
     await sendPaymentReminder(studentId, billingPeriodId, channel)
   }
 
   revalidatePath('/dashboard/billing-from-reports')
 }
-

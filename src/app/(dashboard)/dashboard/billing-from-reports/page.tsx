@@ -1,20 +1,12 @@
 import { getUserProfile } from '@/lib/actions/auth'
-import { getStudentBillingsFromReports } from '@/lib/actions/billing'
+import { getAllStudentBillingsFromReports } from '@/lib/actions/billing'
 import { BillingFromReportsTable } from './billing-from-reports-table'
 import { createClient } from '@/lib/supabase/server'
 
-export default async function BillingFromReportsPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ month?: string; year?: string }>
-}) {
-  console.log('[BillingFromReportsPage] Starting page render')
-  
+export default async function BillingFromReportsPage() {
   let profile
   try {
-    console.log('[BillingFromReportsPage] Fetching user profile...')
     profile = await getUserProfile()
-    console.log('[BillingFromReportsPage] User profile fetched:', { id: profile?.id, role: profile?.role })
   } catch (error) {
     console.error('[BillingFromReportsPage] Error fetching user profile:', error)
     return (
@@ -36,19 +28,9 @@ export default async function BillingFromReportsPage({
     )
   }
 
-  const params = await searchParams
-  const currentDate = new Date()
-  const monthParam = params.month ? parseInt(params.month) : currentDate.getMonth() + 1
-  const yearParam = params.year ? parseInt(params.year) : currentDate.getFullYear()
-  
-  // Validate month and year
-  const month = (monthParam >= 1 && monthParam <= 12) ? monthParam : currentDate.getMonth() + 1
-  const year = (yearParam >= 2000 && yearParam <= 2100) ? yearParam : currentDate.getFullYear()
-
-  // Get billings calculated from tutor reports
   let billings
   try {
-    billings = await getStudentBillingsFromReports(month, year)
+    billings = await getAllStudentBillingsFromReports()
   } catch (error) {
     console.error('Error fetching billings from reports:', error)
     return (
@@ -117,15 +99,12 @@ export default async function BillingFromReportsPage({
 
   const students =
     studentsData?.map((student: StudentData) => {
-      // Extract parent data - najpierw szukaj głównego z emailem, jeśli nie ma - pierwszego dostępnego z emailem
       let parentData: ParentData | undefined
       
-      // Przetwórz student_parents do tablicy
       const parentsArray = Array.isArray(student.student_parents)
         ? student.student_parents
         : [student.student_parents]
       
-      // Najpierw szukaj głównego rodzica z emailem
       const primaryParentWithEmail = parentsArray.find(sp => {
         const parent = Array.isArray(sp.parents) ? sp.parents[0] : sp.parents
         return sp.is_primary && parent && parent.email && parent.email.trim()
@@ -136,7 +115,6 @@ export default async function BillingFromReportsPage({
           ? primaryParentWithEmail.parents[0]
           : primaryParentWithEmail.parents
       } else {
-        // Jeśli nie ma głównego z emailem, użyj pierwszego dostępnego z emailem
         const parentWithEmail = parentsArray.find(sp => {
           const parent = Array.isArray(sp.parents) ? sp.parents[0] : sp.parents
           return parent && parent.email && parent.email.trim()
@@ -147,7 +125,6 @@ export default async function BillingFromReportsPage({
             ? parentWithEmail.parents[0]
             : parentWithEmail.parents
         } else if (parentsArray.length > 0) {
-          // Ostateczny fallback - pierwszy dostępny rodzic
           const firstParent = parentsArray[0]
           parentData = Array.isArray(firstParent.parents)
             ? firstParent.parents[0]
@@ -175,16 +152,13 @@ export default async function BillingFromReportsPage({
     <div className="space-y-4">
       <div>
         <p className="text-muted-foreground">
-          Przegląd należności i płatności dla wybranego okresu (obliczone na podstawie raportów tutorów)
+          Przegląd należności i płatności dla wszystkich okresów (obliczone na podstawie raportów tutorów)
         </p>
       </div>
       <BillingFromReportsTable
         billings={billings}
-        currentMonth={month}
-        currentYear={year}
         students={students}
       />
     </div>
   )
 }
-

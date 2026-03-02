@@ -1218,7 +1218,7 @@ export async function getStudentBillingsFromReports(
 
     // Create a temporary billing ID (we don't have actual student_billings record)
     // We'll use a combination of student_id and period_id
-    const tempBillingId = `${studentId}-${periodId}`
+    const tempBillingId = `${studentId}::${periodId}`
 
     billingsWithParents.push({
       id: tempBillingId,
@@ -1349,7 +1349,7 @@ export async function getStudentBillingsFromReports(
       // Tworzymy połączony billing
       mergedBillings.push({
         ...firstBilling,
-        id: `${firstBilling.student_id}-${periodId}-merged`, // Oznaczamy jako połączony
+        id: `${firstBilling.student_id}::${periodId}::merged`, // Oznaczamy jako połączony
         total_due: totalDue,
         total_paid: totalPaid,
         balance: balance,
@@ -1996,3 +1996,347 @@ export async function getStudentBillingsFromDeclarations(
   return result
 }
 
+/**
+ * Get all student billings from declarations across all periods (no month/year filter).
+ * Returns one entry per student per month.
+ */
+export async function getAllStudentBillingsFromDeclarations(): Promise<StudentBillingWithParent[]> {
+  const supabase = await createClient()
+
+  // Get all submitted and approved declarations
+  const { data: declarations, error: declarationsError } = await supabase
+    .from('monthly_declarations')
+    .select(`
+      id,
+      tutor_id,
+      month,
+      year,
+      status,
+      profiles!monthly_declarations_tutor_id_fkey (
+        id,
+        full_name
+      ),
+      monthly_declaration_entries (
+        id,
+        student_id,
+        duration_minutes,
+        students (
+          id,
+          first_name,
+          last_name,
+          hourly_rate
+        )
+      )
+    `)
+    .in('status', ['submitted', 'approved'])
+    .order('year', { ascending: false })
+    .order('month', { ascending: false })
+
+  if (declarationsError) {
+    throw new Error(`Failed to fetch declarations: ${declarationsError.message}`)
+  }
+
+  if (!declarations || declarations.length === 0) {
+    return []
+  }
+
+  // Group entries by (student_id, month, year) and sum hours
+  // key = `${studentId}-${month}-${year}`
+  const keyHoursMap = new Map<string, number>()
+  const keyTutorsMap = new Map<string, Map<string, string>>()
+  const keyStudentDataMap = new Map<string, {
+    first_name: string
+    last_name: string
+    hourly_rate: number
+    month: number
+    year: number
+    studentId: string
+  }>()
+
+  for (const declaration of declarations) {
+    const tutor = Array.isArray(declaration.profiles) ? declaration.profiles[0] : declaration.profiles
+    const tutorId = tutor?.id || ''
+    const tutorName = tutor?.full_name || ''
+    const declMonth = declaration.month
+    const declYear = declaration.year
+
+    const entries = declaration.monthly_declaration_entries || []
+
+    for (const entry of entries) {
+      const studentId = entry.student_id
+      const hours = (entry.duration_minutes || 0) / 60
+      const key = `${studentId}-${declMonth}-${declYear}`
+
+      const currentHours = keyHoursMap.get(key) || 0
+      keyHoursMap.set(key, currentHours + hours)
+
+      if (tutorId && tutorName) {
+        if (!keyTutorsMap.has(key)) {
+          keyTutorsMap.set(key, new Map())
+        }
+        keyTutorsMap.get(key)!.set(tutorId, tutorName)
+      }
+
+      if (!keyStudentDataMap.has(key)) {
+        const student = Array.isArray(entry.students) ? entry.students[0] : entry.students
+        const hourlyRate = student?.hourly_rate
+          ? parseFloat(student.hourly_rate.toString())
+          : 50
+
+        keyStudentDataMap.set(key, {
+          first_name: student?.first_name || '',
+          last_name: student?.last_name || '',
+          hourly_rate: hourlyRate,
+          month: declMonth,
+          year: declYear,
+          studentId,
+        })
+      }
+    }
+  }
+
+  const allKeys = Array.from(keyHoursMap.keys())
+  if (allKeys.length === 0) {
+    return []
+  }
+
+  // Collect unique student IDs for parent lookup
+  const studentIds = Array.from(new Set(
+    Array.from(keyStudentDataMap.values()).map(v => v.studentId)
+  ))
+
+  // Get parents
+  const BATCH_SIZE = 100
+  type ParentDataEntry = {
+    id: string
+    student_id: string
+    is_primary: boolean
+    parents: {
+      id: string
+      first_name: string
+      last_name: string
+      email: string
+      phone: string | null
+    } | null
+  }
+
+  const allParentData: ParentDataEntry[] = []
+
+  for (let i = 0; i < studentIds.length; i += BATCH_SIZE) {
+    const batch = studentIds.slice(i, i + BATCH_SIZE)
+
+    const { data: batchData, error: parentQueryError } = await supabase
+      .from('student_parents')
+      .select(`
+        id,
+        student_id,
+        is_primary,
+        parents (
+          id,
+          first_name,
+          last_name,
+          email,
+          phone
+        )
+      `)
+      .in('student_id', batch)
+      .order('is_primary', { ascending: false })
+
+    if (parentQueryError) {
+      throw new Error(`Failed to fetch parents: ${parentQueryError.message}`)
+    }
+
+    if (batchData) {
+      const mappedData: ParentDataEntry[] = batchData.map((item: any) => ({
+        id: item.id,
+        student_id: item.student_id,
+        is_primary: item.is_primary,
+        parents: Array.isArray(item.parents) ? item.parents[0] : item.parents,
+      }))
+      allParentData.push(...mappedData)
+    }
+  }
+
+  const parentMap = new Map<string, ParentDataEntry>()
+  for (const item of allParentData) {
+    if (item.student_id) {
+      const existing = parentMap.get(item.student_id)
+      if (!existing || (item.is_primary && !existing.is_primary)) {
+        parentMap.set(item.student_id, item)
+      }
+    }
+  }
+
+  // Collect unique month/year combos and get/create billing periods
+  const periodKeys = new Set<string>()
+  for (const data of keyStudentDataMap.values()) {
+    periodKeys.add(`${data.month}-${data.year}`)
+  }
+
+  const periodIdMap = new Map<string, string>()
+  for (const pk of periodKeys) {
+    const [m, y] = pk.split('-').map(Number)
+    const { data: period } = await supabase
+      .from('billing_periods')
+      .select('id')
+      .eq('month', m)
+      .eq('year', y)
+      .maybeSingle()
+
+    if (period) {
+      periodIdMap.set(pk, period.id)
+    } else {
+      const { data: newPeriod, error: periodError } = await supabase
+        .from('billing_periods')
+        .insert({ month: m, year: y })
+        .select('id')
+        .single()
+
+      if (periodError || !newPeriod) {
+        throw new Error(`Failed to create billing period: ${periodError?.message || 'Unknown error'}`)
+      }
+      periodIdMap.set(pk, newPeriod.id)
+    }
+  }
+
+  // Build result array
+  const result: StudentBillingWithParent[] = []
+
+  for (const key of allKeys) {
+    const hours = keyHoursMap.get(key) || 0
+    const studentData = keyStudentDataMap.get(key)
+    if (!studentData) continue
+
+    const { studentId, month, year, hourly_rate: hourlyRate } = studentData
+    const totalDue = hours * hourlyRate
+    const periodKey = `${month}-${year}`
+    const periodId = periodIdMap.get(periodKey) || ''
+
+    const parentData = parentMap.get(studentId)
+    const parent = parentData?.parents
+      ? {
+          id: parentData.parents.id,
+          first_name: parentData.parents.first_name,
+          last_name: parentData.parents.last_name,
+          email: parentData.parents.email,
+          phone: parentData.parents.phone,
+        }
+      : undefined
+
+    const tutorsMap = keyTutorsMap.get(key) || new Map()
+    const tutors = Array.from(tutorsMap.values())
+
+    let totalPaid = 0
+    if (periodId) {
+      const { data: payments } = await supabase
+        .from('payments')
+        .select('amount')
+        .eq('student_id', studentId)
+        .eq('billing_period_id', periodId)
+
+      totalPaid = payments?.reduce((sum, p) => sum + parseFloat(p.amount?.toString() || '0'), 0) || 0
+    }
+
+    const balance = totalDue - totalPaid
+
+    let status: BillingStatus = 'unpaid'
+    if (balance <= 0 && totalPaid > 0) {
+      status = 'paid'
+    } else if (totalPaid > 0) {
+      status = 'partially_paid'
+    }
+
+    result.push({
+      id: '',
+      student_id: studentId,
+      billing_period_id: periodId,
+      total_due: totalDue,
+      total_paid: totalPaid,
+      balance,
+      status,
+      students: {
+        id: studentId,
+        first_name: studentData.first_name,
+        last_name: studentData.last_name,
+      },
+      billing_periods: {
+        id: periodId,
+        month,
+        year,
+      },
+      parent,
+      tutors: tutors.length > 0 ? tutors : undefined,
+      hours,
+      hours_this_month: hours,
+      total_hours: hours,
+    })
+  }
+
+  // Sort by year desc, month desc, then by name
+  result.sort((a, b) => {
+    if (b.billing_periods.year !== a.billing_periods.year) {
+      return b.billing_periods.year - a.billing_periods.year
+    }
+    if (b.billing_periods.month !== a.billing_periods.month) {
+      return b.billing_periods.month - a.billing_periods.month
+    }
+    const nameA = `${a.students.last_name} ${a.students.first_name}`.toLowerCase()
+    const nameB = `${b.students.last_name} ${b.students.first_name}`.toLowerCase()
+    return nameA.localeCompare(nameB)
+  })
+
+  return result
+}
+
+/**
+ * Get all student billings from reports across all periods (no month/year filter).
+ * Queries for distinct month/year combos from approved/paid reports, then fetches billings for each.
+ */
+export async function getAllStudentBillingsFromReports(): Promise<StudentBillingWithParent[]> {
+  const supabase = await createClient()
+
+  // Find all distinct month/year combinations from approved/paid reports
+  const { data: reports, error: reportsError } = await supabase
+    .from('monthly_reports')
+    .select('month, year')
+    .in('status', ['approved', 'paid'])
+
+  if (reportsError) {
+    throw new Error(`Failed to fetch report periods: ${reportsError.message}`)
+  }
+
+  if (!reports || reports.length === 0) {
+    return []
+  }
+
+  // Get unique month/year combos
+  const periodsSet = new Set<string>()
+  for (const r of reports) {
+    periodsSet.add(`${r.month}::${r.year}`)
+  }
+
+  const periods = Array.from(periodsSet).map(p => {
+    const [m, y] = p.split('::').map(Number)
+    return { month: m, year: y }
+  })
+
+  // Sort periods desc (newest first)
+  periods.sort((a, b) => {
+    if (b.year !== a.year) return b.year - a.year
+    return b.month - a.month
+  })
+
+  // Fetch billings for each period
+  const allBillings: StudentBillingWithParent[] = []
+
+  for (const period of periods) {
+    try {
+      const billings = await getStudentBillingsFromReports(period.month, period.year)
+      allBillings.push(...billings)
+    } catch (error) {
+      console.error(`Error fetching billings for ${period.month}/${period.year}:`, error)
+    }
+  }
+
+  return allBillings
+}

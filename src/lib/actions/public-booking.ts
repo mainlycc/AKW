@@ -25,6 +25,7 @@ export async function listPublicTutors(): Promise<TutorProfile[]> {
     .from('profiles')
     .select('id, full_name, tutor_availability_templates(id)')
     .eq('role', 'tutor')
+    .eq('public_booking_enabled', true)
     .order('full_name', { ascending: true })
 
   if (error) {
@@ -94,9 +95,25 @@ export async function listPublicSubjects(): Promise<PublicSubjectLevel[]> {
     (activeTemplates || []).map((template) => template.tutor_id).filter((id): id is string => !!id)
   )
 
+  // Per-tutor toggle: only include tutors enabled for public bookings
+  const { data: enabledTutorRows, error: enabledTutorsError } = await supabase
+    .from('profiles')
+    .select('id')
+    .in('id', Array.from(activeTutorIds))
+    .eq('public_booking_enabled', true)
+
+  if (enabledTutorsError) {
+    console.error('[listPublicSubjects] Error fetching enabled tutors:', enabledTutorsError)
+    throw enabledTutorsError
+  }
+
+  const enabledTutorIdSet = new Set(
+    (enabledTutorRows || []).map((row) => row.id).filter((id): id is string => !!id)
+  )
+
   console.log('[listPublicSubjects] Active tutor IDs:', activeTutorIds.size, Array.from(activeTutorIds))
 
-  if (activeTutorIds.size === 0) {
+  if (activeTutorIds.size === 0 || enabledTutorIdSet.size === 0) {
     console.log('[listPublicSubjects] No active templates found - returning empty array')
     return []
   }
@@ -104,7 +121,7 @@ export async function listPublicSubjects(): Promise<PublicSubjectLevel[]> {
   const subjectsMap = new Map<string, PublicSubjectLevel>()
 
   for (const row of tutorLevels || []) {
-    if (!row.tutor_id || !activeTutorIds.has(row.tutor_id)) {
+    if (!row.tutor_id || !activeTutorIds.has(row.tutor_id) || !enabledTutorIdSet.has(row.tutor_id)) {
       continue
     }
 
@@ -157,6 +174,22 @@ export async function getTutorOpenSlots({
   endDate,
 }: GetTutorOpenSlotsParams): Promise<CalendarSlot[]> {
   const supabase = await createClient()
+
+  // Per-tutor toggle: block public slot generation when disabled
+  const { data: tutorFlag, error: tutorFlagError } = await supabase
+    .from('profiles')
+    .select('public_booking_enabled')
+    .eq('id', tutorId)
+    .maybeSingle()
+
+  if (tutorFlagError) {
+    console.error(`[getTutorOpenSlots] Error fetching tutor flag for tutor ${tutorId}:`, tutorFlagError)
+    throw tutorFlagError
+  }
+
+  if (tutorFlag?.public_booking_enabled === false) {
+    return []
+  }
 
   const { data: template, error: templateError } = await supabase
     .from('tutor_availability_templates')
@@ -292,6 +325,22 @@ export async function getSubjectLevelOpenSlots({
     return []
   }
 
+  // Per-tutor toggle: only include tutors enabled for public bookings
+  const { data: enabledTutors, error: enabledTutorsError } = await supabase
+    .from('profiles')
+    .select('id')
+    .in('id', tutorIds)
+    .eq('public_booking_enabled', true)
+
+  if (enabledTutorsError) {
+    console.error('[getSubjectLevelOpenSlots] Error fetching enabled tutors:', enabledTutorsError)
+    throw enabledTutorsError
+  }
+
+  const enabledTutorIds = new Set(
+    (enabledTutors || []).map((row) => row.id).filter((id): id is string => !!id)
+  )
+
   const { data: activeTemplates, error: templatesError } = await supabase
     .from('tutor_availability_templates')
     .select('tutor_id')
@@ -309,9 +358,12 @@ export async function getSubjectLevelOpenSlots({
     )
   )
 
-  console.log('[getSubjectLevelOpenSlots] Found active templates for tutors:', activeTutorIds.length, activeTutorIds)
+  const activeAndEnabledTutorIds = activeTutorIds.filter((id) => enabledTutorIds.has(id))
 
-  if (activeTutorIds.length === 0) {
+  console.log('[getSubjectLevelOpenSlots] Found active templates for tutors:', activeTutorIds.length, activeTutorIds)
+  console.log('[getSubjectLevelOpenSlots] Enabled tutors for public booking:', activeAndEnabledTutorIds.length, activeAndEnabledTutorIds)
+
+  if (activeAndEnabledTutorIds.length === 0) {
     console.log('[getSubjectLevelOpenSlots] No active templates found')
     return []
   }
@@ -319,7 +371,7 @@ export async function getSubjectLevelOpenSlots({
   const slots: SubjectLevelSlot[] = []
 
   // Podwójne sprawdzenie - upewniamy się, że każdy tutor faktycznie prowadzi dany poziom
-  const verifiedTutorIds = new Set(activeTutorIds.filter((tutorId) => 
+  const verifiedTutorIds = new Set(activeAndEnabledTutorIds.filter((tutorId) => 
     tutorIds.includes(tutorId)
   ))
 
@@ -444,6 +496,21 @@ export async function bookPublicSlot(payload: PublicBookingPayload) {
 
   if (!availabilityCheck) {
     throw new Error('Wybrany termin jest już zajęty. Odśwież kalendarz i wybierz inny slot.')
+  }
+
+  // Per-tutor toggle: block booking when tutor is disabled for public bookings
+  const { data: tutorFlag, error: tutorFlagError } = await admin
+    .from('profiles')
+    .select('public_booking_enabled')
+    .eq('id', payload.tutorId)
+    .maybeSingle()
+
+  if (tutorFlagError) {
+    throw tutorFlagError
+  }
+
+  if (tutorFlag?.public_booking_enabled === false) {
+    throw new Error('Wybrany tutor nie jest dostępny w publicznych rezerwacjach. Wybierz inny termin.')
   }
 
   // Sprawdzenie czy tutor prowadzi dany poziom (zabezpieczenie - powinno być już przefiltrowane w getSubjectLevelOpenSlots)

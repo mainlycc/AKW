@@ -69,6 +69,9 @@ interface StudentAssignment {
     id: string
     full_name: string
   } | null
+  subjects?: { name: string; color?: string | null } | null
+  subject_levels?: { level_name: string } | null
+  subject_level_id?: string | null
 }
 
 interface StudentWithRelations {
@@ -159,7 +162,15 @@ export default async function StudentsPage() {
         *,
         student_assignments!inner(
           tutor_id,
-          status
+          status,
+          subject_level_id,
+          subjects (
+            name,
+            color
+          ),
+          subject_levels (
+            level_name
+          )
         ),
         student_parents (
           id,

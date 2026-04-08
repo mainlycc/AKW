@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { createOrUpdateReport, getSessionsForReport, type SessionForReport } from "./actions"
+import { createOrUpdateReport, type ReportStatus, getSessionsForReport, type SessionForReport } from "./actions"
 import { formatHours } from "@/lib/utils"
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, getDay } from "date-fns"
 import { pl } from "date-fns/locale"
@@ -31,6 +31,8 @@ interface Student {
 interface ReportFormProps {
   tutorId: string
   students: Student[]
+  reportId?: string
+  initialStatus?: ReportStatus
   initialReport?: { month: number; year: number; entries: { student_id: string; hours: number }[] }
 }
 
@@ -49,7 +51,7 @@ const months = [
   { value: 12, label: 'Grudzień' },
 ]
 
-export function ReportForm({ tutorId, students, initialReport }: ReportFormProps) {
+export function ReportForm({ tutorId, students, reportId, initialReport, initialStatus }: ReportFormProps) {
   const router = useRouter()
   const currentDate = new Date()
   const [loading, setLoading] = useState(false)
@@ -130,6 +132,11 @@ export function ReportForm({ tutorId, students, initialReport }: ReportFormProps
   }
 
   const handleSaveDraft = async () => {
+    // Jeśli edytujemy istniejący raport o statusie innym niż draft, nie degraduj statusu
+    if (reportId && initialStatus && initialStatus !== 'draft') {
+      await handleSubmit(initialStatus)
+      return
+    }
     await handleSubmit('draft')
   }
 
@@ -137,7 +144,7 @@ export function ReportForm({ tutorId, students, initialReport }: ReportFormProps
     await handleSubmit('submitted')
   }
 
-  const handleSubmit = async (status: 'draft' | 'submitted') => {
+  const handleSubmit = async (status: ReportStatus) => {
     setLoading(true)
 
     try {
@@ -154,12 +161,12 @@ export function ReportForm({ tutorId, students, initialReport }: ReportFormProps
         return
       }
 
-      await createOrUpdateReport(tutorId, month, year, entries, status)
+      await createOrUpdateReport(tutorId, month, year, entries, status, reportId)
       router.push('/dashboard/moje-raporty')
       router.refresh()
     } catch (error) {
       console.error('Error saving report:', error)
-      alert('Błąd podczas zapisywania raportu')
+      alert(error instanceof Error ? error.message : 'Błąd podczas zapisywania raportu')
     } finally {
       setLoading(false)
     }
@@ -282,7 +289,7 @@ export function ReportForm({ tutorId, students, initialReport }: ReportFormProps
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label>Miesiąc</Label>
-          <Select value={month.toString()} onValueChange={(v) => setMonth(parseInt(v))} disabled={!!initialReport}>
+          <Select value={month.toString()} onValueChange={(v) => setMonth(parseInt(v))} disabled={loading}>
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
@@ -294,11 +301,10 @@ export function ReportForm({ tutorId, students, initialReport }: ReportFormProps
               ))}
             </SelectContent>
           </Select>
-          {initialReport && <p className="text-xs text-muted-foreground">Miesiąc nie może być zmieniony podczas edycji.</p>}
         </div>
         <div className="space-y-2">
           <Label>Rok</Label>
-          <Select value={year.toString()} onValueChange={(v) => setYear(parseInt(v))} disabled={!!initialReport}>
+          <Select value={year.toString()} onValueChange={(v) => setYear(parseInt(v))} disabled={loading}>
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
@@ -310,7 +316,6 @@ export function ReportForm({ tutorId, students, initialReport }: ReportFormProps
               ))}
             </SelectContent>
           </Select>
-          {initialReport && <p className="text-xs text-muted-foreground">Rok nie może być zmieniony podczas edycji.</p>}
         </div>
       </div>
 
@@ -667,11 +672,13 @@ export function ReportForm({ tutorId, students, initialReport }: ReportFormProps
           </Button>
         </Link>
         <Button type="button" variant="secondary" onClick={handleSaveDraft} disabled={loading}>
-          {loading ? 'Zapisywanie...' : 'Zapisz roboczą'}
+          {loading ? 'Zapisywanie...' : reportId && initialStatus && initialStatus !== 'draft' ? 'Zapisz zmiany' : 'Zapisz roboczą'}
         </Button>
-        <Button type="button" onClick={handleSubmitReport} disabled={loading}>
-          {loading ? 'Wysyłanie...' : 'Złóż raport'}
-        </Button>
+        {(!reportId || !initialStatus || initialStatus === 'draft') ? (
+          <Button type="button" onClick={handleSubmitReport} disabled={loading}>
+            {loading ? 'Wysyłanie...' : 'Złóż raport'}
+          </Button>
+        ) : null}
       </div>
     </div>
   )

@@ -9,6 +9,7 @@ import { generatePaymentReminderEmail, type PaymentReminderEmailData } from './t
 import { generatePaymentLinkEmail, type PaymentLinkEmailData } from './templates/payment-link-email'
 import { generateReportReminderEmail, type ReportReminderEmailData } from './templates/report-reminder-email'
 import { generateTutorBookingNotificationEmail, type TutorBookingNotificationEmailData } from './templates/tutor-booking-notification-email'
+import { generatePasswordResetEmail } from './templates/password-reset-email'
 
 export interface SendInvitationEmailParams {
   to: string
@@ -53,6 +54,41 @@ export async function sendInvitationEmail({
     return { success: true, messageId: data?.id }
   } catch (error) {
     console.error('Unexpected error sending email:', error)
+    return { success: false, error: 'Nieoczekiwany błąd podczas wysyłania emaila' }
+  }
+}
+
+export async function sendPasswordResetEmail({
+  to,
+  resetLink,
+}: {
+  to: string
+  resetLink: string
+}): Promise<SendEmailResult> {
+  try {
+    if (!process.env.RESEND_API_KEY) {
+      console.error('RESEND_API_KEY is not set in environment variables')
+      return { success: false, error: 'RESEND_API_KEY is not configured' }
+    }
+
+    const resend = new Resend(process.env.RESEND_API_KEY)
+    const html = generatePasswordResetEmail(resetLink)
+
+    const { data, error } = await resend.emails.send({
+      from: FROM_EMAIL,
+      to: [to],
+      subject: 'Resetowanie hasła – Akademia Wiedzy',
+      html,
+    })
+
+    if (error) {
+      console.error('Resend error (password reset):', error)
+      return { success: false, error: error.message }
+    }
+
+    return { success: true, messageId: data?.id }
+  } catch (error) {
+    console.error('Unexpected error sending password reset email:', error)
     return { success: false, error: 'Nieoczekiwany błąd podczas wysyłania emaila' }
   }
 }

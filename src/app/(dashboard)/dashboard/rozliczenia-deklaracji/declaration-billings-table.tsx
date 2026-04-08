@@ -90,6 +90,7 @@ export function DeclarationBillingsTable({
   const router = useRouter()
   const [search, setSearch] = useState('')
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [expandedTutorHoursKeys, setExpandedTutorHoursKeys] = useState<Set<string>>(new Set())
   const [payuDialogOpen, setPayuDialogOpen] = useState(false)
   const [sendingPayments, setSendingPayments] = useState(false)
   const [channel, setChannel] = useState<NotificationChannel>('email')
@@ -227,6 +228,16 @@ export function DeclarationBillingsTable({
       newSelected.add(key)
     }
     setSelectedIds(newSelected)
+  }
+
+  const toggleTutorHoursExpanded = (key: string) => {
+    const next = new Set(expandedTutorHoursKeys)
+    if (next.has(key)) {
+      next.delete(key)
+    } else {
+      next.add(key)
+    }
+    setExpandedTutorHoursKeys(next)
   }
 
   const toggleSelectAll = () => {
@@ -466,52 +477,96 @@ export function DeclarationBillingsTable({
                   ? (billing.total_due || 0) / billing.hours
                   : 0
                 const key = getBillingKey(billing)
+                const hasTutorHours = !!(billing.tutor_hours && billing.tutor_hours.length > 0)
+                const tutorHoursExpanded = expandedTutorHoursKeys.has(key)
 
                 return (
-                  <TableRow key={key}>
-                    <TableCell className="w-12">
-                      <Checkbox
-                        checked={selectedIds.has(key)}
-                        onCheckedChange={() => toggleSelectOne(key)}
-                        aria-label="Wybierz wiersz"
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <span className="whitespace-nowrap text-sm">
-                        {monthNames[billing.billing_periods.month]} {billing.billing_periods.year}
-                      </span>
-                    </TableCell>
-                    <TableCell className="font-medium">
-                      <StudentNameLink
-                        student={billing.students}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      {billing.parent
-                        ? `${billing.parent.first_name} ${billing.parent.last_name}`
-                        : '-'}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {billing.hours ? formatHours(billing.hours) : '0'} h
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {hourlyRate.toFixed(0)} zł/h
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {(billing.total_due || 0).toFixed(2)} zł
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {(billing.total_paid || 0).toFixed(2)} zł
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {(billing.balance || 0).toFixed(2)} zł
-                    </TableCell>
-                    <TableCell>
-                      <Badge className={statusColors[billing.status]}>
-                        {statusLabels[billing.status]}
-                      </Badge>
-                    </TableCell>
-                  </TableRow>
+                  <>
+                    <TableRow key={key}>
+                      <TableCell className="w-12">
+                        <Checkbox
+                          checked={selectedIds.has(key)}
+                          onCheckedChange={() => toggleSelectOne(key)}
+                          aria-label="Wybierz wiersz"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <span className="whitespace-nowrap text-sm">
+                          {monthNames[billing.billing_periods.month]} {billing.billing_periods.year}
+                        </span>
+                      </TableCell>
+                      <TableCell className="font-medium">
+                        <StudentNameLink
+                          student={billing.students}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        {billing.parent
+                          ? `${billing.parent.first_name} ${billing.parent.last_name}`
+                          : '-'}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex flex-col items-end gap-2">
+                          <span className="whitespace-nowrap">
+                            {billing.hours ? formatHours(billing.hours) : '0'} h
+                          </span>
+                          {hasTutorHours && (
+                            <button
+                              type="button"
+                              onClick={() => toggleTutorHoursExpanded(key)}
+                              className="text-xs text-muted-foreground hover:text-foreground transition-colors underline underline-offset-4"
+                              aria-expanded={tutorHoursExpanded}
+                              aria-controls={`${key}--tutor-hours`}
+                            >
+                              {tutorHoursExpanded ? 'Ukryj wg tutorów' : 'Pokaż wg tutorów'}
+                            </button>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {hourlyRate.toFixed(0)} zł/h
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {(billing.total_due || 0).toFixed(2)} zł
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {(billing.total_paid || 0).toFixed(2)} zł
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {(billing.balance || 0).toFixed(2)} zł
+                      </TableCell>
+                      <TableCell>
+                        <Badge className={statusColors[billing.status]}>
+                          {statusLabels[billing.status]}
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+
+                    {hasTutorHours && tutorHoursExpanded && (
+                      <TableRow key={`${key}::tutor-hours`}>
+                        <TableCell className="w-12" />
+                        <TableCell colSpan={9}>
+                          <div className="py-2" id={`${key}--tutor-hours`}>
+                            <div className="text-xs text-muted-foreground mb-2">
+                              Godziny ucznia z podziałem na tutorów
+                            </div>
+                            <div className="grid gap-1">
+                              {(billing.tutor_hours || []).map((th) => (
+                                <div
+                                  key={th.tutor_id}
+                                  className="text-sm"
+                                >
+                                  <span className="font-medium">{th.tutor_name}</span>{' '}
+                                  <span className="text-muted-foreground">—</span>{' '}
+                                  <span className="whitespace-nowrap">{formatHours(th.hours)} h</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </>
                 )
               })
             )}

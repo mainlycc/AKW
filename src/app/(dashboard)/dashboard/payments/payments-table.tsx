@@ -41,6 +41,10 @@ interface PaymentsTableProps {
   parents: { id: string; first_name: string; last_name: string }[]
 }
 
+type StudentOption =
+  | { kind: 'single'; value: string; label: string }
+  | { kind: 'merged'; value: string; label: string; normalizedName: string; ids: string[] }
+
 const paymentMethodLabels: Record<'transfer' | 'cash' | 'online', string> = {
   transfer: 'Przelew',
   cash: 'Gotówka',
@@ -48,6 +52,52 @@ const paymentMethodLabels: Record<'transfer' | 'cash' | 'online', string> = {
 }
 
 const ITEMS_PER_PAGE = 50
+const MERGED_STUDENT_PREFIX = 'name:'
+
+function normalizeName(firstName: string, lastName: string) {
+  return `${(firstName || '').trim().toLowerCase()} ${(lastName || '').trim().toLowerCase()}`
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function escapeCsvCell(value: string) {
+  // CSV-safe per RFC4180-ish: always quote, double quotes escaped
+  return `"${value.replace(/"/g, '""')}"`
+}
+
+function paymentsToCsv(payments: PaymentWithParent[]) {
+  const headers = [
+    'Data',
+    'Uczeń',
+    'Rodzic',
+    'Kwota',
+    'Metoda',
+    'Miesiąc',
+    'Notatka',
+  ]
+
+  const rows = payments.map((payment) => {
+    const studentName = `${payment.students.first_name} ${payment.students.last_name}`.trim()
+    const parentName = payment.parent
+      ? `${payment.parent.first_name} ${payment.parent.last_name}`.trim()
+      : ''
+    const monthYear = `${payment.billing_periods.month}/${payment.billing_periods.year}`
+
+    return [
+      payment.payment_date,
+      studentName,
+      parentName,
+      payment.amount.toFixed(2),
+      paymentMethodLabels[payment.payment_method],
+      monthYear,
+      payment.notes || '',
+    ]
+  })
+
+  return [headers, ...rows]
+    .map((row) => row.map((cell) => escapeCsvCell(String(cell ?? ''))).join(','))
+    .join('\n')
+}
 
 export function PaymentsTable({
   payments,
@@ -64,9 +114,62 @@ export function PaymentsTable({
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
 
+  const studentOptions: StudentOption[] = (() => {
+    const byNormalized = new Map<string, { label: string; ids: string[] }>()
+
+    for (const s of students) {
+      const normalized = normalizeName(s.first_name, s.last_name)
+      const label = `${s.first_name} ${s.last_name}`.trim()
+      if (!normalized) continue
+      const existing = byNormalized.get(normalized)
+      if (!existing) {
+        byNormalized.set(normalized, { label, ids: [s.id] })
+      } else {
+        existing.ids.push(s.id)
+      }
+    }
+
+    const options: StudentOption[] = []
+
+    for (const [normalizedName, entry] of byNormalized.entries()) {
+      const uniqueIds = Array.from(new Set(entry.ids))
+      if (uniqueIds.length === 1) {
+        options.push({
+          kind: 'single',
+          value: uniqueIds[0],
+          label: entry.label,
+        })
+      } else {
+        options.push({
+          kind: 'merged',
+          value: `${MERGED_STUDENT_PREFIX}${normalizedName}`,
+          label: entry.label,
+          normalizedName,
+          ids: uniqueIds,
+        })
+      }
+    }
+
+    options.sort((a, b) => a.label.localeCompare(b.label, 'pl', { sensitivity: 'base' }))
+    return options
+  })()
+
+  const isMergedStudentFilter = studentFilter.startsWith(MERGED_STUDENT_PREFIX)
+  const mergedStudentNormalizedName = isMergedStudentFilter
+    ? studentFilter.slice(MERGED_STUDENT_PREFIX.length)
+    : null
+
   const filteredPayments = payments.filter((payment) => {
-    if (studentFilter !== 'all' && payment.student_id !== studentFilter) {
-      return false
+    if (studentFilter !== 'all') {
+      if (isMergedStudentFilter) {
+        const paymentNormalized = normalizeName(
+          payment.students.first_name,
+          payment.students.last_name
+        )
+        if (paymentNormalized !== mergedStudentNormalizedName) return false
+      } else if (payment.student_id !== studentFilter) {
+        return false
+      }
     }
     if (
       parentFilter !== 'all' &&
@@ -100,14 +203,20 @@ export function PaymentsTable({
   const handleExport = async () => {
     try {
       const filters: PaymentFilters = {}
-      if (studentFilter !== 'all') filters.studentId = studentFilter
+      // Jeśli wybrano zmergowanego ucznia (wiele rekordów o tej samej nazwie),
+      // eksportuj dokładnie to, co widać po stronie klienta.
+      if (studentFilter !== 'all' && !isMergedStudentFilter) {
+        filters.studentId = studentFilter
+      }
       if (parentFilter !== 'all') filters.parentId = parentFilter
       if (methodFilter !== 'all')
         filters.paymentMethod = methodFilter as 'transfer' | 'cash' | 'online'
       if (dateFrom) filters.startDate = dateFrom
       if (dateTo) filters.endDate = dateTo
 
-      const csv = await exportPaymentsToCSV(filters)
+      const csv = isMergedStudentFilter
+        ? paymentsToCsv(filteredPayments)
+        : await exportPaymentsToCSV(filters)
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
       const link = document.createElement('a')
       const url = URL.createObjectURL(blob)
@@ -142,11 +251,12 @@ export function PaymentsTable({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Wszyscy uczniowie</SelectItem>
-                {students.map((student) => (
-                  <SelectItem key={student.id} value={student.id}>
-                    {student.first_name} {student.last_name}
-                  </SelectItem>
-                ))}
+              {studentOptions.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>
+                  {opt.label}
+                  {opt.kind === 'merged' ? ` (${opt.ids.length})` : ''}
+                </SelectItem>
+              ))}
               </SelectContent>
             </Select>
           </div>

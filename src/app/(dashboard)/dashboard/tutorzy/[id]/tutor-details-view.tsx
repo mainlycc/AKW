@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { TutorDetailDialog } from "../tutor-detail-dialog"
 import { StudentNameLink } from "@/components/student-name-link"
+import { SubjectBadge } from "@/components/subject-badge"
 
 interface Tutor {
   id: string
@@ -38,6 +39,7 @@ interface Tutor {
   phone: string | null
   bio: string | null
   hourly_rate: number | null
+  public_booking_enabled?: boolean | null
   activeAssignments?: number
   totalHours?: number
   totalSessions?: number
@@ -66,6 +68,7 @@ interface StudentWithRelations {
     subjects: {
       id: string
       name: string
+      color?: string | null
     } | null
     subject_levels: {
       id: string
@@ -126,44 +129,90 @@ export function TutorDetailsView({
   }
 
   // Pobierz przedmioty ucznia
-  const getStudentSubjects = (student: StudentWithRelations) => {
-    const assignments = student.student_assignments || []
-    return assignments
-      .filter(a => a.subjects && a.subject_levels)
-      .map(a => `${a.subjects?.name} (${a.subject_levels?.level_name})`)
-      .join(', ')
+  const renderStudentSubjects = (student: StudentWithRelations) => {
+    const assignments = (student.student_assignments || []).filter(
+      (a) => a.subjects && a.subject_levels
+    )
+
+    if (assignments.length === 0) {
+      return <span className="text-muted-foreground">-</span>
+    }
+
+    const map = new Map<
+      string,
+      {
+        subject: { id: string; name: string; color?: string | null }
+        levels: string[]
+      }
+    >()
+
+    for (const a of assignments) {
+      const subject = a.subjects
+      const level = a.subject_levels
+      if (!subject || !level) continue
+
+      const existing = map.get(subject.id)
+      if (!existing) {
+        map.set(subject.id, {
+          subject,
+          levels: [level.level_name],
+        })
+      } else if (!existing.levels.includes(level.level_name)) {
+        existing.levels.push(level.level_name)
+      }
+    }
+
+    const grouped = Array.from(map.values())
+    if (grouped.length === 0) {
+      return <span className="text-muted-foreground">-</span>
+    }
+
+    return (
+      <div className="flex flex-wrap gap-2">
+        {grouped.map(({ subject, levels }) => (
+          <div key={subject.id} className="flex flex-wrap items-center gap-2">
+            <SubjectBadge subject={subject} className="text-sm px-2 py-0.5" />
+            {levels
+              .sort((a, b) => a.localeCompare(b, 'pl'))
+              .map((lvl) => (
+                <Badge key={`${subject.id}-${lvl}`} variant="outline" className="text-sm px-2 py-0.5">
+                  {lvl}
+                </Badge>
+              ))}
+          </div>
+        ))}
+      </div>
+    )
   }
 
   // Formatuj przedmioty tutora do wyświetlenia
-  const formatTutorSubjects = () => {
-    if (!tutorSubjects || tutorSubjects.length === 0) {
-      return 'Brak przypisanych przedmiotów'
-    }
+  const tutorSubjectsGrouped = useMemo(() => {
+    const map = new Map<
+      string,
+      { subject: { id?: string; name: string; color?: string | null }; levels: string[] }
+    >()
 
-    // Grupuj po przedmiotach
-    const subjectsMap = new Map<string, string[]>()
-    
-    tutorSubjects.forEach((ts) => {
-      // Obsługa relacji z Supabase - mogą być tablicami lub obiektami
+    for (const ts of tutorSubjects || []) {
       const subject = Array.isArray(ts.subjects) ? ts.subjects[0] : ts.subjects
       const level = Array.isArray(ts.subject_levels) ? ts.subject_levels[0] : ts.subject_levels
-      
-      if (subject && level) {
-        const subjectName = subject.name
-        const levelName = level.level_name
-        
-        if (!subjectsMap.has(subjectName)) {
-          subjectsMap.set(subjectName, [])
-        }
-        subjectsMap.get(subjectName)!.push(levelName)
-      }
-    })
+      if (!subject || !level) continue
 
-    // Formatuj: "Matematyka (Podstawowy, Rozszerzony), Fizyka (Podstawowy)"
-    return Array.from(subjectsMap.entries())
-      .map(([subject, levels]) => `${subject} (${levels.join(', ')})`)
-      .join(', ')
-  }
+      const existing = map.get(subject.id)
+      if (!existing) {
+        map.set(subject.id, {
+          subject,
+          levels: [level.level_name],
+        })
+      } else if (!existing.levels.includes(level.level_name)) {
+        existing.levels.push(level.level_name)
+      }
+    }
+
+    return Array.from(map.values()).map((entry) => ({
+      subject: entry.subject,
+      levels: entry.levels.sort((a, b) => a.localeCompare(b, 'pl')),
+    }))
+  }, [tutorSubjects])
 
   const availableSlotsCount = availability?.slots.filter(s => s.is_available).length || 0
   const weeklyHours = (availableSlotsCount * SLOT_DURATION_MINUTES) / 60
@@ -249,6 +298,22 @@ export function TutorDetailsView({
               <p className="text-lg font-semibold">{tutor.full_name}</p>
             </div>
             <div>
+              <p className="text-sm font-medium text-muted-foreground">Publiczne rezerwacje</p>
+              <div className="mt-1 inline-flex items-center gap-2">
+                {tutor.public_booking_enabled === false ? (
+                  <>
+                    <span className="h-2.5 w-2.5 rounded-full bg-red-600" aria-hidden="true" />
+                    <span className="text-lg font-semibold">Niedostępny</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="h-2.5 w-2.5 rounded-full bg-emerald-600" aria-hidden="true" />
+                    <span className="text-lg font-semibold">Dostępny</span>
+                  </>
+                )}
+              </div>
+            </div>
+            <div>
               <p className="text-sm font-medium text-muted-foreground">Email</p>
               <p className="text-lg">{tutor.email}</p>
             </div>
@@ -270,7 +335,22 @@ export function TutorDetailsView({
             )}
             <div className="md:col-span-2">
               <p className="text-sm font-medium text-muted-foreground">Przedmioty</p>
-              <p className="text-lg">{formatTutorSubjects()}</p>
+              {tutorSubjectsGrouped.length === 0 ? (
+                <p className="text-lg text-muted-foreground">Brak przypisanych przedmiotów</p>
+              ) : (
+                <div className="mt-2 flex flex-col gap-2">
+                  {tutorSubjectsGrouped.map(({ subject, levels }) => (
+                    <div key={subject.id ?? subject.name} className="flex flex-wrap items-center gap-2">
+                      <SubjectBadge subject={subject} className="text-sm px-2 py-0.5" />
+                      {levels.map((level) => (
+                        <Badge key={level} variant="outline" className="text-sm px-2 py-0.5">
+                          {level}
+                        </Badge>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </CardContent>
@@ -367,7 +447,6 @@ export function TutorDetailsView({
                 <TableBody>
                   {students.map((student) => {
                     const parentInfo = getPrimaryParentInfo(student)
-                    const subjects = getStudentSubjects(student)
 
                     // Dane dla dialogu ucznia – rodzice
                     const dialogStudentParents =
@@ -468,7 +547,7 @@ export function TutorDetailsView({
                         </TableCell>
                         <TableCell>{parentInfo.email}</TableCell>
                         <TableCell>{parentInfo.phone || '-'}</TableCell>
-                        <TableCell>{subjects || '-'}</TableCell>
+                        <TableCell>{renderStudentSubjects(student)}</TableCell>
                       </TableRow>
                     )
                   })}

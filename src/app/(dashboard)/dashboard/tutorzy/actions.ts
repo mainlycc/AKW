@@ -14,6 +14,7 @@ export async function updateTutorDetails(
     phone: string
     bio: string
     hourly_rate: number | null
+    public_booking_enabled: boolean
   }
 ) {
   const supabase = await createClient()
@@ -38,6 +39,7 @@ export async function updateTutorDetails(
       phone: data.phone.trim() || null,
       bio: data.bio.trim() || null,
       hourly_rate: data.hourly_rate,
+      public_booking_enabled: data.public_booking_enabled,
     })
     .eq('id', tutorId)
     .eq('role', 'tutor')
@@ -76,6 +78,34 @@ export async function deleteTutor(id: string) {
   }
 
   revalidatePath('/dashboard/tutorzy')
+}
+
+export async function setTutorsPublicBookingEnabled(params: {
+  tutorIds: string[]
+  enabled: boolean
+}) {
+  const supabase = await createClient()
+
+  const tutorIds = Array.from(new Set(params.tutorIds)).filter(Boolean)
+  if (tutorIds.length === 0) {
+    return
+  }
+
+  const { error } = await supabase
+    .from('profiles')
+    .update({ public_booking_enabled: params.enabled })
+    .in('id', tutorIds)
+    .eq('role', 'tutor')
+
+  if (error) {
+    console.error('Error updating tutors public_booking_enabled:', error)
+    throw new Error(`Nie udało się zaktualizować dostępności tutorów: ${error.message}`)
+  }
+
+  revalidatePath('/dashboard/tutorzy')
+  for (const id of tutorIds) {
+    revalidatePath(`/dashboard/tutorzy/${id}`)
+  }
 }
 
 export async function sendGroupMessageToTutors(

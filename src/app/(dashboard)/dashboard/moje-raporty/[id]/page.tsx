@@ -36,7 +36,7 @@ export default async function EditReportPage({
     .eq('tutor_id', profile.id)
     .single()
 
-  if (!report || report.status !== 'draft') {
+  if (!report || report.status === 'paid') {
     redirect('/dashboard/moje-raporty')
   }
 
@@ -71,6 +71,8 @@ export default async function EditReportPage({
       <ReportForm
         tutorId={profile.id}
         students={students || []}
+        reportId={report.id}
+        initialStatus={report.status}
         initialReport={{
           month: report.month,
           year: report.year,

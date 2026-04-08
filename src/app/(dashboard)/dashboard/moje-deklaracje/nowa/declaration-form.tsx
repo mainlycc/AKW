@@ -208,7 +208,7 @@ export function DeclarationForm({
               disabled={generating || !isFutureMonth()}
               className="h-9"
             >
-              {generating ? 'Generowanie...' : 'Wypełnij z dostępności'}
+              {generating ? 'Generowanie...' : 'Wypełnij swoim grafikiem dostępności'}
             </Button>
           )}
           <Button

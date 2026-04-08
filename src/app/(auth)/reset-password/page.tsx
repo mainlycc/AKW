@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { updatePassword } from '@/lib/actions/reset-password'
 import { IconEye, IconEyeOff, IconCheck, IconAlertCircle } from '@tabler/icons-react'
-import { createClient } from '@/lib/supabase/client'
+import { createRecoveryClient } from '@/lib/supabase/client-recovery'
 
 export default function ResetPasswordPage() {
   const [password, setPassword] = useState('')
@@ -24,19 +24,66 @@ export default function ResetPasswordPage() {
   const router = useRouter()
 
   useEffect(() => {
-    // Sprawdź czy użytkownik ma ważny token resetowania
-    const checkSession = async () => {
-      const supabase = createClient()
-      const { data: { session } } = await supabase.auth.getSession()
-      
-      // Supabase automatycznie loguje użytkownika po kliknięciu w link resetowania
-      if (session) {
-        setValidToken(true)
+    // Implicit flow — zwykły createBrowserClient wymusza PKCE i odrzuca tokeny z #hash (recovery)
+    const supabase = createRecoveryClient()
+    let cancelled = false
+    let attempts = 0
+    const maxAttempts = 40
+    let pollInterval: ReturnType<typeof setInterval> | undefined
+
+    const clearPoll = () => {
+      if (pollInterval) {
+        clearInterval(pollInterval)
+        pollInterval = undefined
       }
-      setChecking(false)
     }
 
-    checkSession()
+    const tryFinish = async (): Promise<boolean> => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+      if (cancelled) return false
+      if (session) {
+        clearPoll()
+        setValidToken(true)
+        setChecking(false)
+        return true
+      }
+      return false
+    }
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (
+        event === 'INITIAL_SESSION' ||
+        event === 'PASSWORD_RECOVERY' ||
+        event === 'SIGNED_IN' ||
+        event === 'TOKEN_REFRESHED'
+      ) {
+        void tryFinish()
+      }
+    })
+
+    void tryFinish()
+
+    pollInterval = setInterval(async () => {
+      attempts++
+      if (cancelled) return
+      if (await tryFinish()) return
+      if (attempts >= maxAttempts) {
+        clearPoll()
+        const ok = await tryFinish()
+        if (!cancelled && !ok) {
+          setValidToken(false)
+          setChecking(false)
+        }
+      }
+    }, 200)
+
+    return () => {
+      cancelled = true
+      clearPoll()
+      subscription.unsubscribe()
+    }
   }, [])
 
   const validatePassword = () => {

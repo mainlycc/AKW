@@ -122,17 +122,20 @@ export function ReportsTable({ reports, tutorId, students }: ReportsTableProps) 
                     {new Date(report.created_at).toLocaleDateString('pl-PL')}
                   </TableCell>
                   <TableCell className="text-right">
-                    {report.status === 'draft' && (
-                      <div className="flex justify-end gap-1">
+                    <div className="flex justify-end gap-1">
+                      {report.status !== 'paid' ? (
                         <Link href={`/dashboard/moje-raporty/${report.id}`}>
                           <Button
                             variant="ghost"
                             size="icon"
-                            title="Edytuj wersję roboczą"
+                            title="Edytuj raport"
                           >
                             <IconPencil className="h-4 w-4" />
                           </Button>
                         </Link>
+                      ) : null}
+
+                      {report.status === 'draft' ? (
                         <Button
                           variant="ghost"
                           size="icon"
@@ -141,8 +144,8 @@ export function ReportsTable({ reports, tutorId, students }: ReportsTableProps) 
                         >
                           <IconTrash className="h-4 w-4" />
                         </Button>
-                      </div>
-                    )}
+                      ) : null}
+                    </div>
                   </TableCell>
                 </TableRow>
               ))

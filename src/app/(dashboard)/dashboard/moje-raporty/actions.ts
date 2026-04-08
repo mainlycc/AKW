@@ -12,11 +12,148 @@ export async function createOrUpdateReport(
   month: number,
   year: number,
   entries: { student_id: string; hours: number }[],
-  status: ReportStatus = 'draft'
+  status: ReportStatus = 'draft',
+  reportId?: string
 ) {
   const supabase = await createClient()
 
   const totalHours = entries.reduce((sum, e) => sum + e.hours, 0)
+
+  // Jeśli edytujemy konkretny raport, aktualizujemy go po ID (z możliwością zmiany miesiąca/roku)
+  if (reportId) {
+    // Upewnij się, że raport należy do tutora
+    const { data: existingById } = await supabase
+      .from('monthly_reports')
+      .select('id, tutor_id')
+      .eq('id', reportId)
+      .eq('tutor_id', tutorId)
+      .single()
+
+    if (!existingById) {
+      throw new Error('Nie znaleziono raportu lub brak uprawnień')
+    }
+
+    // Sprawdź konflikt: czy istnieje inny raport dla tego samego tutora na ten sam miesiąc/rok
+    const { data: conflict } = await supabase
+      .from('monthly_reports')
+      .select('id')
+      .eq('tutor_id', tutorId)
+      .eq('month', month)
+      .eq('year', year)
+      .neq('id', reportId)
+      .maybeSingle()
+
+    if (conflict) {
+      throw new Error('Raport dla wybranego miesiąca i roku już istnieje')
+    }
+
+    // Jeśli raport jest składany, automatycznie go zatwierdzamy
+    const shouldAutoApprove = status === 'submitted'
+    const finalStatus = shouldAutoApprove ? 'approved' : status
+
+    // Pobierz dane potrzebne do automatycznego zatwierdzania
+    let adminId: string | null = null
+    let hourlyRate: number = 0
+    let totalAmount: number = 0
+
+    if (shouldAutoApprove) {
+      try {
+        const admin = createAdminClient()
+        const { data: admins } = await admin
+          .from('profiles')
+          .select('id')
+          .eq('role', 'admin')
+          .limit(1)
+
+        if (admins && admins.length > 0) {
+          adminId = admins[0].id
+        }
+
+        const { data: tutorProfile } = await supabase
+          .from('profiles')
+          .select('hourly_rate')
+          .eq('id', tutorId)
+          .single()
+
+        hourlyRate = tutorProfile?.hourly_rate || 0
+        totalAmount = totalHours * hourlyRate
+      } catch (error) {
+        console.error('Failed to get admin or tutor rate:', error)
+      }
+    }
+
+    await supabase
+      .from('monthly_reports')
+      .update({
+        month,
+        year,
+        total_hours: totalHours,
+        status: finalStatus,
+        submitted_at: status === 'submitted' ? new Date().toISOString() : null,
+        ...(shouldAutoApprove && adminId ? {
+          approved_at: new Date().toISOString(),
+          approved_by: adminId,
+          total_amount: totalAmount,
+        } : {}),
+      })
+      .eq('id', reportId)
+
+    await supabase
+      .from('monthly_report_entries')
+      .delete()
+      .eq('report_id', reportId)
+
+    if (entries.length > 0) {
+      await supabase
+        .from('monthly_report_entries')
+        .insert(entries.map(e => ({
+          report_id: reportId,
+          student_id: e.student_id,
+          hours: e.hours,
+        })))
+    }
+
+    // Powiadomienie dla tutora o zatwierdzeniu raportu (gdy automatycznie zatwierdzony)
+    if (shouldAutoApprove && adminId) {
+      try {
+        const monthNames = [
+          'Styczeń',
+          'Luty',
+          'Marzec',
+          'Kwiecień',
+          'Maj',
+          'Czerwiec',
+          'Lipiec',
+          'Sierpień',
+          'Wrzesień',
+          'Październik',
+          'Listopad',
+          'Grudzień',
+        ]
+        const monthName = monthNames[month - 1] || month.toString()
+
+        await createNotification({
+          userId: tutorId,
+          type: 'report_approved',
+          title: 'Raport zatwierdzony',
+          message: `Twój raport za ${monthName} ${year} został automatycznie zatwierdzony. Kwota do wypłaty: ${totalAmount.toFixed(2)} zł`,
+          metadata: {
+            report_id: reportId,
+            month,
+            year,
+            total_hours: totalHours,
+            total_amount: totalAmount,
+          },
+          skipRevalidate: true,
+        })
+      } catch (notificationError) {
+        console.error('Failed to create notification:', notificationError)
+      }
+    }
+
+    revalidatePath('/dashboard/moje-raporty')
+    return
+  }
 
   // Check if report exists
   const { data: existing } = await supabase
@@ -65,7 +202,7 @@ export async function createOrUpdateReport(
     }
   }
 
-  let reportId: string
+  let savedReportId: string
 
   if (existing) {
     // Update existing report
@@ -101,7 +238,7 @@ export async function createOrUpdateReport(
           }))
         )
     }
-    reportId = existing.id
+    savedReportId = existing.id
   } else {
     // Create new report
     const { data: report, error } = await supabase
@@ -136,7 +273,7 @@ export async function createOrUpdateReport(
           }))
         )
     }
-    reportId = report.id
+    savedReportId = report.id
   }
 
   // Powiadomienie dla tutora o zatwierdzeniu raportu (gdy automatycznie zatwierdzony)
@@ -164,7 +301,7 @@ export async function createOrUpdateReport(
         title: 'Raport zatwierdzony',
         message: `Twój raport za ${monthName} ${year} został automatycznie zatwierdzony. Kwota do wypłaty: ${totalAmount.toFixed(2)} zł`,
         metadata: {
-          report_id: reportId,
+          report_id: savedReportId,
           month,
           year,
           total_hours: totalHours,

@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge"
 import { formatHours } from "@/lib/utils"
 import { SubjectBadge } from "@/components/subject-badge"
 import { useRouter } from "next/navigation"
+import { Checkbox } from "@/components/ui/checkbox"
 
 interface TutorWithStats {
   id: string
@@ -25,6 +26,7 @@ interface TutorWithStats {
   phone: string | null
   bio: string | null
   hourly_rate: number | null
+  public_booking_enabled?: boolean | null
   activeAssignments?: number
   totalHours?: number
   totalSessions?: number
@@ -53,6 +55,7 @@ export function TutorDetailDialog({ open, onClose, tutor, tutorSubjects }: Tutor
     phone: '',
     bio: '',
     hourly_rate: '',
+    public_booking_enabled: true,
   })
 
   useEffect(() => {
@@ -62,6 +65,7 @@ export function TutorDetailDialog({ open, onClose, tutor, tutorSubjects }: Tutor
         phone: tutor.phone || '',
         bio: tutor.bio || '',
         hourly_rate: tutor.hourly_rate?.toString() || '',
+        public_booking_enabled: tutor.public_booking_enabled ?? true,
       })
     }
   }, [tutor, open])
@@ -78,6 +82,7 @@ export function TutorDetailDialog({ open, onClose, tutor, tutorSubjects }: Tutor
         phone: formData.phone.trim(),
         bio: formData.bio.trim(),
         hourly_rate: formData.hourly_rate ? parseFloat(formData.hourly_rate) : null,
+        public_booking_enabled: formData.public_booking_enabled,
       })
       router.refresh()
       onClose()
@@ -167,6 +172,27 @@ export function TutorDetailDialog({ open, onClose, tutor, tutorSubjects }: Tutor
 
           {/* Formularz edycji */}
           <form onSubmit={handleSubmit} className="space-y-4 border-t pt-4">
+            <div className="flex items-start gap-3 rounded-md border p-3">
+              <Checkbox
+                id="public_booking_enabled"
+                checked={formData.public_booking_enabled}
+                onCheckedChange={(checked) =>
+                  setFormData({
+                    ...formData,
+                    public_booking_enabled: checked === true,
+                  })
+                }
+                disabled={loading}
+              />
+              <div className="space-y-1 leading-none">
+                <Label htmlFor="public_booking_enabled">
+                  Widoczny w publicznych rezerwacjach
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Wyłączenie ukrywa tutora na stronie publicznej i blokuje nowe rezerwacje publiczne.
+                </p>
+              </div>
+            </div>
             <div className="space-y-2">
               <Label htmlFor="full_name">Imię i nazwisko</Label>
               <Input

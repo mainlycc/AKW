@@ -99,6 +99,7 @@ export function BillingFromReportsTable({
   const [sortField, setSortField] = useState<SortField>('month')
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [expandedTutorHoursIds, setExpandedTutorHoursIds] = useState<Set<string>>(new Set())
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false)
   const [paymentDialogStudentId, setPaymentDialogStudentId] = useState<string | undefined>()
   const [paymentDialogMonth, setPaymentDialogMonth] = useState(new Date().getMonth() + 1)
@@ -322,6 +323,16 @@ export function BillingFromReportsTable({
     setSelectedIds(newSelected)
   }
 
+  const toggleTutorHoursExpanded = (id: string) => {
+    const next = new Set(expandedTutorHoursIds)
+    if (next.has(id)) {
+      next.delete(id)
+    } else {
+      next.add(id)
+    }
+    setExpandedTutorHoursIds(next)
+  }
+
   const handleMarkAsPaid = async () => {
     if (selectedIds.size === 0) return
 
@@ -497,142 +508,186 @@ export function BillingFromReportsTable({
                 </TableCell>
               </TableRow>
             ) : (
-              paginatedBillings.map((billing) => (
-                <TableRow key={billing.id}>
-                  <TableCell className="w-12">
-                    <Checkbox
-                      checked={selectedIds.has(billing.id)}
-                      onCheckedChange={() => toggleSelectOne(billing.id)}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <span className="whitespace-nowrap text-sm">
-                      {monthNames[billing.billing_periods.month]} {billing.billing_periods.year}
-                    </span>
-                  </TableCell>
-                  <TableCell className="font-medium">
-                    <StudentNameLink
-                      student={billing.students}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    {billing.categories && billing.categories.length > 0 ? (
-                      <div className="flex flex-col gap-1">
-                        {billing.categories.map((category, idx) => (
-                          <div key={idx}>
-                            <div className="font-medium text-sm">{category.subject_name}</div>
-                            {category.level_name && (
-                              <div className="text-xs text-muted-foreground">
-                                {category.level_name}
+              paginatedBillings.map((billing) => {
+                const hasTutorHours = !!(billing.tutor_hours && billing.tutor_hours.length > 0)
+                const tutorHoursExpanded = expandedTutorHoursIds.has(billing.id)
+
+                return (
+                  <React.Fragment key={billing.id}>
+                    <TableRow>
+                      <TableCell className="w-12">
+                        <Checkbox
+                          checked={selectedIds.has(billing.id)}
+                          onCheckedChange={() => toggleSelectOne(billing.id)}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <span className="whitespace-nowrap text-sm">
+                          {monthNames[billing.billing_periods.month]} {billing.billing_periods.year}
+                        </span>
+                      </TableCell>
+                      <TableCell className="font-medium">
+                        <StudentNameLink
+                          student={billing.students}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        {billing.categories && billing.categories.length > 0 ? (
+                          <div className="flex flex-col gap-1">
+                            {billing.categories.map((category, idx) => (
+                              <div key={idx}>
+                                <div className="font-medium text-sm">{category.subject_name}</div>
+                                {category.level_name && (
+                                  <div className="text-xs text-muted-foreground">
+                                    {category.level_name}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {billing.tutors && billing.tutors.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {billing.tutors.map((tutor, idx) => (
+                              <Badge key={idx} variant="outline" className="text-xs">
+                                {tutor.full_name}
+                              </Badge>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {billing.parents && billing.parents.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {billing.parents.map((parent) => (
+                              <Badge key={parent.id} variant="outline" className="text-xs">
+                                {parent.first_name} {parent.last_name}
+                              </Badge>
+                            ))}
+                          </div>
+                        ) : billing.parent ? (
+                          <div>
+                            <div className="font-medium">
+                              {billing.parent.first_name} {billing.parent.last_name}
+                            </div>
+                            <div className="text-sm text-muted-foreground">
+                              {billing.parent.email}
+                            </div>
+                            {billing.parent.phone && (
+                              <div className="text-sm text-muted-foreground">
+                                {billing.parent.phone}
                               </div>
                             )}
                           </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <span className="text-muted-foreground">-</span>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    {billing.tutors && billing.tutors.length > 0 ? (
-                      <div className="flex flex-wrap gap-1">
-                        {billing.tutors.map((tutor, idx) => (
-                          <Badge key={idx} variant="outline" className="text-xs">
-                            {tutor.full_name}
-                          </Badge>
-                        ))}
-                      </div>
-                    ) : (
-                      <span className="text-muted-foreground">-</span>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    {billing.parents && billing.parents.length > 0 ? (
-                      <div className="flex flex-wrap gap-1">
-                        {billing.parents.map((parent) => (
-                          <Badge key={parent.id} variant="outline" className="text-xs">
-                            {parent.first_name} {parent.last_name}
-                          </Badge>
-                        ))}
-                      </div>
-                    ) : billing.parent ? (
-                      <div>
-                        <div className="font-medium">
-                          {billing.parent.first_name} {billing.parent.last_name}
-                        </div>
-                        <div className="text-sm text-muted-foreground">
-                          {billing.parent.email}
-                        </div>
-                        {billing.parent.phone && (
-                          <div className="text-sm text-muted-foreground">
-                            {billing.parent.phone}
-                          </div>
+                        ) : (
+                          <span className="text-muted-foreground">Brak rodzica</span>
                         )}
-                      </div>
-                    ) : (
-                      <span className="text-muted-foreground">Brak rodzica</span>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex flex-col items-end gap-2">
+                          <span className="whitespace-nowrap">
+                            {formatHours(billing.hours_this_month)} h
+                          </span>
+                          {hasTutorHours && (
+                            <button
+                              type="button"
+                              onClick={() => toggleTutorHoursExpanded(billing.id)}
+                              className="text-xs text-muted-foreground hover:text-foreground transition-colors underline underline-offset-4"
+                              aria-expanded={tutorHoursExpanded}
+                              aria-controls={`${billing.id}--tutor-hours`}
+                            >
+                              {tutorHoursExpanded ? 'Ukryj wg tutorów' : 'Pokaż wg tutorów'}
+                            </button>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {parseFloat(billing.total_due.toFixed(2))} zł
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {parseFloat(billing.total_paid.toFixed(2))} zł
+                      </TableCell>
+                      <TableCell className="text-right font-medium">
+                        {parseFloat(billing.balance.toFixed(2))} zł
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          className={statusColors[billing.status]}
+                          variant="outline"
+                        >
+                          {statusLabels[billing.status]}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center justify-end gap-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() =>
+                              handleSendReminder(
+                                billing.student_id,
+                                billing.billing_period_id
+                              )
+                            }
+                            title="Wyślij przypomnienie"
+                          >
+                            <IconMail className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleAddPayment(billing)}
+                            title="Dodaj płatność"
+                          >
+                            <IconPlus className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() =>
+                              handleViewDetails(
+                                billing.student_id,
+                                billing.billing_period_id
+                              )
+                            }
+                            title="Szczegóły"
+                          >
+                            <IconEye className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+
+                    {hasTutorHours && tutorHoursExpanded && (
+                      <TableRow>
+                        <TableCell className="w-12" />
+                        <TableCell colSpan={11}>
+                          <div className="py-2" id={`${billing.id}--tutor-hours`}>
+                            <div className="text-xs text-muted-foreground mb-2">
+                              Godziny ucznia z podziałem na tutorów
+                            </div>
+                            <div className="grid gap-1">
+                              {(billing.tutor_hours || []).map((th) => (
+                                <div key={th.tutor_id} className="text-sm">
+                                  <span className="font-medium">{th.tutor_name}</span>{' '}
+                                  <span className="text-muted-foreground">—</span>{' '}
+                                  <span className="whitespace-nowrap">{formatHours(th.hours)} h</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </TableCell>
+                      </TableRow>
                     )}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {formatHours(billing.hours_this_month)}h
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {parseFloat(billing.total_due.toFixed(2))}zł
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {parseFloat(billing.total_paid.toFixed(2))}zł
-                  </TableCell>
-                  <TableCell className="text-right font-medium">
-                    {parseFloat(billing.balance.toFixed(2))}zł
-                  </TableCell>
-                  <TableCell>
-                    <Badge
-                      className={statusColors[billing.status]}
-                      variant="outline"
-                    >
-                      {statusLabels[billing.status]}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center justify-end gap-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() =>
-                          handleSendReminder(
-                            billing.student_id,
-                            billing.billing_period_id
-                          )
-                        }
-                        title="Wyślij przypomnienie"
-                      >
-                        <IconMail className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleAddPayment(billing)}
-                        title="Dodaj płatność"
-                      >
-                        <IconPlus className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() =>
-                          handleViewDetails(
-                            billing.student_id,
-                            billing.billing_period_id
-                          )
-                        }
-                        title="Szczegóły"
-                      >
-                        <IconEye className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))
+                  </React.Fragment>
+                )
+              })
             )}
           </TableBody>
         </Table>

@@ -15,8 +15,9 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { GroupMessageDialog } from "./group-message-dialog"
-import { deleteTutor } from "./actions"
-import { IconTrash, IconMail, IconSearch } from "@tabler/icons-react"
+import { deleteTutor, setTutorsPublicBookingEnabled } from "./actions"
+import { Badge } from "@/components/ui/badge"
+import { IconTrash, IconMail, IconSearch, IconX, IconCheck } from "@tabler/icons-react"
 import { ConfirmDialog } from "@/components/confirm-dialog"
 import { formatHours } from "@/lib/utils"
 
@@ -27,6 +28,7 @@ interface TutorWithStats {
   phone: string | null
   bio: string | null
   hourly_rate: number | null
+  public_booking_enabled?: boolean | null
   created_at: string
   activeAssignments: number
   totalHours: number
@@ -53,7 +55,12 @@ export function TutorsTable({ tutors, tutorSubjects, defaultTutorRate = null }: 
   const [search, setSearch] = useState("")
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false)
-  const [confirmDialogContent, setConfirmDialogContent] = useState<{ title: string; description: string; onConfirm: () => void }>({ title: '', description: '', onConfirm: () => {} })
+  const [confirmDialogContent, setConfirmDialogContent] = useState<{
+    title: string
+    description: string
+    confirmText: string
+    onConfirm: () => void
+  }>({ title: '', description: '', confirmText: 'OK', onConfirm: () => {} })
   const [groupMessageDialogOpen, setGroupMessageDialogOpen] = useState(false)
 
   const filteredTutors = tutors.filter((tutor) => {
@@ -89,6 +96,7 @@ export function TutorsTable({ tutors, tutorSubjects, defaultTutorRate = null }: 
     setConfirmDialogContent({
       title: 'Usuwanie tutorów',
       description: `Czy na pewno chcesz usunąć ${count} ${count === 1 ? 'tutora' : 'tutorów'}?`,
+      confirmText: 'Usuń',
       onConfirm: async () => {
         try {
           for (const id of selectedIds) {
@@ -103,6 +111,35 @@ export function TutorsTable({ tutors, tutorSubjects, defaultTutorRate = null }: 
           alert(`Wystąpił błąd podczas usuwania tutorów: ${errorMessage}`)
         }
       }
+    })
+    setConfirmDialogOpen(true)
+  }
+
+  const handleSetPublicBookingEnabledSelected = async (enabled: boolean) => {
+    if (selectedIds.size === 0) return
+
+    const count = selectedIds.size
+    setConfirmDialogContent({
+      title: enabled ? 'Włączanie dostępności' : 'Wyłączanie dostępności',
+      description: enabled
+        ? `Czy na pewno chcesz włączyć publiczne rezerwacje dla ${count} ${count === 1 ? 'tutora' : 'tutorów'}?`
+        : `Czy na pewno chcesz wyłączyć publiczne rezerwacje dla ${count} ${count === 1 ? 'tutora' : 'tutorów'}?`,
+      confirmText: enabled ? 'Włącz' : 'Wyłącz',
+      onConfirm: async () => {
+        try {
+          await setTutorsPublicBookingEnabled({
+            tutorIds: Array.from(selectedIds),
+            enabled,
+          })
+          setSelectedIds(new Set())
+          setConfirmDialogOpen(false)
+          router.refresh()
+        } catch (error) {
+          console.error('Błąd podczas aktualizacji dostępności tutorów:', error)
+          const errorMessage = error instanceof Error ? error.message : 'Nieznany błąd'
+          alert(`Wystąpił błąd podczas aktualizacji dostępności tutorów: ${errorMessage}`)
+        }
+      },
     })
     setConfirmDialogOpen(true)
   }
@@ -187,6 +224,26 @@ export function TutorsTable({ tutors, tutorSubjects, defaultTutorRate = null }: 
             <IconMail className="mr-2 h-4 w-4" />
             Wyślij wiadomość grupową {selectedIds.size > 0 && `(${selectedIds.size})`}
           </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => handleSetPublicBookingEnabledSelected(false)}
+            disabled={selectedIds.size === 0}
+            className="border-red-600/60 text-red-700 hover:bg-red-50 hover:text-red-800 dark:text-red-300 dark:hover:bg-red-950/30"
+          >
+            <IconX className="mr-2 h-4 w-4" />
+            Wyłącz dostępność {selectedIds.size > 0 && `(${selectedIds.size})`}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => handleSetPublicBookingEnabledSelected(true)}
+            disabled={selectedIds.size === 0}
+            className="border-emerald-600/60 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 dark:text-emerald-300 dark:hover:bg-emerald-950/30"
+          >
+            <IconCheck className="mr-2 h-4 w-4" />
+            Włącz dostępność {selectedIds.size > 0 && `(${selectedIds.size})`}
+          </Button>
           <Button 
             variant="destructive" 
             size="sm"
@@ -212,6 +269,7 @@ export function TutorsTable({ tutors, tutorSubjects, defaultTutorRate = null }: 
               </TableHead>
               <TableHead>Imię i nazwisko</TableHead>
               <TableHead>Email</TableHead>
+              <TableHead>Dostępność</TableHead>
               <TableHead className="text-right">Stawka (zł/h)</TableHead>
               <TableHead className="text-right">Liczba uczniów</TableHead>
               <TableHead className="text-right">Lekcje/tydz.</TableHead>
@@ -221,7 +279,7 @@ export function TutorsTable({ tutors, tutorSubjects, defaultTutorRate = null }: 
           <TableBody>
             {filteredTutors.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="text-center text-muted-foreground">
+                <TableCell colSpan={8} className="text-center text-muted-foreground">
                   Brak tutorów do wyświetlenia
                 </TableCell>
               </TableRow>
@@ -240,6 +298,19 @@ export function TutorsTable({ tutors, tutorSubjects, defaultTutorRate = null }: 
                   </TableCell>
                   <TableCell className="font-medium">{tutor.full_name}</TableCell>
                   <TableCell>{tutor.email}</TableCell>
+                  <TableCell>
+                    {tutor.public_booking_enabled === false ? (
+                      <span className="inline-flex items-center gap-2" aria-label="Dostępność wyłączona">
+                        <span className="h-2.5 w-2.5 rounded-full bg-red-600" />
+                        <span className="sr-only">Wyłączona</span>
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-2" aria-label="Dostępność włączona">
+                        <span className="h-2.5 w-2.5 rounded-full bg-emerald-600" />
+                        <span className="sr-only">Włączona</span>
+                      </span>
+                    )}
+                  </TableCell>
                   <TableCell className="text-right">
                     {tutor.hourly_rate 
                       ? `${tutor.hourly_rate.toFixed(0)}` 
@@ -263,7 +334,7 @@ export function TutorsTable({ tutors, tutorSubjects, defaultTutorRate = null }: 
         title={confirmDialogContent.title}
         description={confirmDialogContent.description}
         onConfirm={confirmDialogContent.onConfirm}
-        confirmText="Usuń"
+        confirmText={confirmDialogContent.confirmText}
         cancelText="Anuluj"
       />
 

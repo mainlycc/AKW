@@ -1,6 +1,17 @@
 import { type NextRequest, NextResponse } from 'next/server'
 import { updateSession } from '@/lib/supabase/middleware'
 
+function redirectPreservingSupabaseCookies(
+  supabaseResponse: NextResponse,
+  url: URL
+): NextResponse {
+  const redirectResponse = NextResponse.redirect(url)
+  supabaseResponse.cookies.getAll().forEach((cookie) => {
+    redirectResponse.cookies.set(cookie.name, cookie.value)
+  })
+  return redirectResponse
+}
+
 export async function middleware(request: NextRequest) {
   // Logowanie requestów dla debugowania (opcjonalne)
   if (process.env.NODE_ENV === 'development') {
@@ -11,6 +22,22 @@ export async function middleware(request: NextRequest) {
   }
 
   const { supabaseResponse, user } = await updateSession(request)
+
+  // PKCE: Supabase zwraca ?code= na redirect_to — jeśli to jest tylko Site URL (/), przenieś na reset hasła
+  if (request.nextUrl.pathname === '/') {
+    const code = request.nextUrl.searchParams.get('code')
+    if (code) {
+      const url = request.nextUrl.clone()
+      url.pathname = '/reset-password'
+      return redirectPreservingSupabaseCookies(supabaseResponse, url)
+    }
+    const type = request.nextUrl.searchParams.get('type')
+    if (type === 'recovery' || request.nextUrl.searchParams.has('token_hash')) {
+      const url = request.nextUrl.clone()
+      url.pathname = '/reset-password'
+      return redirectPreservingSupabaseCookies(supabaseResponse, url)
+    }
+  }
 
   // Sprawdź czy użytkownik próbuje uzyskać dostęp do chronionej strony
   const isAuthPage = request.nextUrl.pathname.startsWith('/login')

@@ -68,6 +68,9 @@ interface StudentAssignment {
     id: string
     full_name: string
   } | null
+  subjects?: { name: string; color?: string | null } | null
+  subject_levels?: { level_name: string } | null
+  subject_level_id?: string | null
 }
 
 interface StudentExtended extends Student {
@@ -265,6 +268,23 @@ export function StudentsTable({
     setSelectedIds(newSelected)
   }
 
+  const formatStudentRate = (student: StudentExtended) => {
+    const level = (typeof student.rate_level === 'number' ? student.rate_level : 1) as 1 | 2 | 3
+    const fallback =
+      defaultStudentRatesByLevel?.[level] ??
+      defaultStudentRate
+
+    const rate =
+      typeof student.hourly_rate === 'number' && !Number.isNaN(student.hourly_rate)
+        ? student.hourly_rate
+        : fallback
+
+    return {
+      rate,
+      isOverridden: Boolean(student.hourly_rate_is_overridden),
+    }
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 sm:gap-4">
@@ -325,6 +345,12 @@ export function StudentsTable({
         </Button>
       </div>
 
+      {!isTutor && (
+        <div className="text-xs text-muted-foreground">
+          <span className="font-semibold">*</span> oznacza indywidualną stawkę (nadpisaną ręcznie), niezależną od domyślnej stawki z poziomu.
+        </div>
+      )}
+
       <div className="rounded-md border">
         <Table>
           <TableHeader>
@@ -336,6 +362,7 @@ export function StudentsTable({
                 />
               </TableHead>
               <TableHead>Imię i nazwisko</TableHead>
+              {!isTutor && <TableHead className="whitespace-nowrap">Stawka</TableHead>}
               <TableHead>Rodzice</TableHead>
               <TableHead>
                 <button
@@ -384,7 +411,7 @@ export function StudentsTable({
           <TableBody>
             {paginatedStudents.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={isTutor ? 4 : 5} className="text-center text-muted-foreground">
+                <TableCell colSpan={isTutor ? 4 : 6} className="text-center text-muted-foreground">
                   Brak uczniów do wyświetlenia
                 </TableCell>
               </TableRow>
@@ -393,11 +420,15 @@ export function StudentsTable({
                 const parents = student.student_parents || []
                 const subjects = student.student_subjects || []
                 const assignments = student.student_assignments || []
+                const activeAssignmentsForTutor = isTutor && tutorId
+                  ? assignments.filter(sa => sa.status === 'active' && sa.tutor_id === tutorId)
+                  : []
                 const activeTutors = assignments
                   .filter(sa => sa.status === 'active' && sa.profiles)
                   .map(sa => sa.profiles?.full_name || '')
                   .filter(Boolean)
                   .filter((value, index, self) => self.indexOf(value) === index) // unique
+                const { rate, isOverridden } = !isTutor ? formatStudentRate(student) : { rate: null, isOverridden: false }
 
                 return (
                   <TableRow 
@@ -416,6 +447,18 @@ export function StudentsTable({
                         {student.first_name} {student.last_name}
                       </span>
                     </TableCell>
+                    {!isTutor && (
+                      <TableCell className="whitespace-nowrap">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-semibold">{Math.round((rate as number) * 100) / 100} zł/h</span>
+                          {isOverridden && (
+                            <span className="text-sm font-semibold text-muted-foreground" aria-label="Indywidualna stawka">
+                              *
+                            </span>
+                          )}
+                        </div>
+                      </TableCell>
+                    )}
                     <TableCell>
                       {parents.length > 0 ? (
                         <div className="flex flex-wrap gap-1">
@@ -428,9 +471,34 @@ export function StudentsTable({
                       ) : '-'}
                     </TableCell>
                     <TableCell>
-                      {subjects.length > 0 ? (
+                      {isTutor ? (
+                        activeAssignmentsForTutor.length > 0 ? (
+                          <div className="flex flex-wrap gap-2">
+                            {activeAssignmentsForTutor.map((a) => (
+                              <div key={a.id} className="flex flex-col gap-0.5">
+                                {a.subjects ? (
+                                  <SubjectBadge subject={a.subjects} className="text-xs w-fit" />
+                                ) : (
+                                  <Badge variant="outline" className="text-xs w-fit">
+                                    Przedmiot
+                                  </Badge>
+                                )}
+                                {a.subject_levels?.level_name ? (
+                                  <span className="text-[11px] text-muted-foreground">
+                                    {a.subject_levels.level_name}
+                                  </span>
+                                ) : (
+                                  <span className="text-[11px] text-muted-foreground">-</span>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          '-'
+                        )
+                      ) : subjects.length > 0 ? (
                         <div className="flex flex-wrap gap-1">
-                          {subjects.map((ss, idx) => 
+                          {subjects.map((ss, idx) =>
                             ss.subjects ? (
                               <SubjectBadge
                                 key={idx}
@@ -440,7 +508,9 @@ export function StudentsTable({
                             ) : null
                           )}
                         </div>
-                      ) : '-'}
+                      ) : (
+                        '-'
+                      )}
                     </TableCell>
                     {!isTutor && (
                       <TableCell>
@@ -539,6 +609,7 @@ export function StudentsTable({
         studentParents={editingStudent?.student_parents}
         studentNotes={editingStudent?.student_notes}
         studentSubjects={editingStudent?.student_subjects?.map(ss => ss.subject_level_id)}
+        studentSubjectsDetail={editingStudent?.student_subjects}
         studentAssignments={editingStudent?.student_assignments}
         allParents={allParents}
         allSubjects={allSubjects}

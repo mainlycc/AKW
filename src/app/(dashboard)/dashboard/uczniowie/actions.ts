@@ -8,6 +8,7 @@ import { sendGroupMessageSms } from '@/lib/sms/send'
 import { sendWithChannel } from '@/lib/notifications/send-with-channel'
 import { linkParentToStudent as linkParentToStudentLib, unlinkParentFromStudent as unlinkParentFromStudentLib, createParent } from '@/lib/actions/parents'
 import { getDefaultStudentRateForLevel } from '../stawki/actions'
+import { getUserProfile } from '@/lib/actions/auth'
 
 const normalizeRateLevel = (level: unknown): 1 | 2 | 3 => {
   const n = typeof level === 'number' ? level : parseInt(String(level ?? ''), 10)
@@ -142,16 +143,19 @@ export async function createStudentWithAssignment(
     hourly_rate?: number
     rate_level?: 1 | 2 | 3
     hourly_rate_is_overridden?: boolean
-    parent?: {
-      first_name: string
-      last_name: string
-      email: string
-      phone: string
-    }
   },
   tutorId: string
 ) {
   const supabase = await createClient()
+
+  const profile = await getUserProfile()
+  if (!profile || profile.id !== tutorId) {
+    throw new Error('Brak uprawnień do dodawania ucznia w tej roli.')
+  }
+
+  // Stawki ustawia wyłącznie system (domyślny poziom 1) — ignorujemy pola z klienta
+  const tutorRateLevel = 1 as const
+  const tutorDefaultHourly = await getDefaultStudentRateForLevel(tutorRateLevel)
 
   // Check if student already exists
   const { exists, student: existingStudent } = await checkStudentExists(
@@ -220,44 +224,14 @@ export async function createStudentWithAssignment(
         })
     }
 
-    // Create and link parent if parent data is provided (for existing student)
-    if (data.parent && (data.parent.email || data.parent.first_name || data.parent.last_name)) {
-      if (!data.parent.email) {
-        console.warn('[createStudentWithAssignment] Parent email is required, skipping parent creation')
-      } else {
-        try {
-          const parent = await createParent({
-            first_name: data.parent.first_name || 'Rodzic',
-            last_name: data.parent.last_name || data.last_name,
-            email: data.parent.email,
-            phone: data.parent.phone || '',
-            parent_type: 'other',
-          })
-
-          const linkResult = await linkParentToStudentAction(parent.id, existingStudent.id, true)
-          if (!linkResult.success) {
-            console.error('[createStudentWithAssignment] Error linking parent to existing student:', linkResult.message)
-            // Don't throw - assignment was already created, just log the error
-          }
-        } catch (error) {
-          console.error('[createStudentWithAssignment] Error creating/linking parent for existing student:', error)
-          // Don't throw - assignment was already created, just log the error
-        }
-      }
-    }
-
     revalidatePath('/dashboard/uczniowie')
     return existingStudent
   }
 
-  const rateLevel = normalizeRateLevel(data.rate_level)
-  const wantsOverride = data.hourly_rate_is_overridden === true
-  const defaultRate = await getDefaultStudentRateForLevel(rateLevel)
-  const hourlyRate =
-    wantsOverride && data.hourly_rate !== undefined && !Number.isNaN(data.hourly_rate)
-      ? data.hourly_rate
-      : defaultRate
-  const isOverridden = wantsOverride && hourlyRate !== defaultRate
+  // Create new student — stawki wyłącznie z ustawień systemu (tutor nie konfiguruje stawek)
+  const rateLevel = tutorRateLevel
+  const hourlyRate = tutorDefaultHourly
+  const isOverridden = false
 
   // Create new student
   const { data: student, error: studentError } = await supabase
@@ -306,33 +280,6 @@ export async function createStudentWithAssignment(
       subject_level_id: data.subject_level_id,
     })
 
-  // Create and link parent if parent data is provided (for new student)
-  if (data.parent && (data.parent.email || data.parent.first_name || data.parent.last_name)) {
-    if (!data.parent.email) {
-      console.warn('[createStudentWithAssignment] Parent email is required, skipping parent creation')
-    } else {
-      try {
-        const parent = await createParent({
-          first_name: data.parent.first_name || 'Rodzic',
-          last_name: data.parent.last_name || data.last_name,
-          email: data.parent.email,
-          phone: data.parent.phone || '',
-          parent_type: 'other',
-        })
-
-        const linkResult = await linkParentToStudentAction(parent.id, student.id, true)
-        if (!linkResult.success) {
-          console.error('[createStudentWithAssignment] Error linking parent to new student:', linkResult.message)
-          // Don't throw - student was already created, just log the error
-        }
-      } catch (error) {
-        console.error('[createStudentWithAssignment] Error creating/linking parent for new student:', error)
-        // Don't throw - student was already created, just log the error
-        // The error might be that parent already exists, which is fine
-      }
-    }
-  }
-
   revalidatePath('/dashboard/uczniowie')
   return student
 }
@@ -348,6 +295,36 @@ export async function updateStudent(
   }
 ) {
   const supabase = await createClient()
+  const profile = await getUserProfile()
+
+  // Tutor może zmieniać wyłącznie imię i nazwisko — bez stawek
+  if (profile?.role === 'tutor') {
+    const { exists, student: existingStudent } = await checkStudentExists(
+      data.first_name,
+      data.last_name,
+      id
+    )
+
+    if (exists && existingStudent) {
+      throw new Error(
+        `Uczeń o imieniu "${data.first_name} ${data.last_name}" już istnieje w systemie. ` +
+          `Nie można zmienić nazwy na istniejącą.`
+      )
+    }
+
+    const { error } = await supabase
+      .from('students')
+      .update({
+        first_name: data.first_name.trim(),
+        last_name: data.last_name.trim(),
+      })
+      .eq('id', id)
+
+    if (error) throw error
+
+    revalidatePath('/dashboard/uczniowie')
+    return
+  }
 
   // Check if another student with the same name exists (excluding current student)
   const { exists, student: existingStudent } = await checkStudentExists(

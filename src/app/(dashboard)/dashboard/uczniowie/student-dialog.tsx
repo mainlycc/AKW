@@ -108,6 +108,12 @@ interface LessonHistoryItem {
   level_name: string | null
 }
 
+interface StudentSubjectRow {
+  subject_level_id: string
+  subjects: { name: string; color?: string | null } | null
+  subject_levels: { level_name: string } | null
+}
+
 interface StudentDialogProps {
   open: boolean
   onClose: () => void
@@ -115,6 +121,8 @@ interface StudentDialogProps {
   studentParents?: StudentParent[]
   studentNotes?: StudentNote[]
   studentSubjects?: string[]
+  /** Z API (nested subjects + levels) — wymagane gdy brak allSubjects, np. widok tutora */
+  studentSubjectsDetail?: StudentSubjectRow[]
   studentAssignments?: StudentAssignment[]
   allParents?: Parent[]
   allSubjects?: SubjectWithLevels[]
@@ -133,6 +141,7 @@ export function StudentDialog({
   studentParents = [],
   studentNotes = [],
   studentSubjects = [],
+  studentSubjectsDetail = [],
   studentAssignments = [],
   allParents = [],
   allSubjects = [],
@@ -144,6 +153,10 @@ export function StudentDialog({
   currentUserId,
 }: StudentDialogProps) {
   const router = useRouter()
+  const profileSubjectCount =
+    studentSubjectsDetail.length > 0 ? studentSubjectsDetail.length : studentSubjects.length
+  const profileSubjectSuffix =
+    profileSubjectCount === 1 ? '' : profileSubjectCount < 5 ? 'y' : 'ów'
   const [isEditMode, setIsEditMode] = useState<boolean>(!student)
   const [loading, setLoading] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -357,12 +370,6 @@ export function StudentDialog({
             rate_level: formData.rate_level,
             hourly_rate_is_overridden: formData.hourly_rate_is_overridden,
             subject_level_id: tutorSelectedLevelId,
-            parent: parentData.email || parentData.first_name || parentData.last_name ? {
-              first_name: parentData.first_name,
-              last_name: parentData.last_name,
-              email: parentData.email,
-              phone: parentData.phone || '',
-            } : undefined,
           },
           tutorId!
         )
@@ -631,14 +638,18 @@ export function StudentDialog({
                     {formData.first_name} {formData.last_name}
                   </h2>
                   <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                    <div className="inline-flex items-center px-3 py-1 rounded-full bg-primary/10 text-primary">
-                      <span className="text-sm font-semibold">
-                        {formData.hourly_rate != null ? `${formData.hourly_rate.toFixed(0)} zł/h` : '-'}
-                      </span>
-                    </div>
-                    {studentSubjects.length > 0 && (
+                    {!isTutor && (
+                      <div className="inline-flex items-center px-3 py-1 rounded-full bg-primary/10 text-primary">
+                        <span className="text-sm font-semibold">
+                          {formData.hourly_rate != null ? `${formData.hourly_rate.toFixed(0)} zł/h` : '-'}
+                        </span>
+                      </div>
+                    )}
+                    {profileSubjectCount > 0 && (
                       <div className="inline-flex items-center px-3 py-1 rounded-full bg-muted text-muted-foreground">
-                        <span className="text-sm">{studentSubjects.length} przedmiot{studentSubjects.length === 1 ? '' : studentSubjects.length < 5 ? 'y' : 'ów'}</span>
+                        <span className="text-sm">
+                          {profileSubjectCount} przedmiot{profileSubjectSuffix}
+                        </span>
                       </div>
                     )}
                   </div>
@@ -651,7 +662,22 @@ export function StudentDialog({
               {/* Przedmioty i poziomy */}
               <div className="rounded-lg border bg-card p-4 space-y-3">
                 <h3 className="font-semibold text-sm">Przedmioty</h3>
-                {studentSubjects.length > 0 ? (
+                {studentSubjectsDetail.length > 0 ? (
+                  <div className="space-y-2">
+                    {studentSubjectsDetail.map((ss) => (
+                      <div key={ss.subject_level_id} className="flex flex-col gap-1">
+                        {ss.subjects ? (
+                          <SubjectBadge subject={ss.subjects} className="text-xs px-2 py-0.5 w-fit" />
+                        ) : (
+                          <span className="text-xs font-medium text-muted-foreground">Przedmiot</span>
+                        )}
+                        {ss.subject_levels?.level_name && (
+                          <p className="text-xs text-muted-foreground pl-0.5">{ss.subject_levels.level_name}</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : studentSubjects.length > 0 ? (
                   <div className="space-y-2">
                     {studentSubjects.map((levelId) => {
                       const subject = allSubjects.find(s =>
@@ -929,76 +955,81 @@ export function StudentDialog({
                     className="h-9"
                   />
                 </div>
-                <div className="space-y-1.5 min-w-0">
-                  <Label className="text-xs">Poziom ucznia</Label>
-                  <Select
-                    value={String(formData.rate_level)}
-                    onValueChange={(value) => {
-                      const nextLevel = (parseInt(value, 10) || 1) as 1 | 2 | 3
-                      setFormData((prev) => ({
-                        ...prev,
-                        rate_level: nextLevel,
-                        ...(prev.hourly_rate_is_overridden
-                          ? {}
-                          : { hourly_rate: getDefaultRateForLevel(nextLevel) }),
-                      }))
-                    }}
-                    disabled={loading || deleting}
-                  >
-                    <SelectTrigger className="h-9">
-                      <SelectValue placeholder="Wybierz poziom" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="1">1 – Podstawowa</SelectItem>
-                      <SelectItem value="2">2 – Średnia (podstawa)</SelectItem>
-                      <SelectItem value="3">3 – Średnia (rozszerzenie)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1.5 min-w-0">
-                  <Label htmlFor="hourly_rate" className="text-xs">Stawka/h (PLN)</Label>
-                  <Input
-                    id="hourly_rate"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={formData.hourly_rate}
-                    onChange={(e) => {
-                      const parsed = parseFloat(e.target.value)
-                      const fallback = formData.hourly_rate_is_overridden
-                        ? defaultStudentRate
-                        : getDefaultRateForLevel(formData.rate_level)
-                      setFormData({
-                        ...formData,
-                        hourly_rate: Number.isNaN(parsed) ? fallback : parsed,
-                      })
-                    }}
-                    required
-                    disabled={loading || deleting || !formData.hourly_rate_is_overridden}
-                    className="h-9"
-                  />
-                  <label className="flex items-start gap-2 pt-1 cursor-pointer select-none min-w-0">
-                    <Checkbox
-                      checked={formData.hourly_rate_is_overridden}
-                      onCheckedChange={(checked) => {
-                        const next = checked === true
-                        setFormData((prev) => ({
-                          ...prev,
-                          hourly_rate_is_overridden: next,
-                          ...(next ? {} : { hourly_rate: getDefaultRateForLevel(prev.rate_level) }),
-                        }))
-                      }}
-                      disabled={loading || deleting}
-                    />
-                    <span className="text-xs text-muted-foreground leading-snug break-words">
-                      Ustaw indywidualną stawkę (override)
-                    </span>
-                  </label>
-                </div>
+                {!isTutor && (
+                  <>
+                    <div className="space-y-1.5 min-w-0">
+                      <Label className="text-xs">Poziom ucznia</Label>
+                      <Select
+                        value={String(formData.rate_level)}
+                        onValueChange={(value) => {
+                          const nextLevel = (parseInt(value, 10) || 1) as 1 | 2 | 3
+                          setFormData((prev) => ({
+                            ...prev,
+                            rate_level: nextLevel,
+                            ...(prev.hourly_rate_is_overridden
+                              ? {}
+                              : { hourly_rate: getDefaultRateForLevel(nextLevel) }),
+                          }))
+                        }}
+                        disabled={loading || deleting}
+                      >
+                        <SelectTrigger className="h-9">
+                          <SelectValue placeholder="Wybierz poziom" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="1">1 – Podstawowa</SelectItem>
+                          <SelectItem value="2">2 – Średnia (podstawa)</SelectItem>
+                          <SelectItem value="3">3 – Średnia (rozszerzenie)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1.5 min-w-0">
+                      <Label htmlFor="hourly_rate" className="text-xs">Stawka/h (PLN)</Label>
+                      <Input
+                        id="hourly_rate"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={formData.hourly_rate}
+                        onChange={(e) => {
+                          const parsed = parseFloat(e.target.value)
+                          const fallback = formData.hourly_rate_is_overridden
+                            ? defaultStudentRate
+                            : getDefaultRateForLevel(formData.rate_level)
+                          setFormData({
+                            ...formData,
+                            hourly_rate: Number.isNaN(parsed) ? fallback : parsed,
+                          })
+                        }}
+                        required
+                        disabled={loading || deleting || !formData.hourly_rate_is_overridden}
+                        className="h-9"
+                      />
+                      <label className="flex items-start gap-2 pt-1 cursor-pointer select-none min-w-0">
+                        <Checkbox
+                          checked={formData.hourly_rate_is_overridden}
+                          onCheckedChange={(checked) => {
+                            const next = checked === true
+                            setFormData((prev) => ({
+                              ...prev,
+                              hourly_rate_is_overridden: next,
+                              ...(next ? {} : { hourly_rate: getDefaultRateForLevel(prev.rate_level) }),
+                            }))
+                          }}
+                          disabled={loading || deleting}
+                        />
+                        <span className="text-xs text-muted-foreground leading-snug break-words">
+                          Ustaw indywidualną stawkę (override)
+                        </span>
+                      </label>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
 
-            {/* Rodzice */}
+            {/* Rodzice — tutor nie dodaje rodziców (brak sekcji przy „Dodaj ucznia”; przy edycji tylko podgląd listy) */}
+            {!(isTutor && !student) && (
             <div className="space-y-2 border-t pt-3">
               <h3 className="font-semibold text-sm text-primary">Rodzice</h3>
               
@@ -1037,9 +1068,8 @@ export function StudentDialog({
                 <p className="text-xs text-muted-foreground italic">Brak przypisanych rodziców</p>
               )}
 
-              {/* Rozwijana sekcja dodawania rodzica */}
-              {!student ? (
-                // Dla nowego ucznia - zwykła sekcja (bez Collapsible)
+              {/* Opcjonalne dane rodzica przy tworzeniu — tylko admin */}
+              {!student && (
                 <div className="space-y-2 pt-1">
                   <h4 className="text-xs font-medium text-muted-foreground">Dane rodzica (opcjonalnie)</h4>
                   <div className="space-y-2 rounded-md border p-3 bg-muted/10">
@@ -1097,8 +1127,10 @@ export function StudentDialog({
                     </div>
                   </div>
                 </div>
-              ) : (
-                // Dla istniejącego ucznia - rozwijana sekcja
+              )}
+
+              {/* Dodaj rodzica przy edycji — tylko admin */}
+              {student && !isTutor && (
                 <Collapsible open={addParentOpen} onOpenChange={setAddParentOpen} className="space-y-1.5">
                   <CollapsibleTrigger asChild>
                     <Button
@@ -1122,9 +1154,9 @@ export function StudentDialog({
                       <h4 className="text-xs font-medium">Utwórz nowego rodzica</h4>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                         <div className="space-y-1.5">
-                          <Label htmlFor="parent_first_name" className="text-xs">Imię</Label>
+                          <Label htmlFor="parent_first_name_edit" className="text-xs">Imię</Label>
                           <Input
-                            id="parent_first_name"
+                            id="parent_first_name_edit"
                             type="text"
                             value={parentData.first_name}
                             onChange={(e) => setParentData({ ...parentData, first_name: e.target.value })}
@@ -1134,9 +1166,9 @@ export function StudentDialog({
                           />
                         </div>
                         <div className="space-y-1.5">
-                          <Label htmlFor="parent_last_name" className="text-xs">Nazwisko</Label>
+                          <Label htmlFor="parent_last_name_edit" className="text-xs">Nazwisko</Label>
                           <Input
-                            id="parent_last_name"
+                            id="parent_last_name_edit"
                             type="text"
                             value={parentData.last_name}
                             onChange={(e) => setParentData({ ...parentData, last_name: e.target.value })}
@@ -1148,9 +1180,9 @@ export function StudentDialog({
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                         <div className="space-y-1.5">
-                          <Label htmlFor="parent_email" className="text-xs">Email</Label>
+                          <Label htmlFor="parent_email_edit" className="text-xs">Email</Label>
                           <Input
-                            id="parent_email"
+                            id="parent_email_edit"
                             type="email"
                             value={parentData.email}
                             onChange={(e) => setParentData({ ...parentData, email: e.target.value })}
@@ -1160,9 +1192,9 @@ export function StudentDialog({
                           />
                         </div>
                         <div className="space-y-1.5">
-                          <Label htmlFor="parent_phone" className="text-xs">Telefon</Label>
+                          <Label htmlFor="parent_phone_edit" className="text-xs">Telefon</Label>
                           <Input
-                            id="parent_phone"
+                            id="parent_phone_edit"
                             type="tel"
                             value={parentData.phone}
                             onChange={(e) => setParentData({ ...parentData, phone: e.target.value })}
@@ -1174,8 +1206,7 @@ export function StudentDialog({
                       </div>
                     </div>
 
-                    {/* Wybierz istniejącego rodzica - tylko dla admina */}
-                    {!isTutor && availableParents.length > 0 && (
+                    {availableParents.length > 0 && (
                       <div className="space-y-2 rounded-md border p-3 bg-muted/10">
                         <h4 className="text-xs font-medium">Lub przypisz istniejącego</h4>
                         <div className="flex gap-2">
@@ -1202,6 +1233,7 @@ export function StudentDialog({
                 </Collapsible>
               )}
             </div>
+            )}
 
             {/* Przedmioty i poziomy */}
             {isTutor && !student ? (

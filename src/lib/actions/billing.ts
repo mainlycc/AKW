@@ -60,6 +60,11 @@ export interface StudentBillingWithParent extends StudentBilling {
     id: string
     full_name: string
   }>
+  tutor_hours?: Array<{
+    tutor_id: string
+    tutor_name: string
+    hours: number
+  }>
   hours_this_month: number
   total_hours: number
   hours?: number // For declarations billing
@@ -791,6 +796,7 @@ export async function getStudentBillingsFromReports(
   // Group entries by student_id and sum hours
   const studentHoursMap = new Map<string, number>()
   const studentTutorsMap = new Map<string, Map<string, string>>() // student_id -> tutor_id -> tutor_name
+  const studentTutorHoursMap = new Map<string, Map<string, { tutor_name: string; hours: number }>>() // student_id -> tutor_id -> {name,hours}
   const studentDataMap = new Map<string, { 
     first_name: string
     last_name: string
@@ -818,6 +824,16 @@ export async function getStudentBillingsFromReports(
           studentTutorsMap.set(studentId, new Map())
         }
         studentTutorsMap.get(studentId)!.set(tutorId, tutorName)
+
+        if (!studentTutorHoursMap.has(studentId)) {
+          studentTutorHoursMap.set(studentId, new Map())
+        }
+        const tutorHoursForStudent = studentTutorHoursMap.get(studentId)!
+        const existing = tutorHoursForStudent.get(tutorId)
+        tutorHoursForStudent.set(tutorId, {
+          tutor_name: tutorName,
+          hours: (existing?.hours || 0) + hours,
+        })
       }
 
       // Store student data (from first entry, hourly_rate should be same for all)
@@ -1220,6 +1236,11 @@ export async function getStudentBillingsFromReports(
     // We'll use a combination of student_id and period_id
     const tempBillingId = `${studentId}::${periodId}`
 
+    const tutorHoursMap = studentTutorHoursMap.get(studentId) || new Map()
+    const tutor_hours = Array.from(tutorHoursMap.entries())
+      .map(([tutor_id, v]) => ({ tutor_id, tutor_name: v.tutor_name, hours: v.hours }))
+      .sort((a, b) => a.tutor_name.localeCompare(b.tutor_name, 'pl', { sensitivity: 'base' }))
+
     billingsWithParents.push({
       id: tempBillingId,
       student_id: studentId,
@@ -1251,6 +1272,7 @@ export async function getStudentBillingsFromReports(
       parents: allParents,
       categories: categoryDisplayMap.get(studentId) || [],
       tutors: tutorDisplayMap.get(studentId) || [],
+      tutor_hours: tutor_hours.length > 0 ? tutor_hours : undefined,
       hours_this_month: hours,
       total_hours: hours, // For reports, this is the same as hours_this_month
     })
@@ -1313,6 +1335,24 @@ export async function getStudentBillingsFromReports(
       const mergedTutors = Array.from(allTutors.values()).sort((a, b) => 
         a.full_name.localeCompare(b.full_name, 'pl', { sensitivity: 'base' })
       )
+
+      // Łączymy godziny per tutor
+      const mergedTutorHoursMap = new Map<string, { tutor_id: string; tutor_name: string; hours: number }>()
+      for (const billing of duplicates) {
+        if (billing.tutor_hours) {
+          for (const th of billing.tutor_hours) {
+            const existing = mergedTutorHoursMap.get(th.tutor_id)
+            mergedTutorHoursMap.set(th.tutor_id, {
+              tutor_id: th.tutor_id,
+              tutor_name: th.tutor_name,
+              hours: (existing?.hours || 0) + (th.hours || 0),
+            })
+          }
+        }
+      }
+      const mergedTutorHours = Array.from(mergedTutorHoursMap.values()).sort((a, b) =>
+        a.tutor_name.localeCompare(b.tutor_name, 'pl', { sensitivity: 'base' })
+      )
       
       // Łączymy kategorie/przedmioty (bez duplikatów)
       const allCategories = new Map<string, { subject_name: string; level_name: string }>()
@@ -1355,6 +1395,7 @@ export async function getStudentBillingsFromReports(
         balance: balance,
         status: status,
         tutors: mergedTutors,
+        tutor_hours: mergedTutorHours.length > 0 ? mergedTutorHours : undefined,
         categories: mergedCategories,
         parents: mergedParents,
         parent: primaryParent,
@@ -1809,6 +1850,7 @@ export async function getStudentBillingsFromDeclarations(
   // Group entries by student_id and sum hours
   const studentHoursMap = new Map<string, number>()
   const studentTutorsMap = new Map<string, Map<string, string>>()
+  const studentTutorHoursMap = new Map<string, Map<string, { tutor_name: string; hours: number }>>()
   const studentDataMap = new Map<string, { 
     first_name: string
     last_name: string
@@ -1834,6 +1876,16 @@ export async function getStudentBillingsFromDeclarations(
           studentTutorsMap.set(studentId, new Map())
         }
         studentTutorsMap.get(studentId)!.set(tutorId, tutorName)
+
+        if (!studentTutorHoursMap.has(studentId)) {
+          studentTutorHoursMap.set(studentId, new Map())
+        }
+        const tutorHoursForStudent = studentTutorHoursMap.get(studentId)!
+        const existing = tutorHoursForStudent.get(tutorId)
+        tutorHoursForStudent.set(tutorId, {
+          tutor_name: tutorName,
+          hours: (existing?.hours || 0) + hours,
+        })
       }
 
       if (!studentDataMap.has(studentId)) {
@@ -1944,6 +1996,10 @@ export async function getStudentBillingsFromDeclarations(
 
     const tutorsMap = studentTutorsMap.get(studentId) || new Map()
     const tutors = Array.from(tutorsMap.values())
+    const tutorHoursMap = studentTutorHoursMap.get(studentId) || new Map()
+    const tutor_hours = Array.from(tutorHoursMap.entries())
+      .map(([tutor_id, v]) => ({ tutor_id, tutor_name: v.tutor_name, hours: v.hours }))
+      .sort((a, b) => a.tutor_name.localeCompare(b.tutor_name, 'pl', { sensitivity: 'base' }))
 
     const { data: payments } = await supabase
       .from('payments')
@@ -1981,6 +2037,7 @@ export async function getStudentBillingsFromDeclarations(
       },
       parent,
       tutors: tutors.length > 0 ? tutors : undefined,
+      tutor_hours: tutor_hours.length > 0 ? tutor_hours : undefined,
       hours,
       hours_this_month: hours, // For declarations, hours_this_month is the same as hours
       total_hours: hours, // For declarations, total_hours is the same as hours
@@ -2044,6 +2101,7 @@ export async function getAllStudentBillingsFromDeclarations(): Promise<StudentBi
   // key = `${studentId}-${month}-${year}`
   const keyHoursMap = new Map<string, number>()
   const keyTutorsMap = new Map<string, Map<string, string>>()
+  const keyTutorHoursMap = new Map<string, Map<string, { tutor_name: string; hours: number }>>()
   const keyStudentDataMap = new Map<string, {
     first_name: string
     last_name: string
@@ -2075,6 +2133,16 @@ export async function getAllStudentBillingsFromDeclarations(): Promise<StudentBi
           keyTutorsMap.set(key, new Map())
         }
         keyTutorsMap.get(key)!.set(tutorId, tutorName)
+
+        if (!keyTutorHoursMap.has(key)) {
+          keyTutorHoursMap.set(key, new Map())
+        }
+        const tutorHoursForKey = keyTutorHoursMap.get(key)!
+        const existing = tutorHoursForKey.get(tutorId)
+        tutorHoursForKey.set(tutorId, {
+          tutor_name: tutorName,
+          hours: (existing?.hours || 0) + hours,
+        })
       }
 
       if (!keyStudentDataMap.has(key)) {
@@ -2225,6 +2293,10 @@ export async function getAllStudentBillingsFromDeclarations(): Promise<StudentBi
 
     const tutorsMap = keyTutorsMap.get(key) || new Map()
     const tutors = Array.from(tutorsMap.values())
+    const tutorHoursMap = keyTutorHoursMap.get(key) || new Map()
+    const tutor_hours = Array.from(tutorHoursMap.entries())
+      .map(([tutor_id, v]) => ({ tutor_id, tutor_name: v.tutor_name, hours: v.hours }))
+      .sort((a, b) => a.tutor_name.localeCompare(b.tutor_name, 'pl', { sensitivity: 'base' }))
 
     let totalPaid = 0
     if (periodId) {
@@ -2266,6 +2338,7 @@ export async function getAllStudentBillingsFromDeclarations(): Promise<StudentBi
       },
       parent,
       tutors: tutors.length > 0 ? tutors : undefined,
+      tutor_hours: tutor_hours.length > 0 ? tutor_hours : undefined,
       hours,
       hours_this_month: hours,
       total_hours: hours,

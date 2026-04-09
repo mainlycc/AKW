@@ -40,7 +40,7 @@ export default async function EditDeclarationPage({
     .eq('tutor_id', profile.id)
     .single()
 
-  if (!declaration || declaration.status !== 'draft') {
+  if (!declaration) {
     redirect('/dashboard/moje-deklaracje')
   }
 
@@ -93,6 +93,7 @@ export default async function EditDeclarationPage({
         tutorId={profile.id}
         students={students || []}
         assignments={assignmentsWithStudents}
+        declarationId={declaration.id}
         initialDeclaration={{
           month: declaration.month,
           year: declaration.year,

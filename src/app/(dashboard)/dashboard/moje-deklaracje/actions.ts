@@ -20,9 +20,79 @@ export async function createOrUpdateDeclaration(
   month: number,
   year: number,
   entries: DeclarationEntry[],
-  status: DeclarationStatus = 'draft'
+  status: DeclarationStatus = 'draft',
+  declarationId?: string
 ) {
   const supabase = await createClient()
+
+  // Jeśli edytujemy konkretną deklarację po ID (z możliwością zmiany miesiąca/roku)
+  if (declarationId) {
+    // Upewnij się, że deklaracja należy do tutora
+    const { data: existingById } = await supabase
+      .from('monthly_declarations')
+      .select('id, tutor_id')
+      .eq('id', declarationId)
+      .eq('tutor_id', tutorId)
+      .single()
+
+    if (!existingById) {
+      throw new Error('Nie znaleziono deklaracji lub brak uprawnień')
+    }
+
+    // Sprawdź konflikt: czy istnieje inna deklaracja dla tego samego tutora na ten sam miesiąc/rok
+    const { data: conflict } = await supabase
+      .from('monthly_declarations')
+      .select('id')
+      .eq('tutor_id', tutorId)
+      .eq('month', month)
+      .eq('year', year)
+      .neq('id', declarationId)
+      .maybeSingle()
+
+    if (conflict) {
+      throw new Error('Deklaracja dla wybranego miesiąca i roku już istnieje')
+    }
+
+    // Update deklaracji
+    await supabase
+      .from('monthly_declarations')
+      .update({
+        month,
+        year,
+        status,
+        submitted_at: status === 'submitted' ? new Date().toISOString() : null,
+      })
+      .eq('id', declarationId)
+
+    // Podmień wpisy
+    await supabase
+      .from('monthly_declaration_entries')
+      .delete()
+      .eq('declaration_id', declarationId)
+
+    if (entries.length > 0) {
+      await supabase
+        .from('monthly_declaration_entries')
+        .insert(
+          entries.map(e => ({
+            declaration_id: declarationId,
+            student_id: e.student_id,
+            session_date: e.session_date,
+            start_time: e.start_time,
+            duration_minutes: e.duration_minutes,
+            assignment_id: e.assignment_id,
+          }))
+        )
+    }
+
+    if (status === 'submitted' && entries.length > 0) {
+      await generateSessionsFromDeclarationEntries(tutorId, entries)
+    }
+
+    revalidatePath('/dashboard/moje-deklaracje')
+    revalidatePath('/dashboard/kalendarz-lekcji')
+    return declarationId
+  }
 
   // Check if declaration exists
   const { data: existing } = await supabase
@@ -33,7 +103,7 @@ export async function createOrUpdateDeclaration(
     .eq('year', year)
     .maybeSingle()
 
-  let declarationId: string
+  let savedDeclarationId: string
 
   if (existing) {
     // Update existing declaration
@@ -66,7 +136,7 @@ export async function createOrUpdateDeclaration(
           }))
         )
     }
-    declarationId = existing.id
+    savedDeclarationId = existing.id
   } else {
     // Create new declaration
     const { data: declaration, error } = await supabase
@@ -98,7 +168,7 @@ export async function createOrUpdateDeclaration(
           }))
         )
     }
-    declarationId = declaration.id
+    savedDeclarationId = declaration.id
   }
 
   if (status === 'submitted' && entries.length > 0) {
@@ -107,7 +177,7 @@ export async function createOrUpdateDeclaration(
 
   revalidatePath('/dashboard/moje-deklaracje')
   revalidatePath('/dashboard/kalendarz-lekcji')
-  return declarationId
+  return savedDeclarationId
 }
 
 export async function deleteDeclaration(declarationId: string) {

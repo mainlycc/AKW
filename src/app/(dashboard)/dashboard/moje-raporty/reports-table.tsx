@@ -1,20 +1,11 @@
 'use client'
 
-import { useState } from "react"
-import Link from "next/link"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
-import { Button } from "@/components/ui/button"
+import { useMemo } from "react"
+import { useRouter } from "next/navigation"
+import { ColumnDef } from "@tanstack/react-table"
 import { Badge } from "@/components/ui/badge"
 import { deleteReport, type ReportStatus } from "./actions"
-import { IconPlus, IconTrash, IconPencil } from "@tabler/icons-react"
-import { ConfirmDialog } from "@/components/confirm-dialog"
+import { ReusableTable } from "@/components/reusable-table"
 import { formatHours } from "@/lib/utils"
 
 interface MonthlyReport {
@@ -58,112 +49,102 @@ const statusVariants: Record<ReportStatus, "default" | "secondary" | "outline" |
 const months = ['Styczeń', 'Luty', 'Marzec', 'Kwiecień', 'Maj', 'Czerwiec', 'Lipiec', 'Sierpień', 'Wrzesień', 'Październik', 'Listopad', 'Grudzień']
 
 export function ReportsTable({ reports, tutorId, students }: ReportsTableProps) {
-  const [confirmDialogOpen, setConfirmDialogOpen] = useState(false)
-  const [reportToDelete, setReportToDelete] = useState<string | null>(null)
+  const router = useRouter()
 
-  const handleDelete = async (id: string) => {
-    setReportToDelete(id)
-    setConfirmDialogOpen(true)
+  const columns = useMemo<ColumnDef<MonthlyReport>[]>(() => [
+    {
+      accessorKey: 'period',
+      header: 'Okres',
+      cell: ({ row }) => {
+        const report = row.original
+        return (
+          <span className="font-medium">
+            {months[report.month - 1]} {report.year}
+          </span>
+        )
+      },
+    },
+    {
+      accessorKey: 'status',
+      header: 'Status',
+      cell: ({ row }) => {
+        const report = row.original
+        return (
+          <Badge variant={statusVariants[report.status]}>
+            {statusLabels[report.status]}
+          </Badge>
+        )
+      },
+    },
+    {
+      accessorKey: 'total_hours',
+      header: 'Suma godzin',
+      cell: ({ row }) => {
+        const report = row.original
+        return `${formatHours(report.total_hours)} h`
+      },
+      meta: {
+        cellClassName: 'text-right',
+        headerClassName: 'text-right',
+      },
+    },
+    {
+      accessorKey: 'created_at',
+      header: 'Data utworzenia',
+      cell: ({ row }) => {
+        const report = row.original
+        return new Date(report.created_at).toLocaleDateString('pl-PL')
+      },
+    },
+  ], [])
+
+  const handleAdd = () => {
+    router.push('/dashboard/moje-raporty/nowy')
   }
 
-  const confirmDelete = async () => {
-    if (reportToDelete) {
-      await deleteReport(reportToDelete)
-      setReportToDelete(null)
+  const handleDeleteSelected = async (selectedRows: MonthlyReport[]) => {
+    const draftReports = selectedRows.filter(r => r.status === 'draft')
+    if (draftReports.length === 0) {
+      return
+    }
+
+    for (const report of draftReports) {
+      await deleteReport(report.id)
+    }
+    router.refresh()
+  }
+
+  const handleRowClick = (report: MonthlyReport) => {
+    if (report.status !== 'paid') {
+      router.push(`/dashboard/moje-raporty/${report.id}`)
     }
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex justify-end">
-        <Link href="/dashboard/moje-raporty/nowy">
-          <Button>
-            <IconPlus className="mr-2 h-4 w-4" />
-            Utwórz raport
-          </Button>
-        </Link>
-      </div>
-
-      <div className="rounded-md border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Okres</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Suma godzin</TableHead>
-              <TableHead className="text-right">Kwota</TableHead>
-              <TableHead>Data utworzenia</TableHead>
-              <TableHead className="text-right">Akcje</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {reports.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={6} className="text-center text-muted-foreground">
-                  Brak raportów. Utwórz pierwszy raport.
-                </TableCell>
-              </TableRow>
-            ) : (
-              reports.map((report) => (
-                <TableRow key={report.id}>
-                  <TableCell className="font-medium">
-                    {months[report.month - 1]} {report.year}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={statusVariants[report.status]}>
-                      {statusLabels[report.status]}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-right">{formatHours(report.total_hours)} h</TableCell>
-                  <TableCell className="text-right">
-                    {report.total_amount ? `${report.total_amount.toFixed(2)} zł` : '-'}
-                  </TableCell>
-                  <TableCell>
-                    {new Date(report.created_at).toLocaleDateString('pl-PL')}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-1">
-                      {report.status !== 'paid' ? (
-                        <Link href={`/dashboard/moje-raporty/${report.id}`}>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            title="Edytuj raport"
-                          >
-                            <IconPencil className="h-4 w-4" />
-                          </Button>
-                        </Link>
-                      ) : null}
-
-                      {report.status === 'draft' ? (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleDelete(report.id)}
-                          title="Usuń raport"
-                        >
-                          <IconTrash className="h-4 w-4" />
-                        </Button>
-                      ) : null}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </div>
-
-      <ConfirmDialog
-        open={confirmDialogOpen}
-        onOpenChange={setConfirmDialogOpen}
-        title="Usuwanie raportu"
-        description="Czy na pewno chcesz usunąć ten raport?"
-        onConfirm={confirmDelete}
-        confirmText="Usuń"
-        cancelText="Anuluj"
-      />
-    </div>
+    <ReusableTable
+      columns={columns}
+      data={reports}
+      searchable={true}
+      searchPlaceholder="Szukaj po okresie..."
+      customGlobalFilterFn={(row, filterValue) => {
+        const searchLower = filterValue.toLowerCase()
+        const period = `${months[row.month - 1]} ${row.year}`.toLowerCase()
+        const status = statusLabels[row.status].toLowerCase()
+        return period.includes(searchLower) || status.includes(searchLower)
+      }}
+      onAdd={handleAdd}
+      addButtonLabel="Utwórz raport"
+      enableRowSelection={true}
+      enablePagination={true}
+      pageSize={10}
+      emptyMessage="Brak raportów. Utwórz pierwszy raport."
+      deleteButtonLabel="Usuń zaznaczone"
+      enableDeleteDialog={true}
+      onConfirmDelete={handleDeleteSelected}
+      deleteDialogTitle="Usuń zaznaczone raporty?"
+      deleteDialogDescription="Czy na pewno chcesz usunąć zaznaczone raporty? Ta operacja nie może być cofnięta. Uwaga: można usuwać tylko raporty w statusie 'Roboczy'."
+      onRowClick={handleRowClick}
+    />
   )
 }
 

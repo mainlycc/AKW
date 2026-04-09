@@ -35,6 +35,7 @@ interface DeclarationFormProps {
   tutorId: string
   students: Student[]
   assignments?: Assignment[]
+  declarationId?: string
   initialDeclaration?: {
     month: number
     year: number
@@ -61,6 +62,7 @@ export function DeclarationForm({
   tutorId, 
   students,
   assignments = [],
+  declarationId,
   initialDeclaration 
 }: DeclarationFormProps) {
   const router = useRouter()
@@ -130,7 +132,7 @@ export function DeclarationForm({
         return
       }
 
-      await createOrUpdateDeclaration(tutorId, month, year, entries, status)
+      await createOrUpdateDeclaration(tutorId, month, year, entries, status, declarationId)
       toast.success(status === 'draft' ? 'Deklaracja zapisana' : 'Deklaracja złożona')
       router.push('/dashboard/moje-deklaracje')
       router.refresh()
@@ -165,7 +167,6 @@ export function DeclarationForm({
             <Select 
               value={month.toString()} 
               onValueChange={(v) => setMonth(parseInt(v))}
-              disabled={!!initialDeclaration}
             >
               <SelectTrigger className="h-9">
                 <SelectValue />
@@ -184,7 +185,6 @@ export function DeclarationForm({
             <Select 
               value={year.toString()} 
               onValueChange={(v) => setYear(parseInt(v))}
-              disabled={!!initialDeclaration}
             >
               <SelectTrigger className="h-9">
                 <SelectValue />

@@ -141,10 +141,7 @@ export function DeclarationsTable({ declarations, tutorId, students }: Declarati
   }
 
   const handleRowClick = (declaration: MonthlyDeclaration) => {
-    // Przekieruj do edycji tylko jeśli deklaracja jest w statusie draft
-    if (declaration.status === 'draft') {
-      router.push(`/dashboard/moje-deklaracje/${declaration.id}`)
-    }
+    router.push(`/dashboard/moje-deklaracje/${declaration.id}`)
   }
 
   return (

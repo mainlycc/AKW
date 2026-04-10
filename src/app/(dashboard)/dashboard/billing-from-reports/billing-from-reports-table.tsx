@@ -18,9 +18,23 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { IconPlus, IconMail, IconEye, IconArrowUp, IconArrowDown, IconArrowsSort } from '@tabler/icons-react'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { IconPlus, IconMail, IconArrowUp, IconArrowDown, IconArrowsSort } from '@tabler/icons-react'
 import type { StudentBillingWithParent, BillingStatus } from '@/lib/actions/billing'
-import { sendReminderAction, markBillingsAsPaidAction, sendGroupRemindersAction } from './actions'
+import {
+  sendReminderAction,
+  markBillingsAsPaidAction,
+  sendGroupRemindersAction,
+  previewPayUPaymentsFromReportsAction,
+  sendPayUPaymentsFromReportsAction,
+} from './actions'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { useState, useMemo, useEffect } from 'react'
@@ -106,6 +120,25 @@ export function BillingFromReportsTable({
   const [paymentDialogYear, setPaymentDialogYear] = useState(new Date().getFullYear())
   const [channel, setChannel] = useState<NotificationChannel>('email')
   const [monthFilter, setMonthFilter] = useState<string>('all')
+  const [payuDialogOpen, setPayuDialogOpen] = useState(false)
+  const [sendingPayu, setSendingPayu] = useState(false)
+  const [payuPreviewLoading, setPayuPreviewLoading] = useState(false)
+  const [payuPreviewError, setPayuPreviewError] = useState<string | null>(null)
+  const [payuPreviews, setPayuPreviews] = useState<
+    Array<{
+      studentId: string
+      studentName: string
+      parentName: string
+      toEmail: string | null
+      toPhone: string | null
+      month: number
+      year: number
+      amount: number
+      paymentUrl: string
+      email?: { subject: string; html: string }
+      sms?: { body: string }
+    }>
+  >([])
 
   // Gather unique month/year combinations from billings
   const availableMonths = useMemo(() => {
@@ -292,12 +325,6 @@ export function BillingFromReportsTable({
     router.refresh()
   }
 
-  const handleViewDetails = (studentId: string, billingPeriodId: string) => {
-    router.push(
-      `/dashboard/payments?studentId=${studentId}&billingPeriodId=${billingPeriodId}`
-    )
-  }
-
   const toggleSelectAll = () => {
     const currentPageIds = new Set(paginatedBillings.map(b => b.id))
     const allCurrentPageSelected = paginatedBillings.every(b => selectedIds.has(b.id))
@@ -361,6 +388,89 @@ export function BillingFromReportsTable({
     }
   }
 
+  const selectedBillings = useMemo(() => {
+    return filteredBillings.filter((b) => selectedIds.has(b.id))
+  }, [filteredBillings, selectedIds])
+
+  const selectedTotal = useMemo(() => {
+    return selectedBillings.reduce((sum, b) => sum + (b.balance || 0), 0)
+  }, [selectedBillings])
+
+  const handleOpenPayuDialog = async () => {
+    if (selectedIds.size === 0) {
+      toast.error('Wybierz przynajmniej jedno rozliczenie')
+      return
+    }
+
+    const uniquePeriods = new Set(
+      selectedBillings.map((b) => `${b.billing_periods.month}-${b.billing_periods.year}`)
+    )
+    if (uniquePeriods.size > 1) {
+      toast.error('Wybierz rozliczenia z tego samego okresu, aby wysłać płatności PayU')
+      return
+    }
+
+    const first = selectedBillings[0]
+    const payMonth = first.billing_periods.month
+    const payYear = first.billing_periods.year
+    const studentIdsToSend = selectedBillings.map((b) => b.student_id)
+
+    setPayuDialogOpen(true)
+    setPayuPreviewLoading(true)
+    setPayuPreviewError(null)
+    setPayuPreviews([])
+    try {
+      const result = await previewPayUPaymentsFromReportsAction(studentIdsToSend, payMonth, payYear, channel)
+      if (!result.success && result.errors?.length) {
+        setPayuPreviewError(result.errors.map((e: any) => `${e.studentId}: ${e.error}`).join('\n'))
+      }
+      setPayuPreviews(result.previews || [])
+    } catch (error) {
+      setPayuPreviewError(error instanceof Error ? error.message : 'Nie udało się wygenerować podglądu')
+    } finally {
+      setPayuPreviewLoading(false)
+    }
+  }
+
+  const handleSendPayu = async () => {
+    if (selectedIds.size === 0) return
+    const uniquePeriods = new Set(
+      selectedBillings.map((b) => `${b.billing_periods.month}-${b.billing_periods.year}`)
+    )
+    if (uniquePeriods.size > 1) {
+      toast.error('Wybierz rozliczenia z tego samego okresu, aby wysłać płatności PayU')
+      return
+    }
+
+    const first = selectedBillings[0]
+    const payMonth = first.billing_periods.month
+    const payYear = first.billing_periods.year
+    const studentIdsToSend = selectedBillings.map((b) => b.student_id)
+
+    setSendingPayu(true)
+    try {
+      const result = await sendPayUPaymentsFromReportsAction(studentIdsToSend, payMonth, payYear, channel)
+      if (result.success) {
+        toast.success(`Wysłano płatności PayU dla ${result.sent} ${result.sent === 1 ? 'ucznia' : 'uczniów'}`)
+        if (result.failed > 0) {
+          toast.warning(
+            `Nie udało się wysłać płatności dla ${result.failed} ${result.failed === 1 ? 'ucznia' : 'uczniów'}`
+          )
+        }
+        setSelectedIds(new Set())
+        setPayuDialogOpen(false)
+        router.refresh()
+      } else {
+        toast.error('Nie udało się wysłać płatności')
+      }
+    } catch (error) {
+      console.error('[handleSendPayu] Error:', error)
+      toast.error('Wystąpił błąd podczas wysyłania płatności')
+    } finally {
+      setSendingPayu(false)
+    }
+  }
+
   return (
     <div className="space-y-4">
       {/* Filters and Actions */}
@@ -404,6 +514,14 @@ export function BillingFromReportsTable({
           >
             <IconMail className="mr-2 h-4 w-4" />
             Wyślij przypomnienie {selectedIds.size > 0 && `(${selectedIds.size})`}
+          </Button>
+          <Button
+            onClick={handleOpenPayuDialog}
+            variant="default"
+            size="sm"
+            disabled={selectedIds.size === 0}
+          >
+            Wyślij płatność PayU {selectedIds.size > 0 && `(${selectedIds.size})`}
           </Button>
         </div>
         <div className="flex-shrink-0">
@@ -495,13 +613,12 @@ export function BillingFromReportsTable({
                   <SortIcon field="status" />
                 </button>
               </TableHead>
-              <TableHead className="text-right">Akcje</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {filteredBillings.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={12} className="text-center text-muted-foreground">
+                <TableCell colSpan={11} className="text-center text-muted-foreground">
                   {billings.length === 0 
                     ? 'Brak rozliczeń do wyświetlenia'
                     : 'Brak wyników wyszukiwania'}
@@ -624,50 +741,12 @@ export function BillingFromReportsTable({
                           {statusLabels[billing.status]}
                         </Badge>
                       </TableCell>
-                      <TableCell>
-                        <div className="flex items-center justify-end gap-2">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() =>
-                              handleSendReminder(
-                                billing.student_id,
-                                billing.billing_period_id
-                              )
-                            }
-                            title="Wyślij przypomnienie"
-                          >
-                            <IconMail className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleAddPayment(billing)}
-                            title="Dodaj płatność"
-                          >
-                            <IconPlus className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() =>
-                              handleViewDetails(
-                                billing.student_id,
-                                billing.billing_period_id
-                              )
-                            }
-                            title="Szczegóły"
-                          >
-                            <IconEye className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </TableCell>
                     </TableRow>
 
                     {hasTutorHours && tutorHoursExpanded && (
                       <TableRow>
                         <TableCell className="w-12" />
-                        <TableCell colSpan={11}>
+                        <TableCell colSpan={10}>
                           <div className="py-2" id={`${billing.id}--tutor-hours`}>
                             <div className="text-xs text-muted-foreground mb-2">
                               Godziny ucznia z podziałem na tutorów
@@ -784,6 +863,87 @@ export function BillingFromReportsTable({
         initialStudentId={paymentDialogStudentId}
         onSuccess={handlePaymentSuccess}
       />
+
+      {/* PayU Dialog */}
+      <Dialog open={payuDialogOpen} onOpenChange={setPayuDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Wyślij płatności PayU</DialogTitle>
+            <DialogDescription>
+              Poniżej widzisz dokładną treść wiadomości, która zostanie wysłana.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <div className="text-sm text-muted-foreground">
+              Wybrano <strong>{selectedIds.size}</strong> {selectedIds.size === 1 ? 'rozliczenie' : 'rozliczeń'} •
+              Łączna kwota: <strong>{selectedTotal.toFixed(2)} zł</strong>
+            </div>
+
+            {payuPreviewLoading ? (
+              <div className="text-sm text-muted-foreground">Generowanie podglądu...</div>
+            ) : payuPreviewError ? (
+              <div className="p-3 border border-destructive/50 bg-destructive/10 rounded-md">
+                <pre className="text-xs whitespace-pre-wrap text-destructive">{payuPreviewError}</pre>
+              </div>
+            ) : payuPreviews.length === 0 ? (
+              <div className="text-sm text-muted-foreground">Brak podglądu do wyświetlenia.</div>
+            ) : (
+              <div className="space-y-3 max-h-[420px] overflow-auto pr-2">
+                {payuPreviews.map((p) => (
+                  <div key={p.studentId} className="rounded-md border p-3 space-y-2">
+                    <div className="text-sm">
+                      <div className="font-medium">{p.studentName}</div>
+                      <div className="text-xs text-muted-foreground">
+                        Opiekun: {p.parentName}
+                        {p.toEmail ? ` • ${p.toEmail}` : ''}
+                        {p.toPhone ? ` • ${p.toPhone}` : ''}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        Kwota: {p.amount.toFixed(2)} zł • Okres: {p.month}/{p.year}
+                      </div>
+                    </div>
+
+                    {p.email && (
+                      <div className="space-y-2">
+                        <div className="text-xs font-medium">Email</div>
+                        <div className="text-xs text-muted-foreground">
+                          Temat: <span className="font-mono">{p.email.subject}</span>
+                        </div>
+                        <div className="rounded-md border overflow-hidden">
+                          <iframe
+                            title={`email-preview-${p.studentId}`}
+                            srcDoc={p.email.html}
+                            className="w-full h-[260px] bg-white"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {p.sms && (
+                      <div className="space-y-2">
+                        <div className="text-xs font-medium">SMS</div>
+                        <pre className="text-xs whitespace-pre-wrap rounded-md border p-2 bg-muted">
+                          {p.sms.body}
+                        </pre>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPayuDialogOpen(false)} disabled={sendingPayu}>
+              Anuluj
+            </Button>
+            <Button onClick={handleSendPayu} disabled={sendingPayu}>
+              {sendingPayu ? 'Wysyłanie...' : 'Wyślij płatności'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

@@ -245,11 +245,12 @@ export async function getPayments(
   for (const payment of payments || []) {
     const paymentData = payment as Payment
 
-    // Get primary parent
-    const { data: parentData } = await supabase
+    // Get parents (prefer primary with contact data, then any with contact, then first)
+    const { data: parentRows } = await supabase
       .from('student_parents')
       .select(
         `
+        is_primary,
         parents (
           id,
           first_name,
@@ -260,24 +261,45 @@ export async function getPayments(
       `
       )
       .eq('student_id', paymentData.student_id)
-      .eq('is_primary', true)
-      .single()
+      .order('is_primary', { ascending: false })
 
-    const parent = parentData?.parents
-      ? (Array.isArray(parentData.parents)
-          ? parentData.parents[0]
-          : parentData.parents)
-      : undefined
+    const parentsArray = (parentRows || [])
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .map((row: any) => {
+        const p = row?.parents
+          ? (Array.isArray(row.parents) ? row.parents[0] : row.parents)
+          : null
+        return {
+          is_primary: Boolean(row?.is_primary),
+          parent: p as {
+            id: string
+            first_name: string
+            last_name: string
+            email: string
+            phone: string | null
+          } | null,
+        }
+      })
+      .filter((x) => Boolean(x.parent))
+
+    const hasContact = (p: { email: string; phone: string | null }) =>
+      Boolean((p.email && p.email.trim()) || (p.phone && p.phone.trim()))
+
+    const primaryWithContact = parentsArray.find((x) => x.is_primary && x.parent && hasContact(x.parent))
+    const anyWithContact = parentsArray.find((x) => x.parent && hasContact(x.parent))
+    const firstAny = parentsArray[0]
+
+    const selected = (primaryWithContact || anyWithContact || firstAny)?.parent || undefined
 
     paymentsWithParents.push({
       ...paymentData,
-      parent: parent
+      parent: selected
         ? {
-            id: parent.id,
-            first_name: parent.first_name,
-            last_name: parent.last_name,
-            email: parent.email,
-            phone: parent.phone,
+            id: selected.id,
+            first_name: selected.first_name,
+            last_name: selected.last_name,
+            email: selected.email,
+            phone: selected.phone,
           }
         : undefined,
     })

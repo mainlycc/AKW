@@ -132,6 +132,8 @@ export function NotificationsList({
       case 'report_submitted':
       case 'report_reminder':
         return '/dashboard/raporty-tutorow'
+      case 'declaration_reminder':
+        return '/dashboard/moje-deklaracje'
       case 'report_approved':
       case 'report_paid':
         return '/dashboard/moje-raporty'
@@ -154,6 +156,7 @@ export function NotificationsList({
       report_approved: 'Raport',
       report_paid: 'Raport',
       report_reminder: 'Raport',
+      declaration_reminder: 'Deklaracja',
       session_created: 'Sesja',
       session_confirmation_required: 'Sesja',
     }

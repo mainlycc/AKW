@@ -177,3 +177,25 @@ export async function sendReportReminderSms(
     : { success: false, error: result.error, details: { sms: result.error } }
 }
 
+export interface DeclarationReminderSmsParams {
+  toPhone: string
+  tutorName: string
+  month: number
+  year: number
+}
+
+export async function sendDeclarationReminderSms(
+  params: DeclarationReminderSmsParams
+): Promise<SendNotificationResult> {
+  const client = getSmsClient()
+
+  const body = truncate(
+    `Akademia Wiedzy: przypomnienie o deklaracji za ${params.month}/${params.year}. Prosimy o złożenie deklaracji w panelu tutora.`
+  )
+
+  const result = await client.sendSms({ to: params.toPhone, body })
+  return result.success
+    ? { success: true }
+    : { success: false, error: result.error, details: { sms: result.error } }
+}
+

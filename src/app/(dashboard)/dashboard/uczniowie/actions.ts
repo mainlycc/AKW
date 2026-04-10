@@ -844,6 +844,302 @@ export async function unlinkParentFromStudentAction(
   revalidatePath('/dashboard/uczniowie')
 }
 
+export async function createParentAndLinkToStudentAction(
+  studentId: string,
+  parentData: {
+    first_name: string
+    last_name: string
+    email: string
+    phone: string
+    parent_type?: 'mother' | 'father' | 'legal_guardian' | 'other'
+  },
+  isPrimary: boolean = false
+): Promise<{ success: boolean; message?: string }> {
+  if (!studentId || typeof studentId !== 'string' || studentId.trim() === '') {
+    return { success: false, message: 'Nieprawidłowy ID ucznia' }
+  }
+  if (!parentData?.email || typeof parentData.email !== 'string' || parentData.email.trim() === '') {
+    return { success: false, message: 'Email rodzica jest wymagany' }
+  }
+
+  try {
+    const parent = await createParent({
+      first_name: (parentData.first_name || 'Rodzic').trim(),
+      last_name: (parentData.last_name || '').trim() || '—',
+      email: parentData.email.trim(),
+      phone: (parentData.phone || '').trim(),
+      parent_type: parentData.parent_type || 'other',
+    })
+
+    const linkResult = await linkParentToStudentAction(parent.id, studentId.trim(), Boolean(isPrimary))
+    if (!linkResult.success) {
+      return { success: false, message: linkResult.message || 'Nie udało się przypisać rodzica do ucznia' }
+    }
+
+    try {
+      revalidatePath('/dashboard/uczniowie')
+    } catch (e) {
+      console.error('[createParentAndLinkToStudentAction] revalidatePath error:', e)
+    }
+
+    return JSON.parse(JSON.stringify({ success: true }))
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error)
+    return JSON.parse(JSON.stringify({ success: false, message: msg || 'Nie udało się utworzyć i przypisać rodzica' }))
+  }
+}
+
+export async function getAllParentsForSelectAction(): Promise<
+  Array<{ id: string; first_name: string; last_name: string; email: string; phone: string | null; parent_type: string }>
+> {
+  const supabase = await createClient()
+  const { data, error } = await supabase.from('parents').select('id, first_name, last_name, email, phone, parent_type').order('last_name')
+  if (error) throw error
+  return (data || []) as Array<{ id: string; first_name: string; last_name: string; email: string; phone: string | null; parent_type: string }>
+}
+
+export async function getAllSubjectsWithLevelsAction(): Promise<
+  Array<{
+    id: string
+    name: string
+    color?: string | null
+    subject_levels: Array<{ id: string; level_name: string; level_order: number; price_per_hour: number }>
+  }>
+> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('subjects')
+    .select(
+      `
+        id,
+        name,
+        color,
+        subject_levels (
+          id,
+          level_name,
+          level_order,
+          price_per_hour
+        )
+      `
+    )
+    .order('name')
+
+  if (error) throw error
+  return (data || []) as Array<{
+    id: string
+    name: string
+    color?: string | null
+    subject_levels: Array<{ id: string; level_name: string; level_order: number; price_per_hour: number }>
+  }>
+}
+
+export async function mergeStudentsAction(
+  primaryStudentId: string,
+  duplicateStudentId: string
+): Promise<{ success: boolean; message?: string }> {
+  const profile = await getUserProfile()
+  if (!profile || profile.role !== 'admin') {
+    return { success: false, message: 'Brak uprawnień (tylko admin)' }
+  }
+
+  if (!primaryStudentId || !duplicateStudentId) {
+    return { success: false, message: 'Brakuje ID uczniów do scalenia' }
+  }
+  if (primaryStudentId === duplicateStudentId) {
+    return { success: false, message: 'Nie można scalić ucznia z samym sobą' }
+  }
+
+  const supabase = await createClient()
+
+  try {
+    // Ensure both students exist
+    const { data: students, error: studentsError } = await supabase
+      .from('students')
+      .select('id, first_name, last_name')
+      .in('id', [primaryStudentId, duplicateStudentId])
+
+    if (studentsError) throw studentsError
+    if (!students || students.length !== 2) {
+      return { success: false, message: 'Nie znaleziono obu uczniów w bazie' }
+    }
+
+    // 1) Link parents: insert missing relationships, then delete duplicate rows
+    const { data: dupParents } = await supabase
+      .from('student_parents')
+      .select('parent_id, is_primary')
+      .eq('student_id', duplicateStudentId)
+
+    if (dupParents && dupParents.length > 0) {
+      const upserts = dupParents.map((sp) => ({
+        student_id: primaryStudentId,
+        parent_id: sp.parent_id,
+        is_primary: Boolean(sp.is_primary),
+      }))
+      // Unique(student_id, parent_id)
+      await supabase
+        .from('student_parents')
+        .upsert(upserts, { onConflict: 'student_id,parent_id' })
+
+      await supabase
+        .from('student_parents')
+        .delete()
+        .eq('student_id', duplicateStudentId)
+    }
+
+    // 2) Subjects: insert missing, then delete duplicate rows
+    const { data: dupSubjects } = await supabase
+      .from('student_subjects')
+      .select('subject_id, subject_level_id')
+      .eq('student_id', duplicateStudentId)
+
+    if (dupSubjects && dupSubjects.length > 0) {
+      const upserts = dupSubjects.map((ss) => ({
+        student_id: primaryStudentId,
+        subject_id: ss.subject_id,
+        subject_level_id: ss.subject_level_id,
+      }))
+      // Unique(student_id, subject_level_id)
+      await supabase
+        .from('student_subjects')
+        .upsert(upserts, { onConflict: 'student_id,subject_level_id' })
+
+      await supabase
+        .from('student_subjects')
+        .delete()
+        .eq('student_id', duplicateStudentId)
+    }
+
+    // 3) Simple FK reassignments (no unique constraints)
+    const fkTables: Array<{ table: string; column?: string }> = [
+      { table: 'student_assignments' },
+      { table: 'tutoring_sessions' },
+      { table: 'student_notes' },
+      { table: 'monthly_report_entries' },
+      { table: 'payments' },
+      { table: 'payment_reminders' },
+      { table: 'monthly_declaration_entries' },
+      { table: 'public_booking_requests' }, // nullable in schema, but safe to update
+      { table: 'payu_payments' },
+    ]
+
+    for (const t of fkTables) {
+      const { error } = await supabase
+        .from(t.table)
+        .update({ student_id: primaryStudentId })
+        .eq('student_id', duplicateStudentId)
+      if (error) {
+        // Some installs might not have all tables; skip only if table missing
+        if (String(error.message || '').toLowerCase().includes('does not exist')) continue
+        throw error
+      }
+    }
+
+    // 4) Merge student_billings (unique per period)
+    const { data: dupBillings, error: dupBillingsError } = await supabase
+      .from('student_billings')
+      .select('id, billing_period_id, total_due, total_paid')
+      .eq('student_id', duplicateStudentId)
+    if (dupBillingsError) throw dupBillingsError
+
+    for (const b of dupBillings || []) {
+      const { data: primaryBilling } = await supabase
+        .from('student_billings')
+        .select('id, total_due, total_paid')
+        .eq('student_id', primaryStudentId)
+        .eq('billing_period_id', b.billing_period_id)
+        .maybeSingle()
+
+      if (!primaryBilling) {
+        const { error } = await supabase
+          .from('student_billings')
+          .update({ student_id: primaryStudentId })
+          .eq('id', b.id)
+        if (error) throw error
+      } else {
+        const totalDue = Number(primaryBilling.total_due || 0) + Number(b.total_due || 0)
+        const totalPaid = Number(primaryBilling.total_paid || 0) + Number(b.total_paid || 0)
+        const balance = totalDue - totalPaid
+        const status = balance <= 0 ? 'paid' : totalPaid > 0 ? 'partially_paid' : 'unpaid'
+
+        const { error: updErr } = await supabase
+          .from('student_billings')
+          .update({
+            total_due: totalDue,
+            total_paid: totalPaid,
+            balance,
+            status,
+          })
+          .eq('id', primaryBilling.id)
+        if (updErr) throw updErr
+
+        // delete duplicate billing row
+        const { error: delErr } = await supabase
+          .from('student_billings')
+          .delete()
+          .eq('id', b.id)
+        if (delErr) throw delErr
+      }
+    }
+
+    // 5) Merge declaration_billings (unique per period)
+    const { data: dupDeclBillings, error: dupDeclErr } = await supabase
+      .from('declaration_billings')
+      .select('id, billing_period_id, declaration_hours')
+      .eq('student_id', duplicateStudentId)
+    if (dupDeclErr) throw dupDeclErr
+
+    for (const db of dupDeclBillings || []) {
+      const { data: primaryDb } = await supabase
+        .from('declaration_billings')
+        .select('id, declaration_hours')
+        .eq('student_id', primaryStudentId)
+        .eq('billing_period_id', db.billing_period_id)
+        .maybeSingle()
+
+      if (!primaryDb) {
+        const { error } = await supabase
+          .from('declaration_billings')
+          .update({ student_id: primaryStudentId })
+          .eq('id', db.id)
+        if (error) throw error
+      } else {
+        const hours = Number(primaryDb.declaration_hours || 0) + Number(db.declaration_hours || 0)
+        const { error: updErr } = await supabase
+          .from('declaration_billings')
+          .update({ declaration_hours: hours })
+          .eq('id', primaryDb.id)
+        if (updErr) throw updErr
+
+        const { error: delErr } = await supabase
+          .from('declaration_billings')
+          .delete()
+          .eq('id', db.id)
+        if (delErr) throw delErr
+      }
+    }
+
+    // 6) Finally delete duplicate student
+    const { error: deleteErr } = await supabase
+      .from('students')
+      .delete()
+      .eq('id', duplicateStudentId)
+    if (deleteErr) throw deleteErr
+
+    revalidatePath('/dashboard/uczniowie')
+    revalidatePath('/dashboard/payments')
+    revalidatePath('/dashboard/billing')
+    revalidatePath('/dashboard/rozliczenia-deklaracji')
+
+    return { success: true }
+  } catch (error) {
+    console.error('[mergeStudentsAction] Error:', error)
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : String(error),
+    }
+  }
+}
+
 /**
  * Get full student data with all relations
  */

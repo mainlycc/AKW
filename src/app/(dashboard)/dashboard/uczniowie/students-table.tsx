@@ -17,7 +17,7 @@ import { SubjectBadge } from "@/components/subject-badge"
 import { StudentDialog } from "./student-dialog"
 import { GroupMessageDialog } from "./group-message-dialog"
 import { TutorGroupMessageDialog } from "./tutor-group-message-dialog"
-import { deleteStudent } from "./actions"
+import { deleteStudent, mergeStudentsAction } from "./actions"
 import { IconPlus, IconTrash, IconMail, IconArrowUp, IconArrowDown, IconArrowsSort } from "@tabler/icons-react"
 import { Input } from "@/components/ui/input"
 import { ConfirmDialog } from "@/components/confirm-dialog"
@@ -30,6 +30,15 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { toast } from "sonner"
 
 interface StudentParent {
   id: string
@@ -115,8 +124,11 @@ export function StudentsTable({
   const [groupMessageDialogOpen, setGroupMessageDialogOpen] = useState(false)
   const [tutorGroupMessageDialogOpen, setTutorGroupMessageDialogOpen] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
-  const [sortBy, setSortBy] = useState<'subjects' | 'tutors' | null>(null)
+  const [sortBy, setSortBy] = useState<'name' | 'subjects' | 'tutors' | null>(null)
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
+  const [mergeDialogOpen, setMergeDialogOpen] = useState(false)
+  const [mergePrimaryId, setMergePrimaryId] = useState<string>('')
+  const [merging, setMerging] = useState(false)
 
   const filteredStudents = students.filter(
     (student) =>
@@ -126,6 +138,12 @@ export function StudentsTable({
 
   // Sortowanie po przedmiotach lub tutorach
   const sortedStudents = [...filteredStudents].sort((a, b) => {
+    if (sortBy === 'name') {
+      const nameA = `${a.last_name} ${a.first_name}`.toLowerCase()
+      const nameB = `${b.last_name} ${b.first_name}`.toLowerCase()
+      const comparison = nameA.localeCompare(nameB, 'pl', { sensitivity: 'base' })
+      return sortDirection === 'asc' ? comparison : -comparison
+    }
     if (sortBy === 'subjects') {
       const aSubjects = (a.student_subjects || [])
         .map(ss => ss.subjects?.name || '')
@@ -172,6 +190,16 @@ export function StudentsTable({
     
     return 0
   })
+  const handleSortByName = () => {
+    if (sortBy === 'name') {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortBy('name')
+      setSortDirection('asc')
+    }
+    setCurrentPage(1)
+  }
+
 
   // Paginacja
   const totalPages = Math.ceil(sortedStudents.length / ITEMS_PER_PAGE)
@@ -233,6 +261,44 @@ export function StudentsTable({
       }
     })
     setConfirmDialogOpen(true)
+  }
+
+  const handleOpenMerge = () => {
+    if (isTutor) return
+    if (selectedIds.size !== 2) {
+      toast.error('Zaznacz dokładnie 2 rekordy uczniów do scalenia')
+      return
+    }
+    const ids = Array.from(selectedIds)
+    setMergePrimaryId(ids[0] || '')
+    setMergeDialogOpen(true)
+  }
+
+  const handleConfirmMerge = async () => {
+    if (selectedIds.size !== 2) return
+    const ids = Array.from(selectedIds)
+    const primary = mergePrimaryId || ids[0]
+    const duplicate = ids.find(id => id !== primary)
+    if (!primary || !duplicate) {
+      toast.error('Nieprawidłowy wybór uczniów do scalenia')
+      return
+    }
+    setMerging(true)
+    try {
+      const res = await mergeStudentsAction(primary, duplicate)
+      if (!res?.success) {
+        toast.error(res?.message || 'Nie udało się scalić uczniów')
+        return
+      }
+      toast.success('Uczniowie zostali scaleni')
+      setMergeDialogOpen(false)
+      setSelectedIds(new Set())
+      window.location.reload()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Nie udało się scalić uczniów')
+    } finally {
+      setMerging(false)
+    }
   }
 
   // Przy zamykaniu NIE czyścimy od razu `editingStudent`, żeby zawartość dialogu
@@ -323,6 +389,15 @@ export function StudentsTable({
                   <span className="sm:hidden">Wiadomość</span>
                   {selectedIds.size > 0 && ` (${selectedIds.size})`}
                 </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={handleOpenMerge}
+                  disabled={selectedIds.size !== 2}
+                  className="flex-1 sm:flex-initial"
+                >
+                  Scal uczniów {selectedIds.size === 2 ? '(2)' : ''}
+                </Button>
                 <Button 
                   variant="destructive" 
                   size="sm"
@@ -361,7 +436,30 @@ export function StudentsTable({
                   onCheckedChange={toggleSelectAll}
                 />
               </TableHead>
-              <TableHead>Imię i nazwisko</TableHead>
+              <TableHead>
+                {!isTutor ? (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleSortByName()
+                    }}
+                    className="flex items-center gap-1 hover:text-foreground transition-colors"
+                  >
+                    Imię i nazwisko
+                    {sortBy === 'name' ? (
+                      sortDirection === 'asc' ? (
+                        <IconArrowUp className="h-4 w-4" />
+                      ) : (
+                        <IconArrowDown className="h-4 w-4" />
+                      )
+                    ) : (
+                      <IconArrowsSort className="h-4 w-4 opacity-50" />
+                    )}
+                  </button>
+                ) : (
+                  'Imię i nazwisko'
+                )}
+              </TableHead>
               {!isTutor && <TableHead className="whitespace-nowrap">Stawka</TableHead>}
               <TableHead>Rodzice</TableHead>
               <TableHead>
@@ -630,6 +728,67 @@ export function StudentsTable({
         confirmText="Usuń"
         cancelText="Anuluj"
       />
+
+      <Dialog open={mergeDialogOpen} onOpenChange={setMergeDialogOpen}>
+        <DialogContent className="w-[95vw] sm:max-w-[520px]">
+          <DialogHeader>
+            <DialogTitle>Scal uczniów</DialogTitle>
+            <DialogDescription>
+              Zaznaczone rekordy zostaną scalone w jeden. Wszystkie lekcje, płatności i historia z duplikatu zostaną przypisane do wybranego ucznia docelowego.
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedIds.size === 2 ? (
+            (() => {
+              const ids = Array.from(selectedIds)
+              const s1 = students.find(s => s.id === ids[0])
+              const s2 = students.find(s => s.id === ids[1])
+              const opt1 = s1 ? `${s1.first_name} ${s1.last_name}` : ids[0]
+              const opt2 = s2 ? `${s2.first_name} ${s2.last_name}` : ids[1]
+              return (
+                <div className="space-y-3">
+                  <div className="text-sm font-medium">Który rekord ma zostać jako docelowy?</div>
+                  <div className="space-y-2">
+                    <label className="flex items-center gap-2 text-sm">
+                      <input
+                        type="radio"
+                        name="mergePrimary"
+                        value={ids[0]}
+                        checked={mergePrimaryId === ids[0]}
+                        onChange={() => setMergePrimaryId(ids[0])}
+                      />
+                      <span>{opt1}</span>
+                    </label>
+                    <label className="flex items-center gap-2 text-sm">
+                      <input
+                        type="radio"
+                        name="mergePrimary"
+                        value={ids[1]}
+                        checked={mergePrimaryId === ids[1]}
+                        onChange={() => setMergePrimaryId(ids[1])}
+                      />
+                      <span>{opt2}</span>
+                    </label>
+                  </div>
+                </div>
+              )
+            })()
+          ) : (
+            <div className="text-sm text-muted-foreground">
+              Zaznacz dokładnie 2 uczniów w tabeli.
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setMergeDialogOpen(false)} disabled={merging}>
+              Anuluj
+            </Button>
+            <Button onClick={handleConfirmMerge} disabled={merging || selectedIds.size !== 2 || !mergePrimaryId}>
+              {merging ? 'Scalanie...' : 'Scal'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {isTutor && tutorId ? (
         <TutorGroupMessageDialog

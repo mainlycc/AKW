@@ -24,6 +24,10 @@ export async function createOrUpdateDeclaration(
   declarationId?: string
 ) {
   const supabase = await createClient()
+  const nowIso = new Date().toISOString()
+  const effectiveStatus: DeclarationStatus = status === 'submitted' ? 'approved' : status
+  const submittedAt = status === 'submitted' ? nowIso : null
+  const approvedAt = status === 'submitted' ? nowIso : null
 
   // Jeśli edytujemy konkretną deklarację po ID (z możliwością zmiany miesiąca/roku)
   if (declarationId) {
@@ -59,8 +63,10 @@ export async function createOrUpdateDeclaration(
       .update({
         month,
         year,
-        status,
-        submitted_at: status === 'submitted' ? new Date().toISOString() : null,
+        status: effectiveStatus,
+        submitted_at: submittedAt,
+        approved_at: approvedAt,
+        approved_by: null,
       })
       .eq('id', declarationId)
 
@@ -110,8 +116,10 @@ export async function createOrUpdateDeclaration(
     await supabase
       .from('monthly_declarations')
       .update({
-        status,
-        submitted_at: status === 'submitted' ? new Date().toISOString() : null,
+        status: effectiveStatus,
+        submitted_at: submittedAt,
+        approved_at: approvedAt,
+        approved_by: null,
       })
       .eq('id', existing.id)
 
@@ -145,8 +153,10 @@ export async function createOrUpdateDeclaration(
         tutor_id: tutorId,
         month,
         year,
-        status,
-        submitted_at: status === 'submitted' ? new Date().toISOString() : null,
+        status: effectiveStatus,
+        submitted_at: submittedAt,
+        approved_at: approvedAt,
+        approved_by: null,
       })
       .select()
       .single()

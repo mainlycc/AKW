@@ -29,6 +29,32 @@ export interface SendPayUPaymentsResult {
   errors: Array<{ studentId: string; error: string }>
 }
 
+export type PayUPaymentLinkPreview = {
+  studentId: string
+  studentName: string
+  parentName: string
+  toEmail: string | null
+  toPhone: string | null
+  month: number
+  year: number
+  amount: number
+  paymentUrl: string
+  email?: {
+    subject: string
+    html: string
+  }
+  sms?: {
+    body: string
+  }
+}
+
+export interface PreviewPayUPaymentsResult {
+  success: boolean
+  previews: PayUPaymentLinkPreview[]
+  failed: number
+  errors: Array<{ studentId: string; error: string }>
+}
+
 /**
  * Create PayU order for a student billing
  */
@@ -40,7 +66,10 @@ export async function createPayUOrder(
   parentName: string,
   studentName: string,
   month: number,
-  year: number
+  year: number,
+  options?: {
+    continueUrlOverride?: string
+  }
 ): Promise<CreatePayUOrderResult> {
   try {
     const profile = await getUserProfile()
@@ -88,7 +117,9 @@ export async function createPayUOrder(
     // Normalize to avoid double slashes when NEXT_PUBLIC_APP_URL ends with "/"
     const baseUrlRaw = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
     const baseUrl = baseUrlRaw.replace(/\/+$/, '')
-    const continueUrl = `${baseUrl}/dashboard/rozliczenia-deklaracji?month=${month}&year=${year}`
+    const continueUrl =
+      options?.continueUrlOverride ||
+      `${baseUrl}/dashboard/rozliczenia-deklaracji?month=${month}&year=${year}`
     const notifyUrl = `${baseUrl}/api/payu/webhook`
 
     // Month names for description
@@ -183,6 +214,240 @@ export async function createPayUOrder(
       error: error instanceof Error ? error.message : 'Nieznany błąd',
     }
   }
+}
+
+function truncateSms(body: string): string {
+  const MAX_SMS_LENGTH = 320
+  if (body.length <= MAX_SMS_LENGTH) return body
+  return `${body.slice(0, MAX_SMS_LENGTH - 3)}...`
+}
+
+function buildPaymentLinkEmailSubject(studentName: string, month: number, year: number): string {
+  const monthNames = [
+    'Styczeń', 'Luty', 'Marzec', 'Kwiecień', 'Maj', 'Czerwiec',
+    'Lipiec', 'Sierpień', 'Wrzesień', 'Październik', 'Listopad', 'Grudzień'
+  ]
+  const monthName = monthNames[month - 1] || `Miesiąc ${month}`
+  return `Płatność za korepetycje - ${studentName} - ${monthName} ${year} - Akademia Wiedzy`
+}
+
+function buildPaymentLinkSmsBody(params: {
+  studentName: string
+  amount: number
+  month: number
+  year: number
+  paymentUrl: string
+}): string {
+  const formattedAmount = params.amount.toFixed(2)
+  return truncateSms(
+    `Akademia Wiedzy: płatność za ${params.studentName}, kwota ${formattedAmount} zł za ${params.month}/${params.year}. Link: ${params.paymentUrl}`
+  )
+}
+
+async function buildPayUPaymentLinkPreviews(params: {
+  studentIds: string[]
+  month: number
+  year: number
+  channel: NotificationChannel
+  context: 'declarations' | 'reports'
+}): Promise<PreviewPayUPaymentsResult> {
+  const { studentIds, month, year, channel, context } = params
+
+  const profile = await getUserProfile()
+  if (!profile || profile.role !== 'admin') {
+    return {
+      success: false,
+      previews: [],
+      failed: studentIds.length,
+      errors: studentIds.map((id) => ({ studentId: id, error: 'Brak uprawnień' })),
+    }
+  }
+
+  const supabase = await createClient()
+
+  // Get billing period
+  const { data: period, error: periodError } = await supabase
+    .from('billing_periods')
+    .select('id')
+    .eq('month', month)
+    .eq('year', year)
+    .single()
+
+  if (periodError || !period) {
+    return {
+      success: false,
+      previews: [],
+      failed: studentIds.length,
+      errors: studentIds.map((id) => ({
+        studentId: id,
+        error: 'Okres rozliczeniowy nie został znaleziony',
+      })),
+    }
+  }
+
+  const billingPeriodId = period.id
+
+  // Fetch billings depending on context
+  let billings: StudentBillingWithParent[] = []
+  try {
+    if (context === 'declarations') {
+      const { getStudentBillingsFromDeclarations } = await import('@/lib/actions/billing')
+      billings = await getStudentBillingsFromDeclarations(month, year)
+    } else {
+      const { getStudentBillingsFromReports } = await import('@/lib/actions/billing')
+      billings = await getStudentBillingsFromReports(month, year)
+    }
+    billings = billings.filter((b) => studentIds.includes(b.student_id))
+  } catch (error) {
+    return {
+      success: false,
+      previews: [],
+      failed: studentIds.length,
+      errors: studentIds.map((id) => ({
+        studentId: id,
+        error: error instanceof Error ? error.message : 'Błąd podczas pobierania danych',
+      })),
+    }
+  }
+
+  const parentMap = new Map<string, { email: string | null; phone: string | null; name: string }>()
+  for (const billing of billings) {
+    if (billing.parent && !parentMap.has(billing.student_id)) {
+      parentMap.set(billing.student_id, {
+        email: billing.parent.email || null,
+        phone: billing.parent.phone || null,
+        name: `${billing.parent.first_name} ${billing.parent.last_name}`,
+      })
+    }
+  }
+
+  const baseUrlRaw = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+  const baseUrl = baseUrlRaw.replace(/\/+$/, '')
+  const continueUrlOverride =
+    context === 'declarations'
+      ? `${baseUrl}/dashboard/rozliczenia-deklaracji?month=${month}&year=${year}`
+      : `${baseUrl}/dashboard/billing-from-reports`
+
+  const previews: PayUPaymentLinkPreview[] = []
+  const errors: Array<{ studentId: string; error: string }> = []
+
+  const { generatePaymentLinkEmail } = await import('@/lib/email/templates/payment-link-email')
+
+  for (const billing of billings) {
+    const studentId = billing.student_id
+    const student = billing.students
+    if (!student) {
+      errors.push({ studentId, error: 'Uczeń nie został znaleziony' })
+      continue
+    }
+
+    const parent = parentMap.get(studentId)
+    if (!parent || (!parent.email && !parent.phone)) {
+      errors.push({ studentId, error: 'Brak danych kontaktowych rodzica (email/telefon)' })
+      continue
+    }
+
+    const amount = parseFloat(
+      (billing.balance && billing.balance > 0 ? billing.balance : billing.total_due || 0).toString()
+    )
+    if (amount <= 0) {
+      errors.push({ studentId, error: 'Kwota do zapłaty wynosi 0' })
+      continue
+    }
+
+    const studentName = `${student.first_name} ${student.last_name}`
+
+    const orderResult = await createPayUOrder(
+      studentId,
+      billingPeriodId,
+      amount,
+      parent.email || '',
+      parent.name,
+      studentName,
+      month,
+      year,
+      { continueUrlOverride }
+    )
+
+    if (!orderResult.success || !orderResult.redirectUrl) {
+      errors.push({
+        studentId,
+        error: orderResult.error || 'Nie udało się utworzyć zamówienia',
+      })
+      continue
+    }
+
+    const paymentUrl = orderResult.redirectUrl
+
+    const preview: PayUPaymentLinkPreview = {
+      studentId,
+      studentName,
+      parentName: parent.name,
+      toEmail: parent.email,
+      toPhone: parent.phone,
+      month,
+      year,
+      amount,
+      paymentUrl,
+    }
+
+    if (channel === 'email' || channel === 'both') {
+      const subject = buildPaymentLinkEmailSubject(studentName, month, year)
+      const html = generatePaymentLinkEmail({
+        parentName: parent.name,
+        studentName,
+        amount,
+        month,
+        year,
+        paymentUrl,
+      })
+      preview.email = { subject, html }
+    }
+
+    if (channel === 'sms' || channel === 'both') {
+      const body = buildPaymentLinkSmsBody({ studentName, amount, month, year, paymentUrl })
+      preview.sms = { body }
+    }
+
+    previews.push(preview)
+  }
+
+  return {
+    success: errors.length === 0,
+    previews,
+    failed: errors.length,
+    errors,
+  }
+}
+
+export async function previewPayUPaymentsFromDeclarations(
+  studentIds: string[],
+  month: number,
+  year: number,
+  channel: NotificationChannel = 'email'
+): Promise<PreviewPayUPaymentsResult> {
+  return await buildPayUPaymentLinkPreviews({
+    studentIds,
+    month,
+    year,
+    channel,
+    context: 'declarations',
+  })
+}
+
+export async function previewPayUPaymentsFromReports(
+  studentIds: string[],
+  month: number,
+  year: number,
+  channel: NotificationChannel = 'email'
+): Promise<PreviewPayUPaymentsResult> {
+  return await buildPayUPaymentLinkPreviews({
+    studentIds,
+    month,
+    year,
+    channel,
+    context: 'reports',
+  })
 }
 
 /**
@@ -501,7 +766,14 @@ export async function sendPayUPayments(
         parent.name,
         studentName,
         month,
-        year
+        year,
+        {
+          continueUrlOverride: (() => {
+            const baseUrlRaw = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+            const baseUrl = baseUrlRaw.replace(/\/+$/, '')
+            return `${baseUrl}/dashboard/rozliczenia-deklaracji?month=${month}&year=${year}`
+          })(),
+        }
       )
 
       if (!orderResult.success || !orderResult.redirectUrl) {
@@ -571,6 +843,205 @@ export async function sendPayUPayments(
       sent: 0,
       failed: studentIds.length,
       errors: studentIds.map(id => ({
+        studentId: id,
+        error: error instanceof Error ? error.message : 'Nieznany błąd',
+      })),
+    }
+  }
+}
+
+/**
+ * Send PayU payment links to multiple students based on tutor reports (billing-from-reports).
+ */
+export async function sendPayUPaymentsFromReports(
+  studentIds: string[],
+  month: number,
+  year: number,
+  channel: NotificationChannel = 'email'
+): Promise<SendPayUPaymentsResult> {
+  try {
+    const profile = await getUserProfile()
+    if (!profile || profile.role !== 'admin') {
+      return {
+        success: false,
+        sent: 0,
+        failed: studentIds.length,
+        errors: studentIds.map((id) => ({ studentId: id, error: 'Brak uprawnień' })),
+      }
+    }
+
+    const supabase = await createClient()
+
+    // Get billing period
+    const { data: period, error: periodError } = await supabase
+      .from('billing_periods')
+      .select('id')
+      .eq('month', month)
+      .eq('year', year)
+      .single()
+
+    if (periodError || !period) {
+      return {
+        success: false,
+        sent: 0,
+        failed: studentIds.length,
+        errors: studentIds.map((id) => ({
+          studentId: id,
+          error: 'Okres rozliczeniowy nie został znaleziony',
+        })),
+      }
+    }
+
+    const billingPeriodId = period.id
+
+    const { getStudentBillingsFromReports } = await import('@/lib/actions/billing')
+    let billings: StudentBillingWithParent[] = []
+    try {
+      billings = await getStudentBillingsFromReports(month, year)
+      billings = billings.filter((b) => studentIds.includes(b.student_id))
+    } catch (error) {
+      console.error('Error fetching billings from reports:', error)
+      return {
+        success: false,
+        sent: 0,
+        failed: studentIds.length,
+        errors: studentIds.map((id) => ({
+          studentId: id,
+          error: error instanceof Error ? error.message : 'Błąd podczas pobierania danych',
+        })),
+      }
+    }
+
+    const parentMap = new Map<string, { email: string | null; phone: string | null; name: string }>()
+    for (const billing of billings) {
+      if (billing.parent && !parentMap.has(billing.student_id)) {
+        parentMap.set(billing.student_id, {
+          email: billing.parent.email || null,
+          phone: billing.parent.phone || null,
+          name: `${billing.parent.first_name} ${billing.parent.last_name}`,
+        })
+      }
+    }
+
+    const baseUrlRaw = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+    const baseUrl = baseUrlRaw.replace(/\/+$/, '')
+    const continueUrlOverride = `${baseUrl}/dashboard/billing-from-reports`
+
+    const results: SendPayUPaymentsResult = {
+      success: true,
+      sent: 0,
+      failed: 0,
+      errors: [],
+    }
+
+    for (const billing of billings || []) {
+      const studentId = billing.student_id
+      const student = billing.students
+
+      if (!student) {
+        results.failed++
+        results.errors.push({ studentId, error: 'Uczeń nie został znaleziony' })
+        continue
+      }
+
+      const parent = parentMap.get(studentId)
+      if (!parent || (!parent.email && !parent.phone)) {
+        results.failed++
+        results.errors.push({
+          studentId,
+          error: 'Brak danych kontaktowych rodzica (email/telefon)',
+        })
+        continue
+      }
+
+      const amount = parseFloat(
+        (billing.balance && billing.balance > 0 ? billing.balance : billing.total_due || 0).toString()
+      )
+      if (amount <= 0) {
+        results.failed++
+        results.errors.push({ studentId, error: 'Kwota do zapłaty wynosi 0' })
+        continue
+      }
+
+      const studentName = `${student.first_name} ${student.last_name}`
+
+      const orderResult = await createPayUOrder(
+        studentId,
+        billingPeriodId,
+        amount,
+        parent.email || '',
+        parent.name,
+        studentName,
+        month,
+        year,
+        { continueUrlOverride }
+      )
+
+      if (!orderResult.success || !orderResult.redirectUrl) {
+        results.failed++
+        results.errors.push({
+          studentId,
+          error: orderResult.error || 'Nie udało się utworzyć zamówienia',
+        })
+        continue
+      }
+
+      const redirectUrl = orderResult.redirectUrl
+      const { sendPaymentLinkEmail } = await import('@/lib/email/send')
+      const notificationResult = await sendWithChannel(channel, {
+        sendEmail:
+          parent.email && (channel === 'email' || channel === 'both')
+            ? () =>
+                sendPaymentLinkEmail({
+                  to: parent.email as string,
+                  parentName: parent.name,
+                  studentName: studentName,
+                  amount: amount,
+                  month: month,
+                  year: year,
+                  paymentUrl: redirectUrl,
+                })
+            : undefined,
+        sendSms:
+          parent.phone && (channel === 'sms' || channel === 'both')
+            ? () =>
+                sendPaymentLinkSms({
+                  toPhone: parent.phone as string,
+                  parentName: parent.name,
+                  studentName: studentName,
+                  amount: amount,
+                  month: month,
+                  year: year,
+                  paymentUrl: redirectUrl,
+                })
+            : undefined,
+      })
+
+      if (notificationResult.success) {
+        results.sent++
+      } else {
+        results.failed++
+        results.errors.push({
+          studentId,
+          error:
+            notificationResult.error ||
+            notificationResult.details?.email ||
+            notificationResult.details?.sms ||
+            'Zamówienie utworzone, ale powiadomienie nie zostało wysłane',
+        })
+      }
+    }
+
+    results.success = results.failed === 0
+    revalidatePath('/dashboard/billing-from-reports')
+    return results
+  } catch (error) {
+    console.error('Error sending PayU payments from reports:', error)
+    return {
+      success: false,
+      sent: 0,
+      failed: studentIds.length,
+      errors: studentIds.map((id) => ({
         studentId: id,
         error: error instanceof Error ? error.message : 'Nieznany błąd',
       })),

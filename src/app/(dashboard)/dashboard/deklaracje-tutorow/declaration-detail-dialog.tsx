@@ -8,7 +8,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
 import {
   Table,
   TableBody,
@@ -17,10 +16,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { approveDeclaration } from "./actions"
-import { toast } from "sonner"
-import { useState } from "react"
-import { useRouter } from "next/navigation"
 import { formatHours } from "@/lib/utils"
 
 interface DeclarationEntry {
@@ -55,39 +50,15 @@ interface DeclarationDetailDialogProps {
   adminId: string
 }
 
-const statusLabels: Record<string, string> = {
-  draft: 'Roboczy',
-  submitted: 'Złożony',
-  approved: 'Zatwierdzony',
-}
-
 const months = ['Styczeń', 'Luty', 'Marzec', 'Kwiecień', 'Maj', 'Czerwiec', 'Lipiec', 'Sierpień', 'Wrzesień', 'Październik', 'Listopad', 'Grudzień']
 
 export function DeclarationDetailDialog({ 
   open, 
   onClose, 
   declaration, 
-  adminId 
+  adminId: _adminId 
 }: DeclarationDetailDialogProps) {
-  const router = useRouter()
-  const [loading, setLoading] = useState(false)
-
   if (!declaration) return null
-
-  const handleApprove = async () => {
-    setLoading(true)
-    try {
-      await approveDeclaration(declaration.id, adminId)
-      toast.success('Deklaracja zatwierdzona')
-      router.refresh()
-      onClose()
-    } catch (error) {
-      console.error('Error approving declaration:', error)
-      toast.error('Błąd podczas zatwierdzania deklaracji')
-    } finally {
-      setLoading(false)
-    }
-  }
 
   const totalHours = declaration.monthly_declaration_entries.reduce(
     (sum, e) => sum + (e.duration_minutes / 60), 
@@ -117,10 +88,6 @@ export function DeclarationDetailDialog({
         <div className="space-y-6">
           {/* Summary */}
           <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1">
-              <p className="text-sm text-muted-foreground">Status</p>
-              <Badge>{statusLabels[declaration.status]}</Badge>
-            </div>
             <div className="space-y-1">
               <p className="text-sm text-muted-foreground">Liczba lekcji</p>
               <p className="text-lg font-semibold">{declaration.monthly_declaration_entries.length}</p>
@@ -179,15 +146,6 @@ export function DeclarationDetailDialog({
               )
             })}
           </div>
-
-          {/* Approve button */}
-          {declaration.status === 'submitted' && (
-            <div className="flex justify-end">
-              <Button onClick={handleApprove} disabled={loading}>
-                {loading ? 'Zatwierdzanie...' : 'Zatwierdź deklarację'}
-              </Button>
-            </div>
-          )}
         </div>
       </DialogContent>
     </Dialog>

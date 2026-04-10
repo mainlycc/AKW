@@ -29,7 +29,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
 import { Student } from "@/lib/types/database.types"
-import { createStudent, updateStudent, deleteStudent, createStudentWithAssignment, updateStudentSubjects } from "./actions"
+import { createStudent, updateStudent, deleteStudent, createStudentWithAssignment, updateStudentSubjects, createParentAndLinkToStudentAction } from "./actions"
 import { createStudentNote } from "@/lib/actions/student-notes"
 import { linkParentToStudentAction, unlinkParentFromStudentAction } from "./actions"
 import { IconTrash, IconPlus, IconChevronDown } from "@tabler/icons-react"
@@ -558,6 +558,47 @@ export function StudentDialog({
       }
       
       alert(`Błąd podczas przypisywania rodzica: ${errorMessage}`)
+    }
+  }
+
+  const handleCreateAndAddParent = async () => {
+    if (!student) return
+
+    const email = parentData.email?.trim()
+    if (!email) {
+      alert('Email rodzica jest wymagany')
+      return
+    }
+
+    try {
+      setLoading(true)
+      const result = await createParentAndLinkToStudentAction(
+        student.id,
+        {
+          first_name: parentData.first_name,
+          last_name: parentData.last_name || formData.last_name,
+          email,
+          phone: parentData.phone || '',
+          parent_type: 'other',
+        },
+        false
+      )
+
+      if (!result?.success) {
+        alert(`Błąd podczas tworzenia/przypisywania rodzica: ${result?.message || 'Nieznany błąd'}`)
+        return
+      }
+
+      setParentData({ first_name: '', last_name: '', email: '', phone: '' })
+      setSelectedParentId('')
+      setAddParentOpen(false)
+      onClose()
+      router.refresh()
+    } catch (error) {
+      console.error('Error creating/linking parent:', error)
+      alert(`Błąd podczas tworzenia/przypisywania rodzica: ${error instanceof Error ? error.message : String(error)}`)
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -1204,6 +1245,16 @@ export function StudentDialog({
                           />
                         </div>
                       </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="h-9 w-full"
+                        onClick={handleCreateAndAddParent}
+                        disabled={loading || deleting || !parentData.email.trim()}
+                      >
+                        <IconPlus className="mr-1 h-3.5 w-3.5" />
+                        Utwórz i przypisz
+                      </Button>
                     </div>
 
                     {availableParents.length > 0 && (

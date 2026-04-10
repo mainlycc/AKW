@@ -23,7 +23,6 @@ import { PaymentDialog } from './payment-dialog'
 import { exportPaymentsToCSV, type PaymentFilters } from '@/lib/actions/payments'
 import { toast } from 'sonner'
 import type { PaymentWithParent } from '@/lib/actions/payments'
-import Link from 'next/link'
 import {
   Pagination,
   PaginationContent,
@@ -37,7 +36,18 @@ import { StudentNameLink } from '@/components/student-name-link'
 
 interface PaymentsTableProps {
   payments: PaymentWithParent[]
-  students: { id: string; first_name: string; last_name: string }[]
+  students: {
+    id: string
+    first_name: string
+    last_name: string
+    parent?: {
+      id: string
+      first_name: string
+      last_name: string
+      email: string
+      phone: string | null
+    }
+  }[]
   parents: { id: string; first_name: string; last_name: string }[]
 }
 
@@ -106,6 +116,7 @@ export function PaymentsTable({
 }: PaymentsTableProps) {
   const [editingPayment, setEditingPayment] =
     useState<PaymentWithParent | null>(null)
+  const [creatingPayment, setCreatingPayment] = useState(false)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
   const [studentFilter, setStudentFilter] = useState<string>('all')
@@ -197,6 +208,13 @@ export function PaymentsTable({
 
   const handleEdit = (payment: PaymentWithParent) => {
     setEditingPayment(payment)
+    setCreatingPayment(false)
+    setDialogOpen(true)
+  }
+
+  const handleCreate = () => {
+    setEditingPayment(null)
+    setCreatingPayment(true)
     setDialogOpen(true)
   }
 
@@ -308,11 +326,9 @@ export function PaymentsTable({
           </div>
         </div>
         <div className="flex gap-2">
-          <Button asChild>
-            <Link href="/dashboard/payments/new">
-              <IconPlus className="h-4 w-4 mr-2" />
-              Dodaj płatność
-            </Link>
+          <Button onClick={handleCreate}>
+            <IconPlus className="h-4 w-4 mr-2" />
+            Dodaj płatność
           </Button>
           <Button onClick={handleExport} variant="outline">
             <IconDownload className="h-4 w-4 mr-2" />
@@ -479,7 +495,8 @@ export function PaymentsTable({
       <PaymentDialog
         open={dialogOpen}
         onClose={handleDialogClose}
-        payment={editingPayment}
+        payment={creatingPayment ? null : editingPayment}
+        students={students}
         onSuccess={() => {
           window.location.reload()
         }}

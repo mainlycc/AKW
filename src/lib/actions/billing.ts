@@ -1827,6 +1827,14 @@ export async function getStudentBillingsFromDeclarations(
         id,
         student_id,
         duration_minutes,
+        student_assignments (
+          subjects (
+            name
+          ),
+          subject_levels (
+            level_name
+          )
+        ),
         students (
           id,
           first_name,
@@ -1851,6 +1859,7 @@ export async function getStudentBillingsFromDeclarations(
   const studentHoursMap = new Map<string, number>()
   const studentTutorsMap = new Map<string, Map<string, string>>()
   const studentTutorHoursMap = new Map<string, Map<string, { tutor_name: string; hours: number }>>()
+  const studentCategoriesMap = new Map<string, Set<string>>()
   const studentDataMap = new Map<string, { 
     first_name: string
     last_name: string
@@ -1888,6 +1897,26 @@ export async function getStudentBillingsFromDeclarations(
         })
       }
 
+      // Collect categories (subjects/levels) from declaration entries
+      if (entry.student_assignments) {
+        const assignment = Array.isArray(entry.student_assignments)
+          ? entry.student_assignments[0]
+          : entry.student_assignments
+        const subject = assignment?.subjects
+          ? (Array.isArray(assignment.subjects) ? assignment.subjects[0] : assignment.subjects)
+          : null
+        const level = assignment?.subject_levels
+          ? (Array.isArray(assignment.subject_levels) ? assignment.subject_levels[0] : assignment.subject_levels)
+          : null
+
+        if (subject?.name && level?.level_name) {
+          if (!studentCategoriesMap.has(studentId)) {
+            studentCategoriesMap.set(studentId, new Set())
+          }
+          studentCategoriesMap.get(studentId)!.add(`${subject.name} - ${level.level_name}`)
+        }
+      }
+
       if (!studentDataMap.has(studentId)) {
         const student = Array.isArray(entry.students) ? entry.students[0] : entry.students
         const hourlyRate = student?.hourly_rate 
@@ -1907,6 +1936,36 @@ export async function getStudentBillingsFromDeclarations(
   
   if (studentIds.length === 0) {
     return []
+  }
+
+  // Also collect categories from active assignments (ensures multi-tutor -> multi-subject view)
+  const { data: assignmentsData } = await supabase
+    .from('student_assignments')
+    .select(`
+      student_id,
+      subjects (
+        name
+      ),
+      subject_levels (
+        level_name
+      )
+    `)
+    .in('student_id', studentIds)
+    .eq('status', 'active')
+
+  const assignmentCategoriesMap = new Map<string, Set<string>>()
+  if (assignmentsData) {
+    for (const assignment of assignmentsData) {
+      const studentId = assignment.student_id
+      const subject = Array.isArray(assignment.subjects) ? assignment.subjects[0] : assignment.subjects
+      const level = Array.isArray(assignment.subject_levels) ? assignment.subject_levels[0] : assignment.subject_levels
+      if (subject?.name && level?.level_name) {
+        if (!assignmentCategoriesMap.has(studentId)) {
+          assignmentCategoriesMap.set(studentId, new Set())
+        }
+        assignmentCategoriesMap.get(studentId)!.add(`${subject.name} - ${level.level_name}`)
+      }
+    }
   }
 
   // Get parents
@@ -1995,11 +2054,24 @@ export async function getStudentBillingsFromDeclarations(
       : undefined
 
     const tutorsMap = studentTutorsMap.get(studentId) || new Map()
-    const tutors = Array.from(tutorsMap.values())
+    const tutors = Array.from(tutorsMap.entries())
+      .map(([id, full_name]) => ({ id, full_name }))
+      .sort((a, b) => a.full_name.localeCompare(b.full_name, 'pl', { sensitivity: 'base' }))
     const tutorHoursMap = studentTutorHoursMap.get(studentId) || new Map()
     const tutor_hours = Array.from(tutorHoursMap.entries())
       .map(([tutor_id, v]) => ({ tutor_id, tutor_name: v.tutor_name, hours: v.hours }))
       .sort((a, b) => a.tutor_name.localeCompare(b.tutor_name, 'pl', { sensitivity: 'base' }))
+
+    const categoriesSet = new Set<string>([
+      ...(studentCategoriesMap.get(studentId) || new Set<string>()),
+      ...(assignmentCategoriesMap.get(studentId) || new Set<string>()),
+    ])
+    const categories = Array.from(categoriesSet)
+      .map((s) => {
+        const [subject_name, level_name] = s.split(' - ')
+        return { subject_name: subject_name || s, level_name: level_name || '' }
+      })
+      .sort((a, b) => a.subject_name.localeCompare(b.subject_name, 'pl', { sensitivity: 'base' }))
 
     const { data: payments } = await supabase
       .from('payments')
@@ -2036,6 +2108,7 @@ export async function getStudentBillingsFromDeclarations(
         year,
       },
       parent,
+      categories: categories.length > 0 ? categories : undefined,
       tutors: tutors.length > 0 ? tutors : undefined,
       tutor_hours: tutor_hours.length > 0 ? tutor_hours : undefined,
       hours,
@@ -2077,6 +2150,14 @@ export async function getAllStudentBillingsFromDeclarations(): Promise<StudentBi
         id,
         student_id,
         duration_minutes,
+        student_assignments (
+          subjects (
+            name
+          ),
+          subject_levels (
+            level_name
+          )
+        ),
         students (
           id,
           first_name,
@@ -2102,6 +2183,7 @@ export async function getAllStudentBillingsFromDeclarations(): Promise<StudentBi
   const keyHoursMap = new Map<string, number>()
   const keyTutorsMap = new Map<string, Map<string, string>>()
   const keyTutorHoursMap = new Map<string, Map<string, { tutor_name: string; hours: number }>>()
+  const keyCategoriesMap = new Map<string, Set<string>>()
   const keyStudentDataMap = new Map<string, {
     first_name: string
     last_name: string
@@ -2145,6 +2227,26 @@ export async function getAllStudentBillingsFromDeclarations(): Promise<StudentBi
         })
       }
 
+      // Collect categories (subjects/levels) per key from declaration entries
+      if (entry.student_assignments) {
+        const assignment = Array.isArray(entry.student_assignments)
+          ? entry.student_assignments[0]
+          : entry.student_assignments
+        const subject = assignment?.subjects
+          ? (Array.isArray(assignment.subjects) ? assignment.subjects[0] : assignment.subjects)
+          : null
+        const level = assignment?.subject_levels
+          ? (Array.isArray(assignment.subject_levels) ? assignment.subject_levels[0] : assignment.subject_levels)
+          : null
+
+        if (subject?.name && level?.level_name) {
+          if (!keyCategoriesMap.has(key)) {
+            keyCategoriesMap.set(key, new Set())
+          }
+          keyCategoriesMap.get(key)!.add(`${subject.name} - ${level.level_name}`)
+        }
+      }
+
       if (!keyStudentDataMap.has(key)) {
         const student = Array.isArray(entry.students) ? entry.students[0] : entry.students
         const hourlyRate = student?.hourly_rate
@@ -2172,6 +2274,36 @@ export async function getAllStudentBillingsFromDeclarations(): Promise<StudentBi
   const studentIds = Array.from(new Set(
     Array.from(keyStudentDataMap.values()).map(v => v.studentId)
   ))
+
+  // Also collect categories from active assignments (ensures multi-tutor -> multi-subject view)
+  const { data: assignmentsData } = await supabase
+    .from('student_assignments')
+    .select(`
+      student_id,
+      subjects (
+        name
+      ),
+      subject_levels (
+        level_name
+      )
+    `)
+    .in('student_id', studentIds)
+    .eq('status', 'active')
+
+  const assignmentCategoriesMap = new Map<string, Set<string>>()
+  if (assignmentsData) {
+    for (const assignment of assignmentsData) {
+      const studentId = assignment.student_id
+      const subject = Array.isArray(assignment.subjects) ? assignment.subjects[0] : assignment.subjects
+      const level = Array.isArray(assignment.subject_levels) ? assignment.subject_levels[0] : assignment.subject_levels
+      if (subject?.name && level?.level_name) {
+        if (!assignmentCategoriesMap.has(studentId)) {
+          assignmentCategoriesMap.set(studentId, new Set())
+        }
+        assignmentCategoriesMap.get(studentId)!.add(`${subject.name} - ${level.level_name}`)
+      }
+    }
+  }
 
   // Get parents
   const BATCH_SIZE = 100
@@ -2292,11 +2424,24 @@ export async function getAllStudentBillingsFromDeclarations(): Promise<StudentBi
       : undefined
 
     const tutorsMap = keyTutorsMap.get(key) || new Map()
-    const tutors = Array.from(tutorsMap.values())
+    const tutors = Array.from(tutorsMap.entries())
+      .map(([id, full_name]) => ({ id, full_name }))
+      .sort((a, b) => a.full_name.localeCompare(b.full_name, 'pl', { sensitivity: 'base' }))
     const tutorHoursMap = keyTutorHoursMap.get(key) || new Map()
     const tutor_hours = Array.from(tutorHoursMap.entries())
       .map(([tutor_id, v]) => ({ tutor_id, tutor_name: v.tutor_name, hours: v.hours }))
       .sort((a, b) => a.tutor_name.localeCompare(b.tutor_name, 'pl', { sensitivity: 'base' }))
+
+    const categoriesSet = new Set<string>([
+      ...(keyCategoriesMap.get(key) || new Set<string>()),
+      ...(assignmentCategoriesMap.get(studentId) || new Set<string>()),
+    ])
+    const categories = Array.from(categoriesSet)
+      .map((s) => {
+        const [subject_name, level_name] = s.split(' - ')
+        return { subject_name: subject_name || s, level_name: level_name || '' }
+      })
+      .sort((a, b) => a.subject_name.localeCompare(b.subject_name, 'pl', { sensitivity: 'base' }))
 
     let totalPaid = 0
     if (periodId) {
@@ -2337,6 +2482,7 @@ export async function getAllStudentBillingsFromDeclarations(): Promise<StudentBi
         year,
       },
       parent,
+      categories: categories.length > 0 ? categories : undefined,
       tutors: tutors.length > 0 ? tutors : undefined,
       tutor_hours: tutor_hours.length > 0 ? tutor_hours : undefined,
       hours,

@@ -340,14 +340,18 @@ export function StudentsTable({
       defaultStudentRatesByLevel?.[level] ??
       defaultStudentRate
 
-    const rate =
+    // Ujednolicenie z widokiem profilu (StudentDialog):
+    // - gdy override jest OFF -> stawka ma wynikać z poziomu (ustawienia systemowe),
+    // - gdy override jest ON  -> pokazujemy stawkę ręcznie ustawioną na uczniu (hourly_rate).
+    const hasValidManualRate =
       typeof student.hourly_rate === 'number' && !Number.isNaN(student.hourly_rate)
-        ? student.hourly_rate
-        : fallback
+    const isOverridden = Boolean(student.hourly_rate_is_overridden)
+
+    const rate = isOverridden && hasValidManualRate ? student.hourly_rate : fallback
 
     return {
       rate,
-      isOverridden: Boolean(student.hourly_rate_is_overridden),
+      isOverridden,
     }
   }
 

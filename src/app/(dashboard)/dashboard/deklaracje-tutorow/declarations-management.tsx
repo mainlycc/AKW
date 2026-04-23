@@ -204,8 +204,17 @@ export function DeclarationsManagement({ declarations, tutors = [], adminId }: D
     }
     setSendingReminder(tutorId)
     try {
-      await sendDeclarationReminderToTutor(tutorId, Number(monthFilter), yearFilter, channel)
-      toast.success(`Wysłano przypomnienie do ${tutorName}`)
+      const result = await sendDeclarationReminderToTutor(
+        tutorId,
+        Number(monthFilter),
+        yearFilter,
+        channel
+      )
+      if (!result.success) {
+        toast.error(result.error || 'Nie udało się wysłać przypomnienia')
+      } else {
+        toast.success(`Wysłano przypomnienie do ${tutorName}`)
+      }
       router.refresh()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Nie udało się wysłać przypomnienia')
@@ -263,8 +272,18 @@ export function DeclarationsManagement({ declarations, tutors = [], adminId }: D
         const tutor = filteredTutorsWithoutDeclarations.find(t => t.id === tutorId)
         if (!tutor) continue
         try {
-          await sendDeclarationReminderToTutor(tutorId, Number(monthFilter), yearFilter, channel)
-          successCount++
+          const result = await sendDeclarationReminderToTutor(
+            tutorId,
+            Number(monthFilter),
+            yearFilter,
+            channel
+          )
+          if (!result.success) {
+            errorCount++
+            errors.push(`${tutor.full_name}: ${result.error || 'Nie udało się wysłać powiadomienia'}`)
+          } else {
+            successCount++
+          }
         } catch (error) {
           errorCount++
           const msg = error instanceof Error ? error.message : 'Nieznany błąd'
@@ -439,19 +458,27 @@ export function DeclarationsManagement({ declarations, tutors = [], adminId }: D
                   />
                 </div>
                 <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    onClick={handleSendSelectedReminders}
-                    disabled={sendingSelectedReminders || selectedTutorIds.size === 0}
-                  >
-                    {sendingSelectedReminders ? 'Wysyłanie...' : `Wyślij do zaznaczonych (${selectedTutorIds.size})`}
-                  </Button>
-                  <Button
-                    onClick={handleSendAllReminders}
-                    disabled={sendingAllReminders || tutorsWithoutDeclarationsForPeriod.length === 0}
-                  >
-                    {sendingAllReminders ? 'Wysyłanie...' : 'Wyślij do wszystkich'}
-                  </Button>
+                  {selectedTutorIds.size > 0 ? (
+                    <Button
+                      onClick={handleSendSelectedReminders}
+                      disabled={sendingSelectedReminders}
+                    >
+                      {sendingSelectedReminders
+                        ? 'Wysyłanie...'
+                        : selectedTutorIds.size === tutorsWithoutDeclarationsForPeriod.length
+                          ? `Wyślij do wszystkich (${tutorsWithoutDeclarationsForPeriod.length})`
+                          : `Wyślij do zaznaczonych (${selectedTutorIds.size})`}
+                    </Button>
+                  ) : (
+                    <Button
+                      onClick={handleSendAllReminders}
+                      disabled={sendingAllReminders || tutorsWithoutDeclarationsForPeriod.length === 0}
+                    >
+                      {sendingAllReminders
+                        ? 'Wysyłanie...'
+                        : `Wyślij do wszystkich (${tutorsWithoutDeclarationsForPeriod.length})`}
+                    </Button>
+                  )}
                 </div>
               </div>
 

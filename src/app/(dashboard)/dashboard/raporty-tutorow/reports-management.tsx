@@ -104,13 +104,20 @@ export function ReportsManagement({ reports, tutors = [], adminId }: ReportsMana
   
   // Stan dla wyboru okresu do przypomnień
   const currentDate = new Date()
-  const [reminderMonth, setReminderMonth] = useState(currentDate.getMonth() + 1)
+  // "all" = wszystkie miesiące (domyślnie w raportach tutorów)
+  const [reminderMonth, setReminderMonth] = useState<string>('all')
   const [reminderYear, setReminderYear] = useState(currentDate.getFullYear())
   const [sendingReminder, setSendingReminder] = useState<string | null>(null)
   const [sendingAllReminders, setSendingAllReminders] = useState(false)
   const [sendingSelectedReminders, setSendingSelectedReminders] = useState(false)
   const [selectedTutorIds, setSelectedTutorIds] = useState<Set<string>>(new Set())
   const [channel, setChannel] = useState<NotificationChannel>('email')
+
+  const reminderMonthNumber = useMemo(() => {
+    if (reminderMonth === 'all') return null
+    const parsed = Number.parseInt(reminderMonth, 10)
+    return Number.isFinite(parsed) ? parsed : null
+  }, [reminderMonth])
   
   // Generuj listę lat (bieżący rok i 2 lata wstecz)
   const years = Array.from({ length: 3 }, (_, i) => currentDate.getFullYear() - i)
@@ -130,9 +137,10 @@ export function ReportsManagement({ reports, tutors = [], adminId }: ReportsMana
 
   const filteredReports = useMemo(() => {
     // Najpierw filtruj po wybranym okresie
-    let filtered = reports.filter(report => 
-      report.month === reminderMonth && report.year === reminderYear
-    )
+    let filtered = reports.filter(report => {
+      if (reminderMonthNumber === null) return report.year === reminderYear
+      return report.month === reminderMonthNumber && report.year === reminderYear
+    })
     
     // Następnie filtruj po wyszukiwaniu (jeśli jest)
     if (!search.trim()) return filtered
@@ -155,7 +163,7 @@ export function ReportsManagement({ reports, tutors = [], adminId }: ReportsMana
         nameWords.some(nameWord => nameWord.includes(word))
       )
     })
-  }, [reports, search, reminderMonth, reminderYear])
+  }, [reports, search, reminderMonthNumber, reminderYear])
 
   const handleRowClick = (report: MonthlyReport) => {
     setSelectedReport(report)
@@ -182,21 +190,16 @@ export function ReportsManagement({ reports, tutors = [], adminId }: ReportsMana
     a.click()
   }
 
-  const totalStats = useMemo(() => {
-    return {
-      totalHours: filteredReports.reduce((sum, r) => sum + r.total_hours, 0),
-      totalAmount: filteredReports.reduce((sum, r) => sum + (r.total_amount || 0), 0),
-      submittedCount: filteredReports.filter(r => r.status === 'submitted').length,
-    }
-  }, [filteredReports])
-
   // Znajdź tutorów bez złożonego raportu za wybrany okres
   const tutorsWithoutReports = useMemo(() => {
+    // Lista "Nie złożone" i przypomnienia mają sens tylko dla konkretnego miesiąca
+    if (reminderMonthNumber === null) return []
+
     // Utwórz zbiór ID tutorów, którzy mają złożony raport (submitted, approved, paid) za wybrany okres
     const tutorsWithReports = new Set(
       reports
         .filter(r => 
-          r.month === reminderMonth && 
+          r.month === reminderMonthNumber && 
           r.year === reminderYear && 
           ['submitted', 'approved', 'paid'].includes(r.status)
         )
@@ -205,7 +208,7 @@ export function ReportsManagement({ reports, tutors = [], adminId }: ReportsMana
 
     // Zwróć tutorów, którzy nie mają złożonego raportu
     return tutors.filter(tutor => !tutorsWithReports.has(tutor.id))
-  }, [reports, tutors, reminderMonth, reminderYear])
+  }, [reports, tutors, reminderMonthNumber, reminderYear])
 
   // Filtrowanie tutorów bez raportu po wyszukiwaniu
   const filteredTutorsWithoutReports = useMemo(() => {
@@ -273,10 +276,23 @@ export function ReportsManagement({ reports, tutors = [], adminId }: ReportsMana
   const isSomeSelected = selectedTutorIds.size > 0 && selectedTutorIds.size < filteredTutorsWithoutReports.length
 
   const handleSendReminder = async (tutorId: string, tutorName: string) => {
+    if (reminderMonthNumber === null) {
+      toast.info('Wybierz konkretny miesiąc, aby wysłać przypomnienie.')
+      return
+    }
     setSendingReminder(tutorId)
     try {
-      await sendReportReminderToTutor(tutorId, reminderMonth, reminderYear, channel)
-      toast.success(`Wysłano przypomnienie do ${tutorName}`)
+      const result = await sendReportReminderToTutor(
+        tutorId,
+        reminderMonthNumber,
+        reminderYear,
+        channel
+      )
+      if (!result.success) {
+        toast.error(result.error || 'Nie udało się wysłać przypomnienia')
+      } else {
+        toast.success(`Wysłano przypomnienie do ${tutorName}`)
+      }
       router.refresh()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Nie udało się wysłać przypomnienia')
@@ -286,6 +302,10 @@ export function ReportsManagement({ reports, tutors = [], adminId }: ReportsMana
   }
 
   const handleSendAllReminders = async () => {
+    if (reminderMonthNumber === null) {
+      toast.info('Wybierz konkretny miesiąc, aby wysłać przypomnienia.')
+      return
+    }
     if (tutorsWithoutReports.length === 0) {
       toast.info('Wszyscy tutorzy złożyli już raport za wybrany okres.')
       return
@@ -293,7 +313,7 @@ export function ReportsManagement({ reports, tutors = [], adminId }: ReportsMana
 
     setSendingAllReminders(true)
     try {
-      const result = await sendReportRemindersToAllMissing(reminderMonth, reminderYear, channel)
+      const result = await sendReportRemindersToAllMissing(reminderMonthNumber, reminderYear, channel)
       if (result.success) {
         toast.success(result.message || `Wysłano ${result.sent} przypomnień`)
       } else {
@@ -313,6 +333,10 @@ export function ReportsManagement({ reports, tutors = [], adminId }: ReportsMana
   }
 
   const handleSendSelectedReminders = async () => {
+    if (reminderMonthNumber === null) {
+      toast.info('Wybierz konkretny miesiąc, aby wysłać przypomnienia.')
+      return
+    }
     if (selectedTutorIds.size === 0) {
       toast.info('Wybierz przynajmniej jednego tutora.')
       return
@@ -329,8 +353,18 @@ export function ReportsManagement({ reports, tutors = [], adminId }: ReportsMana
         if (!tutor) continue
 
         try {
-            await sendReportReminderToTutor(tutorId, reminderMonth, reminderYear, channel)
-          successCount++
+          const result = await sendReportReminderToTutor(
+            tutorId,
+            reminderMonthNumber,
+            reminderYear,
+            channel
+          )
+          if (!result.success) {
+            errorCount++
+            errors.push(`${tutor.full_name}: ${result.error || 'Nie udało się wysłać powiadomienia'}`)
+          } else {
+            successCount++
+          }
         } catch (error) {
           errorCount++
           const errorMessage = error instanceof Error ? error.message : 'Nieznany błąd'
@@ -358,22 +392,6 @@ export function ReportsManagement({ reports, tutors = [], adminId }: ReportsMana
 
   return (
     <div className="space-y-4">
-      {/* Summary stats */}
-      <div className="grid gap-4 md:grid-cols-3">
-        <div className="p-4 border rounded">
-          <p className="text-sm text-muted-foreground">Oczekujące</p>
-          <p className="text-2xl font-bold">{totalStats.submittedCount}</p>
-        </div>
-        <div className="p-4 border rounded">
-          <p className="text-sm text-muted-foreground">Suma godzin</p>
-          <p className="text-2xl font-bold">{formatHours(totalStats.totalHours)} h</p>
-        </div>
-        <div className="p-4 border rounded">
-          <p className="text-sm text-muted-foreground">Suma wypłat</p>
-          <p className="text-2xl font-bold">{totalStats.totalAmount.toFixed(2)} zł</p>
-        </div>
-      </div>
-
       {/* Wybór okresu - wspólny dla obu zakładek */}
       <div className="flex items-end gap-4 flex-wrap border rounded-md p-4 bg-muted/50">
         <div className="flex items-center gap-2">
@@ -383,13 +401,14 @@ export function ReportsManagement({ reports, tutors = [], adminId }: ReportsMana
           <div className="space-y-2">
             <Label htmlFor="reminder-month">Miesiąc</Label>
             <Select
-              value={reminderMonth.toString()}
-              onValueChange={(v) => setReminderMonth(parseInt(v))}
+              value={reminderMonth}
+              onValueChange={(v) => setReminderMonth(v)}
             >
               <SelectTrigger id="reminder-month">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="all">Wszystkie</SelectItem>
                 {monthOptions.map(m => (
                   <SelectItem key={m.value} value={m.value.toString()}>
                     {m.label}
@@ -529,31 +548,42 @@ export function ReportsManagement({ reports, tutors = [], adminId }: ReportsMana
               />
             </div>
             <div className="flex gap-2">
-              {selectedTutorIds.size > 0 && (
+              {selectedTutorIds.size > 0 ? (
                 <Button
                   onClick={handleSendSelectedReminders}
-                  disabled={sendingSelectedReminders}
+                  disabled={sendingSelectedReminders || reminderMonthNumber === null}
                   variant="default"
                 >
                   <IconMail className="mr-2 h-4 w-4" />
-                  {sendingSelectedReminders ? 'Wysyłanie...' : `Wyślij do wybranych (${selectedTutorIds.size})`}
+                  {sendingSelectedReminders
+                    ? 'Wysyłanie...'
+                    : selectedTutorIds.size === tutorsWithoutReports.length
+                      ? `Wyślij do wszystkich (${tutorsWithoutReports.length})`
+                      : `Wyślij do wybranych (${selectedTutorIds.size})`}
+                </Button>
+              ) : (
+                <Button
+                  onClick={handleSendAllReminders}
+                  disabled={tutorsWithoutReports.length === 0 || sendingAllReminders || reminderMonthNumber === null}
+                  variant="default"
+                >
+                  <IconMail className="mr-2 h-4 w-4" />
+                  {sendingAllReminders
+                    ? 'Wysyłanie...'
+                    : `Wyślij do wszystkich (${tutorsWithoutReports.length})`}
                 </Button>
               )}
-              <Button
-                onClick={handleSendAllReminders}
-                disabled={tutorsWithoutReports.length === 0 || sendingAllReminders}
-                variant="default"
-              >
-                <IconMail className="mr-2 h-4 w-4" />
-                {sendingAllReminders ? 'Wysyłanie...' : `Wyślij do wszystkich (${tutorsWithoutReports.length})`}
-              </Button>
             </div>
           </div>
 
           {/* Table */}
           {tutorsWithoutReports.length === 0 ? (
             <div className="text-center py-6 text-muted-foreground border rounded-md">
-              <p>Wszyscy tutorzy złożyli już raport za {months[reminderMonth - 1]} {reminderYear}</p>
+              {reminderMonthNumber === null ? (
+                <p>Wybierz konkretny miesiąc, aby sprawdzić brakujące raporty i wysyłać przypomnienia.</p>
+              ) : (
+                <p>Wszyscy tutorzy złożyli już raport za {months[reminderMonthNumber - 1]} {reminderYear}</p>
+              )}
             </div>
           ) : (
             <div className="rounded-md border">
@@ -597,7 +627,7 @@ export function ReportsManagement({ reports, tutors = [], adminId }: ReportsMana
                         </TableCell>
                         <TableCell className="px-4 font-medium">{tutor.full_name}</TableCell>
                         <TableCell className="px-4">
-                          {months[reminderMonth - 1]} {reminderYear}
+                          {reminderMonthNumber === null ? `Wszystkie / ${reminderYear}` : `${months[reminderMonthNumber - 1]} ${reminderYear}`}
                         </TableCell>
                         <TableCell className="px-4 text-right">
                           <Button

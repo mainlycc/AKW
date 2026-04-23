@@ -103,6 +103,7 @@ interface LessonHistoryItem {
   session_date: string
   duration_minutes: number
   notes: string | null
+  status?: 'scheduled' | 'completed' | 'cancelled'
   tutor_name: string | null
   subject_name: string | null
   level_name: string | null
@@ -885,9 +886,16 @@ export function StudentDialog({
                                     locale: pl,
                                   })}
                                 </span>
-                                <span className="text-xs text-muted-foreground">
-                                  {lesson.duration_minutes} min
-                                </span>
+                                <div className="flex items-center gap-2">
+                                  {lesson.status === 'scheduled' && (
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-700 dark:text-amber-300">
+                                      Niepotwierdzona
+                                    </span>
+                                  )}
+                                  <span className="text-xs text-muted-foreground">
+                                    {lesson.duration_minutes} min
+                                  </span>
+                                </div>
                               </div>
                               <div className="flex flex-wrap items-center gap-1 text-[11px] text-muted-foreground">
                                 {lesson.subject_name && (

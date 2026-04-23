@@ -37,17 +37,22 @@ export async function sendDeclarationReminderToTutor(
 
   const monthName = monthNames[month - 1] || `Miesiąc ${month}`
 
-  await createNotification({
-    userId: tutorId,
-    type: 'declaration_reminder',
-    title: 'Przypomnienie o deklaracji miesięcznej',
-    message: `Przypominamy o złożeniu deklaracji miesięcznej za okres ${monthName} ${year}.`,
-    metadata: {
-      month,
-      year,
-      month_name: monthName,
-    },
-  })
+  // Nie blokuj wysyłki email/SMS, jeśli system powiadomień (DB enum) nie jest zaktualizowany.
+  try {
+    await createNotification({
+      userId: tutorId,
+      type: 'declaration_reminder',
+      title: 'Przypomnienie o deklaracji miesięcznej',
+      message: `Przypominamy o złożeniu deklaracji miesięcznej za okres ${monthName} ${year}.`,
+      metadata: {
+        month,
+        year,
+        month_name: monthName,
+      },
+    })
+  } catch (notificationError) {
+    console.error('Failed to create declaration reminder notification:', notificationError)
+  }
 
   const tutorEmail = tutor.email?.trim() || null
   const tutorPhone = tutor.phone?.trim() || null
@@ -89,7 +94,7 @@ export async function sendDeclarationReminderToTutor(
   revalidatePath('/dashboard/powiadomienia')
   revalidatePath('/dashboard', 'layout')
 
-  return { success: true }
+  return result
 }
 
 /**
@@ -140,18 +145,25 @@ export async function sendDeclarationRemindersToAllMissing(
 
   for (const tutor of tutorsWithoutDeclarations) {
     try {
-      await createNotification({
-        userId: tutor.id,
-        type: 'declaration_reminder',
-        title: 'Przypomnienie o deklaracji miesięcznej',
-        message: `Przypominamy o złożeniu deklaracji miesięcznej za okres ${monthName} ${year}.`,
-        metadata: {
-          month,
-          year,
-          month_name: monthName,
-        },
-        skipRevalidate: true,
-      })
+      try {
+        await createNotification({
+          userId: tutor.id,
+          type: 'declaration_reminder',
+          title: 'Przypomnienie o deklaracji miesięcznej',
+          message: `Przypominamy o złożeniu deklaracji miesięcznej za okres ${monthName} ${year}.`,
+          metadata: {
+            month,
+            year,
+            month_name: monthName,
+          },
+          skipRevalidate: true,
+        })
+      } catch (notificationError) {
+        console.error('Failed to create declaration reminder notification (batch):', {
+          tutorId: tutor.id,
+          error: notificationError,
+        })
+      }
 
       const tutorEmail = tutor.email?.trim() || null
       const tutorPhone = tutor.phone?.trim() || null

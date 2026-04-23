@@ -328,7 +328,7 @@ export async function sendReportReminderToTutor(
 
   const monthName = monthNames[month - 1] || `Miesiąc ${month}`
 
-  // Utwórz powiadomienie
+  // Utwórz powiadomienie (nie blokuj wysyłki kanałów jeśli DB enum jest niezsynchronizowany)
   try {
     await createNotification({
       userId: tutorId,
@@ -341,54 +341,57 @@ export async function sendReportReminderToTutor(
         month_name: monthName,
       },
     })
-
-    const tutorEmail = tutor.email?.trim() || null
-    const tutorPhone = tutor.phone?.trim() || null
-
-    const result = await sendWithChannel(channel, {
-      sendEmail:
-        tutorEmail && (channel === 'email' || channel === 'both')
-          ? () =>
-              sendReportReminderEmail({
-                to: tutorEmail,
-                tutorName: tutor.full_name,
-                month,
-                year,
-              })
-          : undefined,
-      sendSms:
-        tutorPhone && (channel === 'sms' || channel === 'both')
-          ? () =>
-              sendReportReminderSms({
-                toPhone: tutorPhone,
-                tutorName: tutor.full_name,
-                month,
-                year,
-              })
-          : undefined,
-    })
-
-    if (!result.success) {
-      console.error('Failed to send report reminder notification:', {
-        tutorId,
-        email: tutorEmail,
-        phone: tutorPhone,
-        error: result.error,
-        details: result.details,
-      })
-    } else {
-      console.log('Report reminder notification sent successfully:', {
-        tutorId,
-        email: tutorEmail,
-        phone: tutorPhone,
-      })
-    }
-
-    return { success: true }
-  } catch (error) {
-    console.error('Failed to send reminder notification:', error)
-    throw error
+  } catch (notificationError) {
+    console.error('Failed to create report reminder notification:', notificationError)
   }
+
+  const tutorEmail = tutor.email?.trim() || null
+  const tutorPhone = tutor.phone?.trim() || null
+
+  const result = await sendWithChannel(channel, {
+    sendEmail:
+      tutorEmail && (channel === 'email' || channel === 'both')
+        ? () =>
+            sendReportReminderEmail({
+              to: tutorEmail,
+              tutorName: tutor.full_name,
+              month,
+              year,
+            })
+        : undefined,
+    sendSms:
+      tutorPhone && (channel === 'sms' || channel === 'both')
+        ? () =>
+            sendReportReminderSms({
+              toPhone: tutorPhone,
+              tutorName: tutor.full_name,
+              month,
+              year,
+            })
+        : undefined,
+  })
+
+  if (!result.success) {
+    console.error('Failed to send report reminder notification:', {
+      tutorId,
+      email: tutorEmail,
+      phone: tutorPhone,
+      error: result.error,
+      details: result.details,
+    })
+  } else {
+    console.log('Report reminder notification sent successfully:', {
+      tutorId,
+      email: tutorEmail,
+      phone: tutorPhone,
+    })
+  }
+
+  revalidatePath('/dashboard/raporty-tutorow')
+  revalidatePath('/dashboard/powiadomienia')
+  revalidatePath('/dashboard', 'layout')
+
+  return result
 }
 
 /**
@@ -493,15 +496,17 @@ export async function sendReportRemindersToAllMissing(
           error: result.error,
           details: result.details,
         })
+        errors.push(
+          `${tutor.full_name}: ${result.error || 'Nie udało się wysłać powiadomienia'}`
+        )
       } else {
         console.log('Reminder notification sent successfully:', {
           tutorId: tutor.id,
           email: tutorEmail,
           phone: tutorPhone,
         })
+        sentCount++
       }
-
-      sentCount++
     } catch (error) {
       const errorMessage = `Błąd przy wysyłaniu przypomnienia do ${tutor.full_name}: ${error instanceof Error ? error.message : 'Nieznany błąd'}`
       console.error(errorMessage, error)

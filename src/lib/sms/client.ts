@@ -16,7 +16,8 @@ class TwilioSmsClient implements SmsClient {
 
   constructor() {
     this.accountSid = process.env.TWILIO_ACCOUNT_SID
-    this.authToken = process.env.TWILIO_AUTH_TOKEN
+    // Fallback na częstą literówkę w env: WILIO_AUTH_TOKEN
+    this.authToken = process.env.TWILIO_AUTH_TOKEN ?? process.env.WILIO_AUTH_TOKEN
     this.fromNumber = process.env.TWILIO_FROM_NUMBER
   }
 

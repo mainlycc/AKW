@@ -6,6 +6,7 @@ interface LessonHistoryItem {
   session_date: string
   duration_minutes: number
   notes: string | null
+  status: 'scheduled' | 'completed' | 'cancelled'
   tutor_name: string | null
   subject_name: string | null
   level_name: string | null
@@ -26,6 +27,12 @@ export async function GET(
 
   const supabase = await createClient()
 
+  // W profilu ucznia chcemy pokazać lekcje przeszłe:
+  // - completed (odbyte)
+  // - scheduled, ale tylko jeśli data już minęła (niepotwierdzone/nieoznaczone)
+  // - cancelled pomijamy
+  const nowIso = new Date().toISOString()
+
   const { data, error } = await supabase
     .from('tutoring_sessions')
     .select(`
@@ -33,6 +40,7 @@ export async function GET(
       session_date,
       duration_minutes,
       notes,
+      status,
       profiles!tutoring_sessions_tutor_id_fkey (
         id,
         full_name
@@ -49,7 +57,8 @@ export async function GET(
       )
     `)
     .eq('student_id', studentId)
-    .eq('status', 'completed')
+    .in('status', ['completed', 'scheduled'])
+    .lt('session_date', nowIso)
     .order('session_date', { ascending: false })
     .limit(100)
 
@@ -84,6 +93,7 @@ export async function GET(
         session_date: session.session_date,
         duration_minutes: session.duration_minutes ?? 0,
         notes: session.notes ?? null,
+        status: session.status ?? 'scheduled',
         tutor_name: tutor?.full_name ?? null,
         subject_name: subject?.name ?? null,
         level_name: level?.level_name ?? null,

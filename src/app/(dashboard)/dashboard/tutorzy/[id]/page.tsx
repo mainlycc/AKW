@@ -3,6 +3,7 @@ import { getUserProfile } from "@/lib/actions/auth"
 import { getTutorAvailability } from "@/lib/actions/availability"
 import { listBookedSlots } from "@/lib/actions/booked-slots"
 import { getTutorSubjectLevels } from "@/lib/actions/tutor"
+import { getDefaultTutorRate } from "../../stawki/actions"
 import { redirect } from "next/navigation"
 import { TutorDetailsView } from "./tutor-details-view"
 
@@ -49,6 +50,8 @@ export default async function TutorDetailsPage({ params }: PageProps) {
   if (!profile || profile.role !== 'admin') {
     redirect('/dashboard/tutorzy')
   }
+
+  const defaultTutorRate = await getDefaultTutorRate()
 
   // Pobierz dane tutora
   const { data: tutor, error: tutorError } = await supabase
@@ -163,6 +166,7 @@ export default async function TutorDetailsPage({ params }: PageProps) {
   return (
     <TutorDetailsView
       tutor={tutor}
+      defaultTutorRate={defaultTutorRate}
       availability={availability}
       bookedSlots={bookedSlots}
       students={students}

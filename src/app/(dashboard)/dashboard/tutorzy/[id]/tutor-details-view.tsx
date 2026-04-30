@@ -87,6 +87,7 @@ interface TutorSubjectLevel {
 
 interface TutorDetailsViewProps {
   tutor: Tutor
+  defaultTutorRate: number | null
   availability: TutorAvailabilityData | null
   bookedSlots: BookedSlot[]
   students: StudentWithRelations[]
@@ -104,6 +105,7 @@ const formatDate = (dateString: string): string => {
 
 export function TutorDetailsView({
   tutor,
+  defaultTutorRate,
   availability,
   bookedSlots,
   students,
@@ -253,6 +255,12 @@ export function TutorDetailsView({
     [activeAssignments, bookedHours, bookedSlots, tutor]
   )
 
+  const effectiveHourlyRate = tutor.hourly_rate ?? defaultTutorRate
+  const hourlyRateText =
+    effectiveHourlyRate === null || effectiveHourlyRate === undefined
+      ? '-'
+      : `${effectiveHourlyRate.toFixed(0)} zł/h`
+
   return (
     <div className="space-y-6">
       {/* Przycisk powrotu */}
@@ -321,12 +329,10 @@ export function TutorDetailsView({
               <p className="text-sm font-medium text-muted-foreground">Telefon</p>
               <p className="text-lg">{tutor.phone || '-'}</p>
             </div>
-            {tutor.hourly_rate && (
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Stawka godzinowa</p>
-                <p className="text-lg">{tutor.hourly_rate.toFixed(0)} zł/h</p>
-              </div>
-            )}
+            <div>
+              <p className="text-sm font-medium text-muted-foreground">Stawka godzinowa</p>
+              <p className="text-lg">{hourlyRateText}</p>
+            </div>
             {tutor.bio && (
               <div className="md:col-span-2">
                 <p className="text-sm font-medium text-muted-foreground">Bio</p>

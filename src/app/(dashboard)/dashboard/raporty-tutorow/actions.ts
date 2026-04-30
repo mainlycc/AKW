@@ -8,10 +8,12 @@ import { sendReportReminderEmail } from '@/lib/email/send'
 import type { NotificationChannel } from '@/lib/types/notifications'
 import { sendReportReminderSms } from '@/lib/sms/send'
 import { sendWithChannel } from '@/lib/notifications/send-with-channel'
+import { getDefaultTutorRate } from '@/app/(dashboard)/dashboard/stawki/actions'
 
 export async function approveReport(reportId: string, adminId: string) {
   const supabase = await createClient()
   const admin = createAdminClient()
+  const defaultTutorRate = await getDefaultTutorRate()
 
   // Get report with tutor hourly rate
   const { data: report } = await supabase
@@ -31,7 +33,7 @@ export async function approveReport(reportId: string, adminId: string) {
   if (!report) throw new Error('Report not found')
 
   const profiles = report.profiles as unknown as { hourly_rate: number } | null
-  const hourlyRate = profiles?.hourly_rate || 0
+  const hourlyRate = profiles?.hourly_rate ?? defaultTutorRate ?? 0
   const totalAmount = report.total_hours * hourlyRate
 
   const { error } = await supabase
@@ -147,9 +149,73 @@ export async function markAsPaid(reportId: string) {
   revalidatePath('/dashboard/raporty-tutorow')
 }
 
+export async function markManyAsPaid(reportIds: string[]) {
+  if (!reportIds.length) return
+
+  const supabase = await createClient()
+
+  // Pobierz dane raportów przed aktualizacją (do powiadomień)
+  const { data: reports, error: reportsError } = await supabase
+    .from('monthly_reports')
+    .select('id, tutor_id, month, year, total_amount')
+    .in('id', reportIds)
+
+  if (reportsError) throw reportsError
+
+  const { error } = await supabase
+    .from('monthly_reports')
+    .update({ status: 'paid' })
+    .in('id', reportIds)
+
+  if (error) throw error
+
+  // Powiadomienia dla tutorów (best-effort)
+  const monthNames = [
+    'Styczeń',
+    'Luty',
+    'Marzec',
+    'Kwiecień',
+    'Maj',
+    'Czerwiec',
+    'Lipiec',
+    'Sierpień',
+    'Wrzesień',
+    'Październik',
+    'Listopad',
+    'Grudzień',
+  ]
+
+  await Promise.allSettled(
+    (reports || [])
+      .filter((r) => !!r.tutor_id)
+      .map((r) => {
+        const monthName = monthNames[(r.month ?? 1) - 1] || (r.month ?? '').toString()
+        return createNotification({
+          userId: r.tutor_id as string,
+          type: 'report_paid',
+          title: 'Raport opłacony',
+          message: `Raport za ${monthName} ${r.year} został oznaczony jako opłacony. Wypłacona kwota: ${r.total_amount?.toFixed(2) || '0.00'} zł`,
+          metadata: {
+            report_id: r.id,
+            month: r.month,
+            year: r.year,
+            total_amount: r.total_amount,
+          },
+          skipRevalidate: true,
+        })
+      })
+  )
+
+  revalidatePath('/dashboard/raporty-tutorow')
+  revalidatePath('/dashboard/rozliczenia-tutorow')
+  revalidatePath('/dashboard/powiadomienia')
+  revalidatePath('/dashboard', 'layout')
+}
+
 export async function autoApproveSubmittedReports() {
   const supabase = await createClient()
   const admin = createAdminClient()
+  const defaultTutorRate = await getDefaultTutorRate()
 
   // Pobierz pierwszego admina
   const { data: admins } = await admin
@@ -193,7 +259,7 @@ export async function autoApproveSubmittedReports() {
   for (const report of submittedReports) {
     try {
       const profiles = report.profiles as unknown as { hourly_rate: number } | null
-      const hourlyRate = profiles?.hourly_rate || 0
+      const hourlyRate = profiles?.hourly_rate ?? defaultTutorRate ?? 0
       const totalAmount = report.total_hours * hourlyRate
 
       const { error: updateError } = await supabase

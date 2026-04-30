@@ -128,6 +128,11 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
           icon: IconClockDollar,
         },
         {
+          title: "Rozliczenia tutorów",
+          url: "/dashboard/rozliczenia-tutorow",
+          icon: IconClockDollar,
+        },
+        {
           title: "Rozliczenia z raportów",
           url: "/dashboard/billing-from-reports",
           icon: IconReceipt,

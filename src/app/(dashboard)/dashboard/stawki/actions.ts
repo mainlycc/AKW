@@ -93,7 +93,8 @@ export async function updateDefaultRates(
   studentRateLevel2: number | null,
   studentRateLevel3: number | null,
   tutorRate: number | null,
-  updateAllStudents: boolean = false
+  updateAllStudents: boolean = false,
+  updateAllTutors: boolean = false
 ): Promise<{ success: boolean; error?: string; updatedCount?: number }> {
   const supabase = await createClient()
 
@@ -286,14 +287,18 @@ export async function updateDefaultRates(
       if (!r3.success) return r3
     }
 
-    // Aktualizuj tutorów z NULL stawką (jeśli tutorRate jest ustawione)
+    // Aktualizuj tutorów (jeśli tutorRate jest ustawione)
     if (tutorRate !== null) {
-      const { data: updatedTutors, error: updateTutorsError } = await supabase
+      let tutorsQuery = supabase
         .from('profiles')
         .update({ hourly_rate: tutorRate })
         .eq('role', 'tutor')
-        .is('hourly_rate', null)
-        .select('id')
+
+      if (!updateAllTutors) {
+        tutorsQuery = tutorsQuery.is('hourly_rate', null)
+      }
+
+      const { data: updatedTutors, error: updateTutorsError } = await tutorsQuery.select('id')
 
       if (updateTutorsError) {
         console.error('Error updating tutors:', updateTutorsError)

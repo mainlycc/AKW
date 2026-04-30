@@ -81,6 +81,10 @@ const pageMeta: Record<string, PageMeta> = {
     title: 'Rozliczenia deklaracji',
     description: 'Rozliczenia na podstawie deklaracji – podsumowania i statusy.',
   },
+  '/dashboard/rozliczenia-tutorow': {
+    title: 'Rozliczenia tutorów',
+    description: 'Lista raportów do wypłaty – zaznacz i oznacz jako wypłacone.',
+  },
   '/dashboard/raporty-tutorow': {
     title: 'Raporty tutorów',
     description: 'Podgląd raportów miesięcznych tutorów oraz ich rozliczeń.',

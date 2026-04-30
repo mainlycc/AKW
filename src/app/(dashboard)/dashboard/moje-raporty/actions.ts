@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createNotification } from '@/lib/actions/notifications'
+import { getDefaultTutorRate } from '@/app/(dashboard)/dashboard/stawki/actions'
 
 export type ReportStatus = 'draft' | 'submitted' | 'approved' | 'paid'
 
@@ -59,6 +60,7 @@ export async function createOrUpdateReport(
     if (shouldAutoApprove) {
       try {
         const admin = createAdminClient()
+        const defaultTutorRate = await getDefaultTutorRate()
         const { data: admins } = await admin
           .from('profiles')
           .select('id')
@@ -75,7 +77,7 @@ export async function createOrUpdateReport(
           .eq('id', tutorId)
           .single()
 
-        hourlyRate = tutorProfile?.hourly_rate || 0
+        hourlyRate = tutorProfile?.hourly_rate ?? defaultTutorRate ?? 0
         totalAmount = totalHours * hourlyRate
       } catch (error) {
         console.error('Failed to get admin or tutor rate:', error)
@@ -177,6 +179,7 @@ export async function createOrUpdateReport(
     try {
       // Pobierz pierwszego admina
       const admin = createAdminClient()
+      const defaultTutorRate = await getDefaultTutorRate()
       const { data: admins } = await admin
         .from('profiles')
         .select('id')
@@ -194,7 +197,7 @@ export async function createOrUpdateReport(
         .eq('id', tutorId)
         .single()
 
-      hourlyRate = tutorProfile?.hourly_rate || 0
+      hourlyRate = tutorProfile?.hourly_rate ?? defaultTutorRate ?? 0
       totalAmount = totalHours * hourlyRate
     } catch (error) {
       console.error('Failed to get admin or tutor rate:', error)

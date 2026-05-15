@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { createBookedSlotAction } from './actions'
 import type { DayOfWeek } from '@/lib/types/availability.types'
+import { createCorrelationId } from '@/lib/monitoring/correlation'
 
 export interface AssignmentOption {
   id: string
@@ -40,6 +41,9 @@ export function AssignDialog({ open, onClose, tutorId: _tutorId, createdBy, week
           weekday: weekday as 1|2|3|4|5|6|7,
           start_time: startTime,
           end_time: endTime,
+        }, {
+          correlationId: createCorrelationId(),
+          route: '/dashboard/kalendarz',
         })
         if (onAssigned) {
           onAssigned()

@@ -2,6 +2,8 @@
 
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
+import { resolveCorrelationId, resolveRoute, type MonitoringMeta } from '@/lib/monitoring/correlation'
+import { logSupabaseFailure } from '@/lib/monitoring/support-events'
 
 export interface CreateBookedSlotInput {
   student_assignment_id: string
@@ -62,9 +64,12 @@ export async function listBookedSlots(params: {
 
 export async function createBookedSlot(
   createdBy: string,
-  input: CreateBookedSlotInput
+  input: CreateBookedSlotInput,
+  meta?: MonitoringMeta
 ) {
   const supabase = await createClient()
+  const correlationId = resolveCorrelationId(meta)
+  const route = resolveRoute(meta)
 
   // pobierz przypisanie, aby wyciągnąć tutora i zweryfikować spójność
   const { data: assignment, error: assErr } = await supabase
@@ -74,6 +79,15 @@ export async function createBookedSlot(
     .single()
 
   if (assErr || !assignment) {
+    if (assErr) {
+      await logSupabaseFailure({
+        action: 'booked_slots.assignment.fetch',
+        correlationId,
+        route,
+        request: { student_assignment_id: input.student_assignment_id },
+        supabaseError: assErr,
+      })
+    }
     throw new Error('Nie znaleziono przypisania')
   }
   if (assignment.status !== 'active') {
@@ -89,20 +103,40 @@ export async function createBookedSlot(
     status: 'booked',
     created_by: createdBy,
   })
-  if (error) throw error
+  if (error) {
+    await logSupabaseFailure({
+      action: 'booked_slots.insert',
+      correlationId,
+      route,
+      request: { ...input, tutor_id: assignment.tutor_id, created_by: createdBy },
+      supabaseError: error,
+    })
+    throw error
+  }
 
   // Revaliduj kalendarz dostępności i kalendarz lekcji
   revalidatePath('/dashboard/kalendarz')
   revalidatePath('/dashboard/kalendarz-lekcji')
 }
 
-export async function cancelBookedSlot(slotId: string) {
+export async function cancelBookedSlot(slotId: string, meta?: MonitoringMeta) {
   const supabase = await createClient()
+  const correlationId = resolveCorrelationId(meta)
+  const route = resolveRoute(meta)
   const { error } = await supabase
     .from('booked_slots')
     .update({ status: 'cancelled' })
     .eq('id', slotId)
-  if (error) throw error
+  if (error) {
+    await logSupabaseFailure({
+      action: 'booked_slots.cancel',
+      correlationId,
+      route,
+      request: { slotId },
+      supabaseError: error,
+    })
+    throw error
+  }
   
   // Revaliduj kalendarz dostępności i kalendarz lekcji
   revalidatePath('/dashboard/kalendarz')

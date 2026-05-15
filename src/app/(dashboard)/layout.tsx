@@ -4,7 +4,9 @@ import { SiteHeader } from "@/components/site-header"
 import { AppFooter } from "@/components/app-footer"
 import { Card } from "@/components/ui/card"
 import { getUserProfile, getUser } from "@/lib/actions/auth"
+import { getUnreadCount } from "@/lib/notifications/queries"
 import { redirect } from "next/navigation"
+import { SentryUserProvider } from "@/components/sentry-user-provider"
 
 export default async function DashboardLayout({
   children,
@@ -34,12 +36,20 @@ export default async function DashboardLayout({
     role: profile?.role || 'tutor',
   }
 
+  let initialUnreadCount = 0
+  try {
+    initialUnreadCount = await getUnreadCount()
+  } catch (error) {
+    console.error('[DashboardLayout] Error fetching unread notifications:', error)
+  }
+
   return (
     <SidebarProvider>
+      <SentryUserProvider userId={user.id} email={userData.email} role={userData.role} />
       <AppSidebar user={userData} />
       <SidebarInset className="flex flex-col min-h-screen">
         <Card className="m-2 sm:m-4 flex flex-1 flex-col overflow-hidden py-0">
-          <SiteHeader />
+          <SiteHeader initialUnreadCount={initialUnreadCount} />
           <div className="flex flex-1 flex-col gap-4 p-2 sm:p-4 pt-2 sm:pt-4">
             {children}
           </div>

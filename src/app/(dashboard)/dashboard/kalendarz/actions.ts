@@ -5,9 +5,14 @@ import { createBookedSlot as createBookedSlotLib, listBookedSlots as listBookedS
 import { createClient } from '@/lib/supabase/server'
 import type { TimeSlot, TutorAvailabilityData } from '@/lib/types/availability.types'
 import type { BookedSlot } from '@/lib/actions/booked-slots'
+import type { MonitoringMeta } from '@/lib/monitoring/correlation'
 
-export async function saveAvailability(tutorId: string, slots: TimeSlot[]): Promise<TutorAvailabilityData> {
-  return updateAvailabilityTemplate(tutorId, slots)
+export async function saveAvailability(
+  tutorId: string,
+  slots: TimeSlot[],
+  meta?: MonitoringMeta
+): Promise<TutorAvailabilityData> {
+  return updateAvailabilityTemplate(tutorId, slots, meta)
 }
 
 export async function listTutorBookedSlots(tutorId: string): Promise<BookedSlot[]> {
@@ -16,13 +21,14 @@ export async function listTutorBookedSlots(tutorId: string): Promise<BookedSlot[
 
 export async function createBookedSlotAction(
   createdBy: string,
-  input: { student_assignment_id: string; weekday: 1|2|3|4|5|6|7; start_time: string; end_time: string }
+  input: { student_assignment_id: string; weekday: 1|2|3|4|5|6|7; start_time: string; end_time: string },
+  meta?: MonitoringMeta
 ) {
-  await createBookedSlotLib(createdBy, input)
+  await createBookedSlotLib(createdBy, input, meta)
 }
 
-export async function cancelBookedSlotAction(slotId: string) {
-  await cancelBookedSlotLib(slotId)
+export async function cancelBookedSlotAction(slotId: string, meta?: MonitoringMeta) {
+  await cancelBookedSlotLib(slotId, meta)
 }
 
 export async function getTutorActiveAssignments(tutorId: string) {

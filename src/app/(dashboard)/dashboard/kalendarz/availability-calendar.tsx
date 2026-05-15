@@ -14,6 +14,7 @@ import { SLOT_DURATION_MINUTES } from '@/lib/types/availability.types'
 import { IconDeviceFloppy, IconRefresh, IconInfoCircle, IconEdit } from '@tabler/icons-react'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
+import { createCorrelationId } from '@/lib/monitoring/correlation'
 
 interface AvailabilityCalendarProps {
   tutorId: string
@@ -143,7 +144,10 @@ export function AvailabilityCalendar({ tutorId, initialAvailability, initialBook
       if (isBooked) {
         const slot = bookedSlots.find(b => b.weekday === day && b.start_time.substring(0,5) === startTime && b.end_time.substring(0,5) === endTime && b.status === 'booked')
         if (slot && window.confirm('Ten slot jest zarezerwowany. Czy chcesz anulować rezerwację?')) {
-          cancelBookedSlotAction(slot.id).then(() => {
+          cancelBookedSlotAction(slot.id, {
+            correlationId: createCorrelationId(),
+            route: '/dashboard/kalendarz',
+          }).then(() => {
             setBookedSlots(prev => prev.map(s => s.id === slot.id ? { ...s, status: 'cancelled' } as BookedSlot : s))
             toast.success('Rezerwacja anulowana')
           }).catch(() => toast.error('Nie udało się anulować rezerwacji'))
@@ -202,7 +206,10 @@ export function AvailabilityCalendar({ tutorId, initialAvailability, initialBook
   const handleSave = async () => {
     setLoading(true)
     try {
-      const result = await saveAvailability(tutorId, slots)
+      const result = await saveAvailability(tutorId, slots, {
+        correlationId: createCorrelationId(),
+        route: '/dashboard/kalendarz',
+      })
       // Zaktualizuj zapisany stan
       setSavedAvailability(result)
       setHasChanges(false)

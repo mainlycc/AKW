@@ -1,0 +1,8 @@
+# Skopiuj do Vercel (Production + Preview):
+NEXT_PUBLIC_SENTRY_DSN=<twój-dsn>
+SENTRY_DSN=<twój-dsn>
+SENTRY_ORG=<org-slug>
+SENTRY_PROJECT=akademia-wiedzy
+SENTRY_AUTH_TOKEN=<token-z-sentry-settings>
+SENTRY_ENVIRONMENT=production
+SENTRY_TRACES_SAMPLE_RATE=0.1

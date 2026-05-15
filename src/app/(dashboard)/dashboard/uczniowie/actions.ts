@@ -605,6 +605,7 @@ export async function sendGroupMessage(
   let sentCount = 0
   let failedCount = 0
   const errors: string[] = []
+  const warnings: string[] = []
 
   // URL aplikacji do budowy absolutnego linku do obrazka
   let appUrl = 'http://localhost:3000'
@@ -645,6 +646,13 @@ export async function sendGroupMessage(
 
     if (result.success) {
       sentCount++
+      if (result.error || result.details?.email || result.details?.sms) {
+        warnings.push(
+          `${data.parentName}: ${
+            result.error || result.details?.email || result.details?.sms || 'Częściowa wysyłka'
+          }`
+        )
+      }
     } else {
       failedCount++
       errors.push(
@@ -669,10 +677,13 @@ export async function sendGroupMessage(
     }
   }
 
-  if (failedCount > 0) {
+  if (failedCount > 0 || warnings.length > 0) {
     return {
       success: true,
-      error: `Wysłano ${sentCount} wiadomości, nie udało się wysłać ${failedCount}. Błędy: ${errors.join('; ')}`,
+      error:
+        failedCount > 0
+          ? `Wysłano ${sentCount} wiadomości, nie udało się wysłać ${failedCount}. Błędy: ${errors.join('; ')}`
+          : `Wysłano ${sentCount} wiadomości, ale część kanałów nie była dostępna lub nie powiodła się: ${warnings.join('; ')}`,
       sentCount,
       failedCount,
     }

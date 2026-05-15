@@ -459,6 +459,7 @@ export async function sendPaymentReminderEmail({
   totalPaid,
   balance,
   hours,
+  customMessage,
 }: SendPaymentReminderEmailParams): Promise<SendEmailResult> {
   try {
     const resendApiKey = process.env.RESEND_API_KEY
@@ -494,6 +495,7 @@ export async function sendPaymentReminderEmail({
       totalPaid,
       balance,
       hours,
+      customMessage,
     })
     
     const { data, error } = await resend.emails.send({
@@ -636,6 +638,7 @@ export async function sendReportReminderEmail({
   tutorName,
   month,
   year,
+  customMessage,
 }: SendReportReminderEmailParams): Promise<SendEmailResult> {
   try {
     const resendApiKey = process.env.RESEND_API_KEY
@@ -681,6 +684,7 @@ export async function sendReportReminderEmail({
       month,
       year,
       appUrl,
+      customMessage,
     })
     
     const { data, error } = await resend.emails.send({
@@ -732,6 +736,7 @@ export async function sendDeclarationReminderEmail({
   tutorName,
   month,
   year,
+  customMessage,
 }: SendDeclarationReminderEmailParams): Promise<SendEmailResult> {
   try {
     const resendApiKey = process.env.RESEND_API_KEY
@@ -776,6 +781,7 @@ export async function sendDeclarationReminderEmail({
       month,
       year,
       appUrl,
+      customMessage,
     })
 
     const { data, error } = await resend.emails.send({

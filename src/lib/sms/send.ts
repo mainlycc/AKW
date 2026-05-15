@@ -109,6 +109,7 @@ export interface PaymentReminderSmsParams {
   totalPaid: number
   balance: number
   hours: number
+  customMessage?: string
 }
 
 export async function sendPaymentReminderSms(
@@ -117,8 +118,10 @@ export async function sendPaymentReminderSms(
   const client = getSmsClient()
   const formattedBalance = params.balance.toFixed(2)
 
+  const custom = params.customMessage?.trim()
+  const prefix = custom ? `${custom} ` : ''
   const body = truncate(
-    `Akademia Wiedzy: przypomnienie o płatności za zajęcia ${params.studentName}. Zaległość: ${formattedBalance} zł za ${params.hours.toFixed(
+    `Akademia Wiedzy: ${prefix}Zaległość za zajęcia ${params.studentName}: ${formattedBalance} zł za ${params.hours.toFixed(
       1
     )} h (${params.month}/${params.year}).`
   )
@@ -160,6 +163,7 @@ export interface ReportReminderSmsParams {
   tutorName: string
   month: number
   year: number
+  customMessage?: string
 }
 
 export async function sendReportReminderSms(
@@ -167,8 +171,13 @@ export async function sendReportReminderSms(
 ): Promise<SendNotificationResult> {
   const client = getSmsClient()
 
+  const custom = params.customMessage?.trim()
   const body = truncate(
-    `Akademia Wiedzy: przypomnienie o raporcie za ${params.month}/${params.year}. Prosimy o uzupełnienie raportu w panelu tutora.`
+    `Akademia Wiedzy: ${
+      custom && custom.length > 0
+        ? custom
+        : `przypomnienie o raporcie za ${params.month}/${params.year}. Prosimy o uzupełnienie raportu w panelu tutora.`
+    }`
   )
 
   const result = await client.sendSms({ to: params.toPhone, body })
@@ -182,6 +191,7 @@ export interface DeclarationReminderSmsParams {
   tutorName: string
   month: number
   year: number
+  customMessage?: string
 }
 
 export async function sendDeclarationReminderSms(
@@ -189,8 +199,13 @@ export async function sendDeclarationReminderSms(
 ): Promise<SendNotificationResult> {
   const client = getSmsClient()
 
+  const custom = params.customMessage?.trim()
   const body = truncate(
-    `Akademia Wiedzy: przypomnienie o deklaracji za ${params.month}/${params.year}. Prosimy o złożenie deklaracji w panelu tutora.`
+    `Akademia Wiedzy: ${
+      custom && custom.length > 0
+        ? custom
+        : `przypomnienie o deklaracji za ${params.month}/${params.year}. Prosimy o złożenie deklaracji w panelu tutora.`
+    }`
   )
 
   const result = await client.sendSms({ to: params.toPhone, body })

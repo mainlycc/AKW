@@ -38,6 +38,7 @@ import {
 } from '@/components/ui/pagination'
 import { StudentNameLink } from '@/components/student-name-link'
 import type { NotificationChannel } from '@/lib/types/notifications'
+import { ComposeSendDialog } from '@/components/messaging/compose-send-dialog'
 
 interface Student {
   id: string
@@ -103,7 +104,44 @@ export function BillingTable({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false)
   const [paymentDialogStudentId, setPaymentDialogStudentId] = useState<string | undefined>()
-  const [channel, setChannel] = useState<NotificationChannel>('email')
+  const [composeChannel, setComposeChannel] = useState<NotificationChannel>('email')
+  const [composeOpen, setComposeOpen] = useState(false)
+  const [composeDefaultMessage, setComposeDefaultMessage] = useState('')
+  const [composeMode, setComposeMode] = useState<'single' | 'group'>('single')
+  const [composeTarget, setComposeTarget] = useState<{ studentId: string; billingPeriodId: string } | null>(null)
+  const composeStats = useMemo(() => {
+    if (composeMode === 'single' && composeTarget) {
+      const b = billings.find(
+        (x) => x.student_id === composeTarget.studentId && x.billing_period_id === composeTarget.billingPeriodId
+      )
+      const hasEmail = !!(b?.parent?.email && b.parent.email.trim())
+      const hasPhone = !!(b?.parent?.phone && b.parent.phone.trim())
+      return {
+        totalRecipients: 1,
+        emailAvailable: hasEmail ? 1 : 0,
+        smsAvailable: hasPhone ? 1 : 0,
+        emailUnavailable: hasEmail ? 0 : 1,
+        smsUnavailable: hasPhone ? 0 : 1,
+      }
+    }
+
+    if (selectedIds.size === 0) {
+      return { totalRecipients: 0, emailAvailable: 0, smsAvailable: 0, emailUnavailable: 0, smsUnavailable: 0 }
+    }
+
+    const selected = billings.filter((b) => selectedIds.has(b.id))
+    const total = selected.length
+    const emailAvailable = selected.filter((b) => !!(b.parent?.email && b.parent.email.trim())).length
+    const smsAvailable = selected.filter((b) => !!(b.parent?.phone && b.parent.phone.trim())).length
+    return {
+      totalRecipients: total,
+      emailAvailable,
+      smsAvailable,
+      emailUnavailable: total - emailAvailable,
+      smsUnavailable: total - smsAvailable,
+    }
+  }, [billings, composeMode, composeTarget, selectedIds])
+
   const currentDate = new Date()
   const years = Array.from(
     { length: 5 },
@@ -229,12 +267,12 @@ export function BillingTable({
     studentId: string,
     billingPeriodId: string
   ) => {
-    try {
-      await sendReminderAction(studentId, billingPeriodId, channel)
-      toast.success('Przypomnienie wysłane')
-    } catch {
-      toast.error('Nie udało się wysłać przypomnienia')
-    }
+    setComposeMode('single')
+    setComposeTarget({ studentId, billingPeriodId })
+    setComposeDefaultMessage(
+      'Przypominamy o zaległej płatności za zajęcia. Prosimy o uregulowanie należności w najbliższym możliwym terminie.'
+    )
+    setComposeOpen(true)
   }
 
   const handleAddPayment = (studentId: string, _billingPeriodId: string) => {
@@ -327,15 +365,12 @@ export function BillingTable({
   const handleSendGroupReminders = async () => {
     if (selectedIds.size === 0) return
 
-    try {
-      await sendGroupRemindersAction(Array.from(selectedIds), channel)
-      toast.success(`Wysłano przypomnienia dla ${selectedIds.size} ${selectedIds.size === 1 ? 'rozliczenia' : 'rozliczeń'}`)
-      setSelectedIds(new Set())
-      router.refresh()
-    } catch (error) {
-      console.error('Send group reminders error:', error)
-      toast.error('Nie udało się wysłać przypomnień')
-    }
+    setComposeMode('group')
+    setComposeTarget(null)
+    setComposeDefaultMessage(
+      'Przypominamy o zaległej płatności za zajęcia. Prosimy o uregulowanie należności w najbliższym możliwym terminie.'
+    )
+    setComposeOpen(true)
   }
 
   return (
@@ -377,7 +412,7 @@ export function BillingTable({
             Wyślij przypomnienie {selectedIds.size > 0 && `(${selectedIds.size})`}
           </Button>
         </div>
-        <div className="grid grid-cols-3 gap-4 flex-shrink-0">
+        <div className="grid grid-cols-2 gap-4 flex-shrink-0">
           <div className="space-y-2">
             <label className="text-sm font-medium">Miesiąc</label>
             <Select
@@ -411,22 +446,6 @@ export function BillingTable({
                     {y}
                   </SelectItem>
                 ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Kanał przypomnień</label>
-            <Select
-              value={channel}
-              onValueChange={(v) => setChannel(v as NotificationChannel)}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="email">Email</SelectItem>
-                <SelectItem value="sms">SMS</SelectItem>
-                <SelectItem value="both">Email + SMS</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -764,6 +783,55 @@ export function BillingTable({
         currentYear={currentYear}
         initialStudentId={paymentDialogStudentId}
         onSuccess={handlePaymentSuccess}
+      />
+
+      <ComposeSendDialog
+        open={composeOpen}
+        onOpenChange={setComposeOpen}
+        title="Wyślij przypomnienie o płatności"
+        description={
+          composeMode === 'group'
+            ? `Wyślij przypomnienie dla ${selectedIds.size} ${selectedIds.size === 1 ? 'rozliczenia' : 'rozliczeń'}`
+            : 'Wyślij przypomnienie do wybranego rozliczenia'
+        }
+        defaultMessage={composeDefaultMessage}
+        defaultChannel={composeChannel}
+        stats={composeStats}
+        messagePlaceholder="Wpisz treść przypomnienia..."
+        confirmLabel="Wyślij przypomnienie"
+        onSend={async ({ message, channel }) => {
+          setComposeChannel(channel)
+
+          if (composeMode === 'single' && composeTarget) {
+            const result = await sendReminderAction(
+              composeTarget.studentId,
+              composeTarget.billingPeriodId,
+              channel,
+              message
+            )
+            if (result.success) {
+              toast.success('Przypomnienie wysłane')
+              if (result.error) toast.warning(result.error)
+            } else {
+              toast.error(result.error || 'Nie udało się wysłać przypomnienia')
+              throw new Error(result.error || 'Nie udało się wysłać przypomnienia')
+            }
+            return
+          }
+
+          if (selectedIds.size === 0) return
+          const result = await sendGroupRemindersAction(Array.from(selectedIds), channel, message)
+          if (result.success) {
+            toast.success(`Wysłano ${result.sent} przypomnień`)
+          } else {
+            toast.warning(`Wysłano ${result.sent} przypomnień, ${result.failed} błędów`)
+          }
+          if (result.warnings?.length) {
+            console.error('Warnings sending reminders:', result.warnings)
+          }
+          setSelectedIds(new Set())
+          router.refresh()
+        }}
       />
     </div>
   )

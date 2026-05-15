@@ -1,7 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
-import type { NotificationChannel } from '@/lib/types/notifications'
+import type { NotificationChannel, SendNotificationResult } from '@/lib/types/notifications'
 import { sendWithChannel } from '@/lib/notifications/send-with-channel'
 
 export type BillingStatus = 'paid' | 'partially_paid' | 'unpaid'
@@ -1483,8 +1483,9 @@ export async function getStudentBillingsFromReports(
 export async function sendPaymentReminder(
   studentId: string,
   billingPeriodId: string,
-  channel: NotificationChannel = 'email'
-): Promise<void> {
+  channel: NotificationChannel = 'email',
+  message?: string
+): Promise<SendNotificationResult> {
   const supabase = await createClient()
 
   // Validate inputs
@@ -1711,6 +1712,7 @@ export async function sendPaymentReminder(
                   totalPaid,
                   balance,
                   hours,
+                  customMessage: message,
                 })
             : undefined,
         sendSms:
@@ -1726,6 +1728,7 @@ export async function sendPaymentReminder(
                   totalPaid,
                   balance,
                   hours,
+                  customMessage: message,
                 })
             : undefined,
       })
@@ -1752,16 +1755,20 @@ export async function sendPaymentReminder(
         })
         // Don't throw - reminder record was created, failure is logged
       }
+
+      return result
     } else {
       console.warn('[sendPaymentReminder] Parent record without data:', {
         studentId,
       })
+      return { success: false, error: 'Nie znaleziono danych kontaktowych rodzica (email/telefon)' }
     }
   } else {
     console.warn('[sendPaymentReminder] No parent found for student:', {
       studentId,
       hasParentData: !!parentData,
     })
+    return { success: false, error: 'Nie znaleziono rodzica dla ucznia' }
   }
 }
 

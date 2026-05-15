@@ -18,10 +18,11 @@ import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { ReportDetailDialog } from "./report-detail-dialog"
-import { autoApproveSubmittedReports, sendReportReminderToTutor, sendReportRemindersToAllMissing } from "./actions"
+import { autoApproveSubmittedReports, sendReportReminderToTutor } from "./actions"
 import { IconDownload, IconSearch, IconMail } from "@tabler/icons-react"
 import { toast } from "sonner"
 import type { NotificationChannel } from "@/lib/types/notifications"
+import { ComposeSendDialog } from "@/components/messaging/compose-send-dialog"
 
 interface ReportEntry {
   id: string
@@ -106,11 +107,11 @@ export function ReportsManagement({ reports, tutors = [], adminId }: ReportsMana
   const currentDate = new Date()
   const [reminderMonth, setReminderMonth] = useState(currentDate.getMonth() + 1)
   const [reminderYear, setReminderYear] = useState(currentDate.getFullYear())
-  const [sendingReminder, setSendingReminder] = useState<string | null>(null)
-  const [sendingAllReminders, setSendingAllReminders] = useState(false)
   const [sendingSelectedReminders, setSendingSelectedReminders] = useState(false)
   const [selectedTutorIds, setSelectedTutorIds] = useState<Set<string>>(new Set())
-  const [channel, setChannel] = useState<NotificationChannel>('email')
+  const [composeChannel, setComposeChannel] = useState<NotificationChannel>('email')
+  const [composeOpen, setComposeOpen] = useState(false)
+  const [composeDefaultMessage, setComposeDefaultMessage] = useState('')
   
   // Generuj listę lat (bieżący rok i 2 lata wstecz)
   const years = Array.from({ length: 3 }, (_, i) => currentDate.getFullYear() - i)
@@ -207,48 +208,33 @@ export function ReportsManagement({ reports, tutors = [], adminId }: ReportsMana
     return tutors.filter(tutor => !tutorsWithReports.has(tutor.id))
   }, [reports, tutors, reminderMonth, reminderYear])
 
-  // Filtrowanie tutorów bez raportu po wyszukiwaniu
-  const filteredTutorsWithoutReports = useMemo(() => {
-    if (!searchMissing.trim()) return tutorsWithoutReports
-    
-    const searchLower = searchMissing.toLowerCase().trim()
-    return tutorsWithoutReports.filter(tutor => {
+  function filterTutorsBySearch(list: Tutor[], query: string) {
+    if (!query.trim()) return list
+
+    const searchLower = query.toLowerCase().trim()
+    return list.filter((tutor) => {
       const fullNameLower = tutor.full_name.toLowerCase()
-      
+
       // Wyszukiwanie po pełnym imieniu i nazwisku
       if (fullNameLower.includes(searchLower)) {
         return true
       }
-      
+
       // Wyszukiwanie po osobnych słowach (imię lub nazwisko)
       const nameWords = fullNameLower.split(/\s+/)
       const searchWords = searchLower.split(/\s+/)
-      
+
       // Sprawdź czy wszystkie słowa z wyszukiwania znajdują się w imieniu/nazwisku
-      return searchWords.every(word => 
-        nameWords.some(nameWord => nameWord.includes(word))
+      return searchWords.every((word) =>
+        nameWords.some((nameWord) => nameWord.includes(word))
       )
     })
+  }
+
+  // Filtrowanie tutorów bez raportu po wyszukiwaniu
+  const filteredTutorsWithoutReports = useMemo(() => {
+    return filterTutorsBySearch(tutorsWithoutReports, searchMissing)
   }, [tutorsWithoutReports, searchMissing])
-
-  // Czyszczenie zaznaczeń tutorów, którzy nie są już widoczni po zmianie wyszukiwania
-  useEffect(() => {
-    const visibleTutorIds = new Set(filteredTutorsWithoutReports.map(t => t.id))
-    setSelectedTutorIds(prev => {
-      const newSelected = new Set<string>()
-      prev.forEach(id => {
-        if (visibleTutorIds.has(id)) {
-          newSelected.add(id)
-        }
-      })
-      return newSelected
-    })
-  }, [searchMissing])
-
-  // Czyszczenie zaznaczeń przy zmianie okresu
-  useEffect(() => {
-    setSelectedTutorIds(new Set())
-  }, [reminderMonth, reminderYear])
 
   // Funkcje do zarządzania zaznaczeniami
   const toggleSelectAll = (checked: boolean) => {
@@ -272,88 +258,14 @@ export function ReportsManagement({ reports, tutors = [], adminId }: ReportsMana
   const isAllSelected = filteredTutorsWithoutReports.length > 0 && selectedTutorIds.size === filteredTutorsWithoutReports.length
   const isSomeSelected = selectedTutorIds.size > 0 && selectedTutorIds.size < filteredTutorsWithoutReports.length
 
-  const handleSendReminder = async (tutorId: string, tutorName: string) => {
-    setSendingReminder(tutorId)
-    try {
-      await sendReportReminderToTutor(tutorId, reminderMonth, reminderYear, channel)
-      toast.success(`Wysłano przypomnienie do ${tutorName}`)
-      router.refresh()
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Nie udało się wysłać przypomnienia')
-    } finally {
-      setSendingReminder(null)
-    }
+  const getDefaultReminderMessage = (month: number, year: number) => {
+    const monthLabel = months[month - 1] || `${month}`
+    return `Przypominamy o złożeniu raportu miesięcznego za okres ${monthLabel} ${year}.`
   }
 
-  const handleSendAllReminders = async () => {
-    if (tutorsWithoutReports.length === 0) {
-      toast.info('Wszyscy tutorzy złożyli już raport za wybrany okres.')
-      return
-    }
-
-    setSendingAllReminders(true)
-    try {
-      const result = await sendReportRemindersToAllMissing(reminderMonth, reminderYear, channel)
-      if (result.success) {
-        toast.success(result.message || `Wysłano ${result.sent} przypomnień`)
-      } else {
-        toast.warning(result.message || `Wysłano ${result.sent} przypomnień${result.errors.length > 0 ? `, ${result.errors.length} błędów` : ''}`)
-      }
-      if (result.errors.length > 0) {
-        console.error('Errors sending reminders:', result.errors)
-      }
-      setSelectedTutorIds(new Set())
-      setSearchMissing('')
-      router.refresh()
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Nie udało się wysłać przypomnień')
-    } finally {
-      setSendingAllReminders(false)
-    }
-  }
-
-  const handleSendSelectedReminders = async () => {
-    if (selectedTutorIds.size === 0) {
-      toast.info('Wybierz przynajmniej jednego tutora.')
-      return
-    }
-
-    setSendingSelectedReminders(true)
-    let successCount = 0
-    let errorCount = 0
-    const errors: string[] = []
-
-    try {
-      for (const tutorId of selectedTutorIds) {
-        const tutor = filteredTutorsWithoutReports.find(t => t.id === tutorId)
-        if (!tutor) continue
-
-        try {
-            await sendReportReminderToTutor(tutorId, reminderMonth, reminderYear, channel)
-          successCount++
-        } catch (error) {
-          errorCount++
-          const errorMessage = error instanceof Error ? error.message : 'Nieznany błąd'
-          errors.push(`${tutor.full_name}: ${errorMessage}`)
-        }
-      }
-
-      if (errorCount === 0) {
-        toast.success(`Wysłano ${successCount} przypomnień`)
-      } else {
-        toast.warning(`Wysłano ${successCount} przypomnień, ${errorCount} błędów`)
-        if (errors.length > 0) {
-          console.error('Errors sending reminders:', errors)
-        }
-      }
-      
-      setSelectedTutorIds(new Set())
-      router.refresh()
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Nie udało się wysłać przypomnień')
-    } finally {
-      setSendingSelectedReminders(false)
-    }
+  const openComposeForSelected = () => {
+    setComposeDefaultMessage(getDefaultReminderMessage(reminderMonth, reminderYear))
+    setComposeOpen(true)
   }
 
   return (
@@ -384,7 +296,11 @@ export function ReportsManagement({ reports, tutors = [], adminId }: ReportsMana
             <Label htmlFor="reminder-month">Miesiąc</Label>
             <Select
               value={reminderMonth.toString()}
-              onValueChange={(v) => setReminderMonth(parseInt(v))}
+              onValueChange={(v) => {
+                setReminderMonth(parseInt(v))
+                setSelectedTutorIds(new Set())
+                setSearchMissing('')
+              }}
             >
               <SelectTrigger id="reminder-month">
                 <SelectValue />
@@ -402,7 +318,11 @@ export function ReportsManagement({ reports, tutors = [], adminId }: ReportsMana
             <Label htmlFor="reminder-year">Rok</Label>
             <Select
               value={reminderYear.toString()}
-              onValueChange={(v) => setReminderYear(parseInt(v))}
+              onValueChange={(v) => {
+                setReminderYear(parseInt(v))
+                setSelectedTutorIds(new Set())
+                setSearchMissing('')
+              }}
             >
               <SelectTrigger id="reminder-year">
                 <SelectValue />
@@ -413,22 +333,6 @@ export function ReportsManagement({ reports, tutors = [], adminId }: ReportsMana
                     {y}
                   </SelectItem>
                 ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="channel">Kanał przypomnień</Label>
-            <Select
-              value={channel}
-              onValueChange={(v) => setChannel(v as NotificationChannel)}
-            >
-              <SelectTrigger id="channel">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="email">Email</SelectItem>
-                <SelectItem value="sms">SMS</SelectItem>
-                <SelectItem value="both">Email + SMS</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -524,28 +428,33 @@ export function ReportsManagement({ reports, tutors = [], adminId }: ReportsMana
               <Input
                 placeholder="Szukaj po nazwisku tutora..."
                 value={searchMissing}
-                onChange={(e) => setSearchMissing(e.target.value)}
+                onChange={(e) => {
+                  const nextQuery = e.target.value
+                  setSearchMissing(nextQuery)
+
+                  // usuń zaznaczenia tutorów niewidocznych po zmianie wyszukiwania
+                  const nextVisibleIds = new Set(
+                    filterTutorsBySearch(tutorsWithoutReports, nextQuery).map((t) => t.id)
+                  )
+                  setSelectedTutorIds((prev) => {
+                    const next = new Set<string>()
+                    prev.forEach((id) => {
+                      if (nextVisibleIds.has(id)) next.add(id)
+                    })
+                    return next
+                  })
+                }}
                 className="pl-8"
               />
             </div>
             <div className="flex gap-2">
-              {selectedTutorIds.size > 0 && (
-                <Button
-                  onClick={handleSendSelectedReminders}
-                  disabled={sendingSelectedReminders}
-                  variant="default"
-                >
-                  <IconMail className="mr-2 h-4 w-4" />
-                  {sendingSelectedReminders ? 'Wysyłanie...' : `Wyślij do wybranych (${selectedTutorIds.size})`}
-                </Button>
-              )}
               <Button
-                onClick={handleSendAllReminders}
-                disabled={tutorsWithoutReports.length === 0 || sendingAllReminders}
+                onClick={openComposeForSelected}
+                disabled={selectedTutorIds.size === 0 || sendingSelectedReminders}
                 variant="default"
               >
                 <IconMail className="mr-2 h-4 w-4" />
-                {sendingAllReminders ? 'Wysyłanie...' : `Wyślij do wszystkich (${tutorsWithoutReports.length})`}
+                {sendingSelectedReminders ? 'Wysyłanie...' : `Wyślij (${selectedTutorIds.size})`}
               </Button>
             </div>
           </div>
@@ -560,8 +469,7 @@ export function ReportsManagement({ reports, tutors = [], adminId }: ReportsMana
               <Table className="w-full">
                 <colgroup>
                   <col className="w-[50px]" />
-                  <col className="w-[25%]" />
-                  <col className="w-[20%]" />
+                  <col className="w-[50%]" />
                   <col className="w-[auto]" />
                 </colgroup>
                 <TableHeader>
@@ -575,13 +483,12 @@ export function ReportsManagement({ reports, tutors = [], adminId }: ReportsMana
                     </TableHead>
                     <TableHead className="px-4">Tutor</TableHead>
                     <TableHead className="px-4">Okres</TableHead>
-                    <TableHead className="px-4 text-right">Akcja</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredTutorsWithoutReports.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={4} className="text-center text-muted-foreground">
+                      <TableCell colSpan={3} className="text-center text-muted-foreground">
                         Brak wyników wyszukiwania
                       </TableCell>
                     </TableRow>
@@ -599,20 +506,6 @@ export function ReportsManagement({ reports, tutors = [], adminId }: ReportsMana
                         <TableCell className="px-4">
                           {months[reminderMonth - 1]} {reminderYear}
                         </TableCell>
-                        <TableCell className="px-4 text-right">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handleSendReminder(tutor.id, tutor.full_name)
-                            }}
-                            disabled={sendingReminder === tutor.id}
-                          >
-                            <IconMail className="mr-2 h-3 w-3" />
-                            {sendingReminder === tutor.id ? 'Wysyłanie...' : 'Wyślij przypomnienie'}
-                          </Button>
-                        </TableCell>
                       </TableRow>
                     ))
                   )}
@@ -627,6 +520,60 @@ export function ReportsManagement({ reports, tutors = [], adminId }: ReportsMana
         open={dialogOpen}
         onClose={() => setDialogOpen(false)}
         report={selectedReport}
+      />
+
+      <ComposeSendDialog
+        open={composeOpen}
+        onOpenChange={setComposeOpen}
+        title="Wyślij przypomnienie o raporcie"
+        description={
+          `Okres: ${months[reminderMonth - 1]} ${reminderYear}`
+        }
+        defaultMessage={composeDefaultMessage}
+        defaultChannel={composeChannel}
+        messagePlaceholder="Wpisz treść przypomnienia..."
+        confirmLabel="Wyślij przypomnienie"
+        onSend={async ({ message, channel }) => {
+          setComposeChannel(channel)
+          if (selectedTutorIds.size === 0) {
+            toast.info('Wybierz przynajmniej jednego tutora.')
+            return
+          }
+
+          setSendingSelectedReminders(true)
+          let successCount = 0
+          let errorCount = 0
+          const errors: string[] = []
+          try {
+            for (const tutorId of selectedTutorIds) {
+              const tutor = filteredTutorsWithoutReports.find((t) => t.id === tutorId)
+              if (!tutor) continue
+              const result = await sendReportReminderToTutor(tutorId, reminderMonth, reminderYear, channel, message)
+              if (result.success) {
+                successCount++
+                if (result.error) {
+                  errorCount++
+                  errors.push(`${tutor.full_name}: ${result.error}`)
+                }
+              } else {
+                errorCount++
+                errors.push(`${tutor.full_name}: ${result.error || 'Nie udało się wysłać przypomnienia'}`)
+              }
+            }
+
+            if (errorCount === 0) {
+              toast.success(`Wysłano ${successCount} przypomnień`)
+            } else {
+              toast.warning(`Wysłano ${successCount} przypomnień, ${errorCount} błędów`)
+              if (errors.length > 0) console.error('Errors sending reminders:', errors)
+            }
+
+            setSelectedTutorIds(new Set())
+            router.refresh()
+          } finally {
+            setSendingSelectedReminders(false)
+          }
+        }}
       />
     </div>
   )

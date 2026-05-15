@@ -150,6 +150,7 @@ export async function sendGroupMessageToTutors(
   let sentCount = 0
   let failedCount = 0
   const errors: string[] = []
+  const warnings: string[] = []
 
   // URL aplikacji do budowy absolutnego linku do obrazka
   let appUrl = 'http://localhost:3000'
@@ -190,6 +191,13 @@ export async function sendGroupMessageToTutors(
 
     if (result.success) {
       sentCount++
+      if (result.error || result.details?.email || result.details?.sms) {
+        warnings.push(
+          `${tutor.full_name}: ${
+            result.error || result.details?.email || result.details?.sms || 'Częściowa wysyłka'
+          }`
+        )
+      }
     } else {
       failedCount++
       errors.push(
@@ -219,10 +227,13 @@ export async function sendGroupMessageToTutors(
     }
   }
 
-  if (failedCount > 0) {
+  if (failedCount > 0 || warnings.length > 0) {
     return {
       success: true,
-      error: `Wysłano ${sentCount} wiadomości, nie udało się wysłać ${failedCount}. Błędy: ${errors.join('; ')}`,
+      error:
+        failedCount > 0
+          ? `Wysłano ${sentCount} wiadomości, nie udało się wysłać ${failedCount}. Błędy: ${errors.join('; ')}`
+          : `Wysłano ${sentCount} wiadomości, ale część kanałów nie była dostępna lub nie powiodła się: ${warnings.join('; ')}`,
       sentCount,
       failedCount,
     }

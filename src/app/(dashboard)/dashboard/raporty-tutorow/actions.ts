@@ -376,7 +376,8 @@ export async function sendReportReminderToTutor(
   tutorId: string,
   month: number,
   year: number,
-  channel: NotificationChannel = 'email'
+  channel: NotificationChannel = 'email',
+  message?: string
 ) {
   const supabase = await createClient()
   
@@ -393,6 +394,9 @@ export async function sendReportReminderToTutor(
   }
 
   const monthName = monthNames[month - 1] || `Miesiąc ${month}`
+  const notificationMessage =
+    (message && message.trim()) ||
+    `Przypominamy o złożeniu raportu miesięcznego za okres ${monthName} ${year}.`
 
   // Utwórz powiadomienie
   try {
@@ -400,7 +404,7 @@ export async function sendReportReminderToTutor(
       userId: tutorId,
       type: 'report_reminder',
       title: 'Przypomnienie o raporcie miesięcznym',
-      message: `Przypominamy o złożeniu raportu miesięcznego za okres ${monthName} ${year}.`,
+      message: notificationMessage,
       metadata: {
         month,
         year,
@@ -420,6 +424,7 @@ export async function sendReportReminderToTutor(
                 tutorName: tutor.full_name,
                 month,
                 year,
+                customMessage: message,
               })
           : undefined,
       sendSms:
@@ -430,27 +435,23 @@ export async function sendReportReminderToTutor(
                 tutorName: tutor.full_name,
                 month,
                 year,
+                customMessage: message,
               })
           : undefined,
     })
 
-    if (!result.success) {
-      console.error('Failed to send report reminder notification:', {
+    if (!result.success || result.error) {
+      console.error('Report reminder notification not fully successful:', {
         tutorId,
         email: tutorEmail,
         phone: tutorPhone,
+        success: result.success,
         error: result.error,
         details: result.details,
       })
-    } else {
-      console.log('Report reminder notification sent successfully:', {
-        tutorId,
-        email: tutorEmail,
-        phone: tutorPhone,
-      })
     }
 
-    return { success: true }
+    return result
   } catch (error) {
     console.error('Failed to send reminder notification:', error)
     throw error
@@ -463,7 +464,8 @@ export async function sendReportReminderToTutor(
 export async function sendReportRemindersToAllMissing(
   month: number,
   year: number,
-  channel: NotificationChannel = 'email'
+  channel: NotificationChannel = 'email',
+  message?: string
 ) {
   const supabase = await createClient()
   
@@ -505,7 +507,11 @@ export async function sendReportRemindersToAllMissing(
   }
 
   const monthName = monthNames[month - 1] || `Miesiąc ${month}`
+  const notificationMessage =
+    (message && message.trim()) ||
+    `Przypominamy o złożeniu raportu miesięcznego za okres ${monthName} ${year}.`
   const errors: string[] = []
+  const warnings: string[] = []
   let sentCount = 0
 
   // Wyślij przypomnienia do każdego tutora bez raportu
@@ -516,7 +522,7 @@ export async function sendReportRemindersToAllMissing(
         userId: tutor.id,
         type: 'report_reminder',
         title: 'Przypomnienie o raporcie miesięcznym',
-        message: `Przypominamy o złożeniu raportu miesięcznego za okres ${monthName} ${year}.`,
+        message: notificationMessage,
         metadata: {
           month,
           year,
@@ -537,6 +543,7 @@ export async function sendReportRemindersToAllMissing(
                   tutorName: tutor.full_name,
                   month,
                   year,
+                  customMessage: message,
                 })
             : undefined,
         sendSms:
@@ -547,27 +554,25 @@ export async function sendReportRemindersToAllMissing(
                   tutorName: tutor.full_name,
                   month,
                   year,
+                  customMessage: message,
                 })
             : undefined,
       })
 
-      if (!result.success) {
-        console.error('Failed to send reminder notification:', {
-          tutorId: tutor.id,
-          email: tutorEmail,
-          phone: tutorPhone,
-          error: result.error,
-          details: result.details,
-        })
+      if (result.success) {
+        sentCount++
+        if (result.error || result.details?.email || result.details?.sms) {
+          warnings.push(
+            `${tutor.full_name}: ${
+              result.error || result.details?.email || result.details?.sms || 'Częściowa wysyłka'
+            }`
+          )
+        }
       } else {
-        console.log('Reminder notification sent successfully:', {
-          tutorId: tutor.id,
-          email: tutorEmail,
-          phone: tutorPhone,
-        })
+        const errMsg =
+          result.error || result.details?.email || result.details?.sms || 'Nie udało się wysłać powiadomienia'
+        errors.push(`${tutor.full_name}: ${errMsg}`)
       }
-
-      sentCount++
     } catch (error) {
       const errorMessage = `Błąd przy wysyłaniu przypomnienia do ${tutor.full_name}: ${error instanceof Error ? error.message : 'Nieznany błąd'}`
       console.error(errorMessage, error)
@@ -584,7 +589,12 @@ export async function sendReportRemindersToAllMissing(
     success: errors.length === 0,
     sent: sentCount,
     errors,
-    message: `Wysłano ${sentCount} przypomnień do tutorów bez raportu za ${monthName} ${year}.`,
+    message:
+      errors.length === 0
+        ? warnings.length > 0
+          ? `Wysłano ${sentCount} przypomnień, ale część kanałów nie była dostępna lub nie powiodła się: ${warnings.join('; ')}`
+          : `Wysłano ${sentCount} przypomnień do tutorów bez raportu za ${monthName} ${year}.`
+        : `Wysłano ${sentCount} przypomnień, ${errors.length} błędów.`,
   }
 }
 

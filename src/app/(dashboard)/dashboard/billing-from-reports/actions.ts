@@ -11,16 +11,18 @@ import { previewPayUPaymentsFromReports, sendPayUPaymentsFromReports } from '@/l
 export async function sendReminderAction(
   studentId: string,
   billingPeriodId: string,
-  channel: NotificationChannel = 'email'
+  channel: NotificationChannel = 'email',
+  message?: string
 ) {
   try {
     console.log('[sendReminderAction] Called with:', {
       studentId,
       billingPeriodId,
     })
-    await sendPaymentReminder(studentId, billingPeriodId, channel)
+    const result = await sendPaymentReminder(studentId, billingPeriodId, channel, message)
     console.log('[sendReminderAction] Reminder sent successfully')
     revalidatePath('/dashboard/billing-from-reports')
+    return result
   } catch (error) {
     console.error('[sendReminderAction] Error:', {
       error: error instanceof Error ? error.message : String(error),
@@ -175,7 +177,8 @@ export async function markBillingsAsPaidAction(billingIds: string[]) {
 
 export async function sendGroupRemindersAction(
   billingIds: string[],
-  channel: NotificationChannel = 'email'
+  channel: NotificationChannel = 'email',
+  message?: string
 ) {
   // Extract student_id and billing_period_id from billing IDs (:: separator)
   const billingData = billingIds.map(id => {
@@ -183,13 +186,24 @@ export async function sendGroupRemindersAction(
     return { studentId: parts[0], billingPeriodId: parts[1] }
   })
 
-  // Send reminder for each billing
+  let sent = 0
+  let failed = 0
+  const warnings: string[] = []
+
   for (const { studentId, billingPeriodId } of billingData) {
     if (!studentId || !billingPeriodId) continue
-    await sendPaymentReminder(studentId, billingPeriodId, channel)
+    const result = await sendPaymentReminder(studentId, billingPeriodId, channel, message)
+    if (result.success) {
+      sent++
+      if (result.error) warnings.push(result.error)
+    } else {
+      failed++
+      warnings.push(result.error || 'Nie udało się wysłać przypomnienia')
+    }
   }
 
   revalidatePath('/dashboard/billing-from-reports')
+  return { success: failed === 0, sent, failed, warnings }
 }
 
 export async function sendPayUPaymentsFromReportsAction(

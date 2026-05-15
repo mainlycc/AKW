@@ -3,6 +3,7 @@ export interface DeclarationReminderEmailData {
   month: number
   year: number
   appUrl?: string
+  customMessage?: string
 }
 
 const monthNames = [
@@ -11,8 +12,11 @@ const monthNames = [
 ]
 
 export function generateDeclarationReminderEmail(data: DeclarationReminderEmailData) {
-  const { tutorName, month, year, appUrl = 'http://localhost:3000' } = data
+  const { tutorName, month, year, appUrl = 'http://localhost:3000', customMessage } = data
   const monthName = monthNames[month - 1] || `Miesiąc ${month}`
+  const mainMessage =
+    (customMessage && customMessage.trim()) ||
+    `Przypominamy o złożeniu deklaracji miesięcznej za okres ${monthName} ${year}.`
 
   return `
 <!DOCTYPE html>
@@ -32,7 +36,7 @@ export function generateDeclarationReminderEmail(data: DeclarationReminderEmailD
     
     <p>Dzień dobry ${tutorName},</p>
     
-    <p>Przypominamy o złożeniu deklaracji miesięcznej za okres <strong>${monthName} ${year}</strong>.</p>
+    <p>${mainMessage}</p>
     
     <div style="background: white; border: 2px solid #0ea5e9; border-radius: 8px; padding: 20px; margin: 20px 0;">
       <h3 style="margin-top: 0; color: #0ea5e9;">Szczegóły:</h3>

@@ -66,13 +66,13 @@ export async function sendWithChannel(
     successParts.push(!!smsResult?.success)
   }
 
-  const overallSuccess = successParts.length === 0 ? false : successParts.every(Boolean)
-
+  const overallSuccess = successParts.length === 0 ? false : successParts.some(Boolean)
+  const anyFailures = successParts.some((p) => p === false)
   const firstError = emailResult?.error || smsResult?.error || undefined
 
   return {
     success: overallSuccess,
-    error: overallSuccess ? undefined : firstError,
+    error: anyFailures ? firstError : undefined,
     details: Object.keys(details).length > 0 ? details : undefined,
   }
 }

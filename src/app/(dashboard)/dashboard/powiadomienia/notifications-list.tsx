@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { ConfirmDialog } from '@/components/confirm-dialog'
+import { LABELS } from '@/lib/labels/reports-declarations'
 import {
   Pagination,
   PaginationContent,
@@ -159,11 +160,11 @@ export function NotificationsList({
       public_booking_cancelled: 'Rezerwacja',
       assignment_created: 'Przypisanie',
       assignment_status_changed: 'Przypisanie',
-      report_submitted: 'Raport',
-      report_approved: 'Raport',
-      report_paid: 'Raport',
-      report_reminder: 'Raport',
-      declaration_reminder: 'Deklaracja',
+      report_submitted: LABELS.notificationCompletedLessons,
+      report_approved: LABELS.notificationCompletedLessons,
+      report_paid: LABELS.notificationCompletedLessons,
+      report_reminder: LABELS.notificationCompletedLessons,
+      declaration_reminder: LABELS.notificationNextMonthPlan,
       session_created: 'Sesja',
       session_confirmation_required: 'Sesja',
       support_incident: 'Problem',

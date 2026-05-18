@@ -100,13 +100,41 @@ export async function markAllAsRead(): Promise<void> {
 export async function deleteAllNotifications(): Promise<void> {
   const supabase = await createClient()
 
-  const { error } = await supabase
-    .from('notifications')
-    .delete()
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser()
 
-  if (error) {
-    console.error('Error deleting all notifications:', error)
-    throw error
+  if (authError || !user) {
+    throw new Error('Nie jesteś zalogowany')
+  }
+
+  const { data: rows, error: fetchError } = await supabase
+    .from('notifications')
+    .select('id')
+    .eq('user_id', user.id)
+
+  if (fetchError) {
+    console.error('Error fetching notifications for delete:', fetchError)
+    throw fetchError
+  }
+
+  const ids = (rows ?? []).map((row) => row.id)
+  if (ids.length === 0) {
+    revalidatePath('/dashboard/powiadomienia')
+    revalidatePath('/dashboard', 'layout')
+    return
+  }
+
+  const BATCH_SIZE = 500
+  for (let i = 0; i < ids.length; i += BATCH_SIZE) {
+    const batch = ids.slice(i, i + BATCH_SIZE)
+    const { error } = await supabase.from('notifications').delete().in('id', batch)
+
+    if (error) {
+      console.error('Error deleting all notifications:', error)
+      throw error
+    }
   }
 
   revalidatePath('/dashboard/powiadomienia')

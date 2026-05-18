@@ -5,6 +5,7 @@ interface LessonHistoryItem {
   id: string
   session_date: string
   duration_minutes: number
+  status: 'completed' | 'scheduled' | 'cancelled'
   notes: string | null
   tutor_name: string | null
   subject_name: string | null
@@ -26,12 +27,44 @@ export async function GET(
 
   const supabase = await createClient()
 
+  const { data: student, error: studentError } = await supabase
+    .from('students')
+    .select('first_name, last_name')
+    .eq('id', studentId)
+    .single()
+
+  if (studentError || !student) {
+    console.error('Error fetching student for lesson history:', studentError)
+    return NextResponse.json(
+      { error: 'Student not found' },
+      { status: 404 }
+    )
+  }
+
+  const { data: matchingStudents, error: matchingStudentsError } = await supabase
+    .rpc('get_student_history_student_ids', {
+      p_student_id: studentId,
+    })
+
+  if (matchingStudentsError) {
+    console.error('Error fetching duplicate student ids for lesson history:', matchingStudentsError)
+    return NextResponse.json(
+      { error: 'Failed to fetch lesson history' },
+      { status: 500 }
+    )
+  }
+
+  const studentIds = Array.from(
+    new Set([studentId, ...(matchingStudents || []).map((row: { id: string }) => row.id)])
+  )
+
   const { data, error } = await supabase
     .from('tutoring_sessions')
     .select(`
       id,
       session_date,
       duration_minutes,
+      status,
       notes,
       profiles!tutoring_sessions_tutor_id_fkey (
         id,
@@ -48,10 +81,10 @@ export async function GET(
         )
       )
     `)
-    .eq('student_id', studentId)
-    .eq('status', 'completed')
+    .in('student_id', studentIds)
+    .in('status', ['completed', 'scheduled', 'cancelled'])
     .order('session_date', { ascending: false })
-    .limit(100)
+    .limit(300)
 
   if (error) {
     console.error('Error fetching student lesson history:', error)
@@ -83,6 +116,7 @@ export async function GET(
         id: session.id,
         session_date: session.session_date,
         duration_minutes: session.duration_minutes ?? 0,
+        status: session.status,
         notes: session.notes ?? null,
         tutor_name: tutor?.full_name ?? null,
         subject_name: subject?.name ?? null,

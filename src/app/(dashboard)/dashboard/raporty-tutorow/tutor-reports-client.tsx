@@ -8,6 +8,7 @@ import { ReportDetailDialog } from "./report-detail-dialog"
 import { deleteReports } from "./actions"
 import { IconDownload } from "@tabler/icons-react"
 import { formatHours } from "@/lib/utils"
+import { LABELS } from "@/lib/labels/reports-declarations"
 
 interface ReportEntry {
   id: string
@@ -166,7 +167,7 @@ export function TutorReportsClient({ reports, tutors }: TutorReportsClientProps)
       {/* Summary stats */}
       <div className="grid gap-4 md:grid-cols-3">
         <div className="p-4 border rounded">
-          <p className="text-sm text-muted-foreground">Liczba raportów</p>
+          <p className="text-sm text-muted-foreground">{LABELS.completedLessonsCount}</p>
           <p className="text-2xl font-bold">{normalizedReports.length}</p>
         </div>
         <div className="p-4 border rounded">
@@ -208,11 +209,11 @@ export function TutorReportsClient({ reports, tutors }: TutorReportsClientProps)
         enableRowSelection={true}
         enablePagination={true}
         pageSize={50}
-        emptyMessage="Brak raportów do wyświetlenia"
+        emptyMessage={LABELS.noCompletedLessonsToDisplay}
         enableDeleteDialog={true}
         onConfirmDelete={handleDeleteSelected}
-        deleteDialogTitle="Usuń zaznaczone raporty?"
-        deleteDialogDescription="Czy na pewno chcesz usunąć zaznaczone raporty? Ta operacja nie może być cofnięta."
+        deleteDialogTitle={LABELS.deleteCompletedLessonsTitle}
+        deleteDialogDescription={LABELS.deleteCompletedLessonsDescription}
         customToolbarButtons={() => (
           <Button variant="outline" onClick={handleExportCSV} size="sm">
             <IconDownload className="mr-2 h-4 w-4" />

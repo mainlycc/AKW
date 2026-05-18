@@ -6,6 +6,11 @@ import { sendGroupMessageEmail } from '@/lib/email/send'
 import type { NotificationChannel } from '@/lib/types/notifications'
 import { sendGroupMessageSms } from '@/lib/sms/send'
 import { sendWithChannel } from '@/lib/notifications/send-with-channel'
+import {
+  createBulkSendStats,
+  formatBulkSendResultMessage,
+  recordBulkSendOutcome,
+} from '@/lib/notifications/bulk-send-summary'
 import { linkParentToStudent as linkParentToStudentLib, unlinkParentFromStudent as unlinkParentFromStudentLib, createParent } from '@/lib/actions/parents'
 import { getDefaultStudentRateForLevel } from '../stawki/actions'
 import { getUserProfile } from '@/lib/actions/auth'
@@ -604,8 +609,7 @@ export async function sendGroupMessage(
   // Wyślij wiadomość do każdego rodzica według wybranego kanału
   let sentCount = 0
   let failedCount = 0
-  const errors: string[] = []
-  const warnings: string[] = []
+  const bulkStats = createBulkSendStats()
 
   // URL aplikacji do budowy absolutnego linku do obrazka
   let appUrl = 'http://localhost:3000'
@@ -646,44 +650,42 @@ export async function sendGroupMessage(
 
     if (result.success) {
       sentCount++
-      if (result.error || result.details?.email || result.details?.sms) {
-        warnings.push(
-          `${data.parentName}: ${
-            result.error || result.details?.email || result.details?.sms || 'Częściowa wysyłka'
-          }`
-        )
-      }
+      recordBulkSendOutcome(bulkStats, {
+        success: true,
+        channel,
+        hasEmail,
+        hasPhone,
+        details: result.details,
+      })
     } else {
       failedCount++
-      errors.push(
-        `${data.parentName}: ${
-          result.error ||
-          result.details?.email ||
-          result.details?.sms ||
-          'Nieznany błąd'
-        }`
-      )
+      recordBulkSendOutcome(bulkStats, {
+        success: false,
+        channel,
+        hasEmail,
+        hasPhone,
+        details: result.details,
+      })
     }
   }
 
   revalidatePath('/dashboard/uczniowie')
 
+  const summaryMessage = formatBulkSendResultMessage(sentCount, bulkStats)
+
   if (failedCount > 0 && sentCount === 0) {
     return {
       success: false,
-      error: `Nie udało się wysłać żadnej wiadomości. Błędy: ${errors.join('; ')}`,
+      error: summaryMessage ?? 'Nie udało się wysłać żadnej wiadomości.',
       sentCount,
       failedCount,
     }
   }
 
-  if (failedCount > 0 || warnings.length > 0) {
+  if (summaryMessage) {
     return {
       success: true,
-      error:
-        failedCount > 0
-          ? `Wysłano ${sentCount} wiadomości, nie udało się wysłać ${failedCount}. Błędy: ${errors.join('; ')}`
-          : `Wysłano ${sentCount} wiadomości, ale część kanałów nie była dostępna lub nie powiodła się: ${warnings.join('; ')}`,
+      error: summaryMessage,
       sentCount,
       failedCount,
     }

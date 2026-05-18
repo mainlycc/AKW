@@ -44,7 +44,7 @@ export async function sendWithChannel(
       details.email = emailResult.error
     }
   } else if (needsEmail && !sendEmail) {
-    details.email = 'Kanał email nie jest dostępny w tym miejscu'
+    details.email = 'Brak adresu email'
   }
 
   if (needsSms && sendSms) {
@@ -54,7 +54,7 @@ export async function sendWithChannel(
       details.sms = smsResult.error
     }
   } else if (needsSms && !sendSms) {
-    details.sms = 'Kanał SMS nie jest dostępny w tym miejscu (brak numeru telefonu lub implementacji)'
+    details.sms = 'Brak numeru telefonu'
   }
 
   const successParts: boolean[] = []

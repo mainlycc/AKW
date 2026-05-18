@@ -7,6 +7,7 @@ import { sendWithChannel } from '@/lib/notifications/send-with-channel'
 import type { NotificationChannel } from '@/lib/types/notifications'
 import { sendDeclarationReminderEmail } from '@/lib/email/send'
 import { sendDeclarationReminderSms } from '@/lib/sms/send'
+import { LABELS, nextMonthPlanReminderMessage } from '@/lib/labels/reports-declarations'
 
 const monthNames = [
   'Styczeń', 'Luty', 'Marzec', 'Kwiecień', 'Maj', 'Czerwiec',
@@ -39,12 +40,12 @@ export async function sendDeclarationReminderToTutor(
   const monthName = monthNames[month - 1] || `Miesiąc ${month}`
   const notificationMessage =
     (message && message.trim()) ||
-    `Przypominamy o złożeniu deklaracji miesięcznej za okres ${monthName} ${year}.`
+    nextMonthPlanReminderMessage(monthName, year)
 
   await createNotification({
     userId: tutorId,
     type: 'declaration_reminder',
-    title: 'Przypomnienie o deklaracji miesięcznej',
+    title: LABELS.reminderNextMonthPlanTitle,
     message: notificationMessage,
     metadata: {
       month,
@@ -139,13 +140,13 @@ export async function sendDeclarationRemindersToAllMissing(
   const tutorsWithoutDeclarations = allTutors.filter(t => !tutorsWithDeclarations.has(t.id))
 
   if (tutorsWithoutDeclarations.length === 0) {
-    return { success: true, sent: 0, errors: [] as string[], message: 'Wszyscy tutorzy złożyli już deklarację za ten okres.' }
+    return { success: true, sent: 0, errors: [] as string[], message: LABELS.allTutorsSubmittedNextMonthPlan }
   }
 
   const monthName = monthNames[month - 1] || `Miesiąc ${month}`
   const notificationMessage =
     (message && message.trim()) ||
-    `Przypominamy o złożeniu deklaracji miesięcznej za okres ${monthName} ${year}.`
+    nextMonthPlanReminderMessage(monthName, year)
   const errors: string[] = []
   const warnings: string[] = []
   let sentCount = 0
@@ -155,7 +156,7 @@ export async function sendDeclarationRemindersToAllMissing(
       await createNotification({
         userId: tutor.id,
         type: 'declaration_reminder',
-        title: 'Przypomnienie o deklaracji miesięcznej',
+        title: LABELS.reminderNextMonthPlanTitle,
         message: notificationMessage,
         metadata: {
           month,

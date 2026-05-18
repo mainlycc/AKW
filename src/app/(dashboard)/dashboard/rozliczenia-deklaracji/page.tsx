@@ -2,6 +2,7 @@ import { getUserProfile } from '@/lib/actions/auth'
 import { getAllStudentBillingsFromDeclarations } from '@/lib/actions/billing'
 import { DeclarationBillingsTable } from './declaration-billings-table'
 import { createClient } from '@/lib/supabase/server'
+import { LABELS } from '@/lib/labels/reports-declarations'
 
 export default async function DeclarationBillingsPage() {
   const profile = await getUserProfile()
@@ -136,7 +137,7 @@ export default async function DeclarationBillingsPage() {
     <div className="space-y-4">
       <div>
         <p className="text-muted-foreground">
-          Przegląd należności i płatności dla wszystkich okresów (obliczone na podstawie zatwierdzonych deklaracji)
+          {LABELS.billingFromNextMonthPlanDescription}
         </p>
       </div>
       <DeclarationBillingsTable

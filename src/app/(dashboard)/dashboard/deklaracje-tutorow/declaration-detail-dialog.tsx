@@ -8,6 +8,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
+import { LABELS } from "@/lib/labels/reports-declarations"
 import {
   Table,
   TableBody,
@@ -79,7 +80,7 @@ export function DeclarationDetailDialog({
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="w-[95vw] sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Szczegóły deklaracji</DialogTitle>
+          <DialogTitle>{LABELS.nextMonthPlanDetails}</DialogTitle>
           <DialogDescription>
             {declaration.profiles.full_name} - {months[declaration.month - 1]} {declaration.year}
           </DialogDescription>

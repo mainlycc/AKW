@@ -1,6 +1,7 @@
 'use client'
 
 import { usePathname } from 'next/navigation'
+import { LABELS } from '@/lib/labels/reports-declarations'
 
 type PageMeta = { title: string; description?: string }
 
@@ -54,48 +55,48 @@ const pageMeta: Record<string, PageMeta> = {
     description: 'Archiwum odbytych zajęć – sprawdź daty, czasy trwania i szczegóły.',
   },
   '/dashboard/raporty': {
-    title: 'Raporty godzin',
+    title: LABELS.completedLessons,
     description: 'Zestawienia godzin z zajęć – przydatne do kontroli i rozliczeń.',
   },
   '/dashboard/moje-raporty': {
-    title: 'Moje raporty',
+    title: LABELS.completedLessons,
     description: 'Miesięczne podsumowanie godzin i kwot do rozliczenia.',
   },
   '/dashboard/moje-raporty/nowy': {
-    title: 'Utwórz raport miesięczny',
-    description: 'Dodaj raport za wybrany miesiąc na podstawie swoich zajęć.',
+    title: LABELS.createMonthlyCompletedLessons,
+    description: 'Dodaj zrealizowane lekcje za wybrany miesiąc na podstawie swoich zajęć.',
   },
   '/dashboard/moje-deklaracje': {
-    title: 'Moje deklaracje',
-    description: 'Deklaracje planowanych zajęć – pomagają ustalić dostępność i harmonogram.',
+    title: LABELS.nextMonthPlan,
+    description: 'Plan planowanych zajęć na przyszły miesiąc – pomaga ustalić dostępność i harmonogram.',
   },
   '/dashboard/moje-deklaracje/nowa': {
-    title: 'Utwórz deklarację miesięczną',
-    description: 'Zadeklaruj planowane terminy na miesiąc – ułatwia organizację pracy.',
+    title: LABELS.createMonthlyNextMonthPlan,
+    description: 'Zaplanuj terminy na przyszły miesiąc – ułatwia organizację pracy.',
   },
   '/dashboard/deklaracje-tutorow': {
-    title: 'Deklaracje tutorów',
-    description: 'Przegląd deklaracji tutorów – kontrola planów i dostępności.',
+    title: LABELS.nextMonthPlansTutors,
+    description: 'Przegląd planów tutorów na przyszły miesiąc – kontrola harmonogramu.',
   },
   '/dashboard/rozliczenia-deklaracji': {
-    title: 'Rozliczenia deklaracji',
-    description: 'Rozliczenia na podstawie deklaracji – podsumowania i statusy.',
+    title: LABELS.settlementsFromNextMonthPlan,
+    description: 'Rozliczenia na podstawie planu na przyszły miesiąc – podsumowania i statusy.',
   },
   '/dashboard/rozliczenia-tutorow': {
     title: 'Rozliczenia tutorów',
-    description: 'Lista raportów do wypłaty – zaznacz i oznacz jako wypłacone.',
+    description: 'Lista zrealizowanych lekcji do wypłaty – zaznacz i oznacz jako wypłacone.',
   },
   '/dashboard/raporty-tutorow': {
-    title: 'Raporty tutorów',
-    description: 'Podgląd raportów miesięcznych tutorów oraz ich rozliczeń.',
+    title: LABELS.completedLessonsTutors,
+    description: 'Podgląd zrealizowanych lekcji tutorów oraz ich rozliczeń.',
   },
   '/dashboard/billing': {
     title: 'Rozliczenia miesięczne',
     description: 'Zestawienia do rozliczeń – kwoty, statusy i podsumowania.',
   },
   '/dashboard/billing-from-reports': {
-    title: 'Rozliczenia z raportów',
-    description: 'Rozliczenia wyliczane z raportów godzin – szybkie podsumowanie miesiąca.',
+    title: LABELS.settlementsFromCompletedLessons,
+    description: 'Rozliczenia wyliczane ze zrealizowanych lekcji – szybkie podsumowanie miesiąca.',
   },
   '/dashboard/payments': {
     title: 'Historia płatności',
@@ -134,7 +135,7 @@ export function PageHeader() {
   if (pathname.startsWith('/dashboard/moje-raporty/') && pathname !== '/dashboard/moje-raporty' && pathname !== '/dashboard/moje-raporty/nowy') {
     return (
       <div className="flex flex-col leading-tight">
-        <h1 className="text-xl font-semibold">Edytuj raport miesięczny</h1>
+        <h1 className="text-xl font-semibold">{LABELS.editMonthlyCompletedLessons}</h1>
       </div>
     )
   }
@@ -142,7 +143,7 @@ export function PageHeader() {
   if (pathname.startsWith('/dashboard/moje-deklaracje/') && pathname !== '/dashboard/moje-deklaracje' && pathname !== '/dashboard/moje-deklaracje/nowa') {
     return (
       <div className="flex flex-col leading-tight">
-        <h1 className="text-xl font-semibold">Edytuj deklarację miesięczną</h1>
+        <h1 className="text-xl font-semibold">{LABELS.editMonthlyNextMonthPlan}</h1>
       </div>
     )
   }

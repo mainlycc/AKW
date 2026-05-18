@@ -106,6 +106,7 @@ const ITEMS_PER_PAGE = 50
 
 export function StudentsTable({
   students,
+  isAdmin,
   isTutor,
   allParents = [],
   allSubjects = [],
@@ -716,6 +717,7 @@ export function StudentsTable({
         allParents={allParents}
         allSubjects={allSubjects}
         isTutor={isTutor}
+        isAdmin={isAdmin}
         tutorId={tutorId}
         defaultStudentRate={defaultStudentRate}
         defaultStudentRatesByLevel={defaultStudentRatesByLevel}

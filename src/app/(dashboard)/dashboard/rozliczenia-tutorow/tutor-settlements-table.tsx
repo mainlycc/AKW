@@ -32,6 +32,7 @@ import {
   type TutorSettlementRow,
 } from './actions'
 import { markManyAsPaid } from '@/app/(dashboard)/dashboard/raporty-tutorow/actions'
+import { LABELS } from '@/lib/labels/reports-declarations'
 
 const months = [
   'Styczeń',
@@ -166,7 +167,7 @@ export function TutorSettlementsTable() {
     try {
       await markManyAsPaid(ids)
       toast.success(
-        `Oznaczono ${ids.length} ${ids.length === 1 ? 'raport' : 'raportów'} jako wypłacone`
+        LABELS.markedCompletedLessonsAsPaid(ids.length)
       )
       setSelectedReportIds(new Set())
       await refresh()

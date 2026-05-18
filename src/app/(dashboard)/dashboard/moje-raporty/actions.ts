@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createNotification } from '@/lib/actions/notifications'
 import { getDefaultTutorRate } from '@/app/(dashboard)/dashboard/stawki/actions'
+import { LABELS } from '@/lib/labels/reports-declarations'
 
 export type ReportStatus = 'draft' | 'submitted' | 'approved' | 'paid'
 
@@ -31,7 +32,7 @@ export async function createOrUpdateReport(
       .single()
 
     if (!existingById) {
-      throw new Error('Nie znaleziono raportu lub brak uprawnień')
+      throw new Error(LABELS.notFoundCompletedLessons)
     }
 
     // Sprawdź konflikt: czy istnieje inny raport dla tego samego tutora na ten sam miesiąc/rok
@@ -45,7 +46,7 @@ export async function createOrUpdateReport(
       .maybeSingle()
 
     if (conflict) {
-      throw new Error('Raport dla wybranego miesiąca i roku już istnieje')
+      throw new Error(LABELS.duplicateCompletedLessons)
     }
 
     // Jeśli raport jest składany, automatycznie go zatwierdzamy
@@ -137,8 +138,8 @@ export async function createOrUpdateReport(
         await createNotification({
           userId: tutorId,
           type: 'report_approved',
-          title: 'Raport zatwierdzony',
-          message: `Twój raport za ${monthName} ${year} został automatycznie zatwierdzony. Kwota do wypłaty: ${totalAmount.toFixed(2)} zł`,
+          title: LABELS.completedLessonsApproved,
+          message: LABELS.completedLessonsAutoApprovedMessage(monthName, year, totalAmount.toFixed(2)),
           metadata: {
             report_id: reportId,
             month,
@@ -301,8 +302,8 @@ export async function createOrUpdateReport(
       await createNotification({
         userId: tutorId,
         type: 'report_approved',
-        title: 'Raport zatwierdzony',
-        message: `Twój raport za ${monthName} ${year} został automatycznie zatwierdzony. Kwota do wypłaty: ${totalAmount.toFixed(2)} zł`,
+        title: LABELS.completedLessonsApproved,
+        message: LABELS.completedLessonsAutoApprovedMessage(monthName, year, totalAmount.toFixed(2)),
         metadata: {
           report_id: savedReportId,
           month,

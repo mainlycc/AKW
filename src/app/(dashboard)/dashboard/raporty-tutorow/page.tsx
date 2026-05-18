@@ -1,6 +1,7 @@
 import { getUserProfile } from "@/lib/actions/auth"
 import { createClient } from "@/lib/supabase/server"
 import { ReportsManagement } from "./reports-management"
+import { LABELS } from "@/lib/labels/reports-declarations"
 
 interface MonthlyReport {
   id: string
@@ -93,7 +94,7 @@ export default async function TutorReportsPage() {
     return (
       <div className="p-4 rounded-lg border border-destructive/50 bg-destructive/10">
         <p className="text-sm text-destructive font-medium">
-          Błąd podczas pobierania raportów: {reportsError.message}
+          {LABELS.fetchCompletedLessonsError}: {reportsError.message}
         </p>
         <p className="text-xs text-muted-foreground mt-2">
           Szczegóły: {JSON.stringify(reportsError, null, 2)}

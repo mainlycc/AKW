@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { SubjectBadge } from "@/components/subject-badge"
 import {
   Select,
@@ -37,7 +38,8 @@ import { format } from "date-fns"
 import { pl } from "date-fns/locale"
 import { ConfirmDialog } from "@/components/confirm-dialog"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { formatHours } from "@/lib/utils"
+import { formatHours, cn } from "@/lib/utils"
+import { StudentPaymentsTab } from "./student-payments-tab"
 
 interface Parent {
   id: string
@@ -98,15 +100,13 @@ interface AdminSelectedSubjectLevel {
   levelId: string
 }
 
-interface LessonHistoryItem {
-  id: string
-  session_date: string
-  duration_minutes: number
-  notes: string | null
-  tutor_name: string | null
-  subject_name: string | null
-  level_name: string | null
-}
+import {
+  getCachedLessonHistory,
+  invalidateLessonHistoryCache,
+  isLessonHistoryCacheFresh,
+  setCachedLessonHistory,
+  type LessonHistoryItem,
+} from './lesson-history-cache'
 
 interface StudentSubjectRow {
   subject_level_id: string
@@ -127,6 +127,7 @@ interface StudentDialogProps {
   allParents?: Parent[]
   allSubjects?: SubjectWithLevels[]
   isTutor?: boolean
+  isAdmin?: boolean
   tutorId?: string
   defaultStudentRate?: number
   defaultStudentRatesByLevel?: { 1: number; 2: number; 3: number }
@@ -146,6 +147,7 @@ export function StudentDialog({
   allParents = [],
   allSubjects = [],
   isTutor = false,
+  isAdmin = false,
   tutorId,
   defaultStudentRate = 50,
   defaultStudentRatesByLevel,
@@ -192,6 +194,37 @@ export function StudentDialog({
   const [lessonHistory, setLessonHistory] = useState<LessonHistoryItem[] | null>(null)
   const [lessonHistoryLoading, setLessonHistoryLoading] = useState(false)
   const [lessonHistoryError, setLessonHistoryError] = useState<string | null>(null)
+  const [lessonTab, setLessonTab] = useState<'history' | 'planned'>('history')
+  const [profileTab, setProfileTab] = useState<'profile' | 'payments'>('profile')
+  const nowTime = Date.now()
+  const lessons = lessonHistory ?? []
+  const pastLessons = lessons
+    .filter((lesson) => new Date(lesson.session_date).getTime() <= nowTime)
+    .sort((a, b) => new Date(b.session_date).getTime() - new Date(a.session_date).getTime())
+  const plannedLessons = lessons
+    .filter((lesson) => lesson.status === 'scheduled' && new Date(lesson.session_date).getTime() > nowTime)
+    .sort((a, b) => new Date(a.session_date).getTime() - new Date(b.session_date).getTime())
+  const visibleLessons = lessonTab === 'planned' ? plannedLessons : pastLessons
+  const completedLessonCount = pastLessons.filter((lesson) => lesson.status === 'completed').length
+  const pastScheduledLessonCount = pastLessons.filter((lesson) => lesson.status === 'scheduled').length
+  const plannedLessonCount = plannedLessons.length
+  const cancelledLessonCount = pastLessons.filter((lesson) => lesson.status === 'cancelled').length
+  const completedLessonHours = pastLessons
+    ?.filter((lesson) => lesson.status === 'completed')
+    .reduce((sum, lesson) => sum + (lesson.duration_minutes || 0) / 60, 0) ?? 0
+  const pastScheduledLessonHours = pastLessons
+    ?.filter((lesson) => lesson.status === 'scheduled')
+    .reduce((sum, lesson) => sum + (lesson.duration_minutes || 0) / 60, 0) ?? 0
+  const getLessonStatusLabel = (lesson: LessonHistoryItem) => {
+    if (lesson.status === 'completed') return 'Potwierdzona'
+    if (lesson.status === 'cancelled') return 'Odwołana'
+    return new Date(lesson.session_date).getTime() > nowTime ? 'Zaplanowana' : 'Niepotwierdzona'
+  }
+  const getLessonStatusVariant = (lesson: LessonHistoryItem): 'secondary' | 'destructive' | 'outline' => {
+    if (lesson.status === 'completed') return 'secondary'
+    if (lesson.status === 'cancelled') return 'destructive'
+    return 'outline'
+  }
 
   const getLevelsForSubject = (subjectId: string) => {
     const subject = allSubjects.find(s => s.id === subjectId)
@@ -208,8 +241,9 @@ export function StudentDialog({
     setIsEditMode(!student)
     setAddParentOpen(false)
     setNotesOpen(false)
-    setLessonHistory(null)
     setLessonHistoryError(null)
+    setLessonTab('history')
+    setProfileTab('profile')
   }, [open])
 
   // Update formData when default rates change (only for NEW student and only when override is OFF)
@@ -307,18 +341,36 @@ export function StudentDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formData.rate_level, formData.hourly_rate_is_overridden, open, defaultStudentRatesByLevel, defaultStudentRate])
 
-  // Historia lekcji ucznia – ładowana przy otwarciu dialogu
+  // Historia lekcji – cache w sesji; przy ponownym otwarciu tego samego ucznia bez czekania
   useEffect(() => {
     if (!open || !student?.id) return
 
+    const studentId = student.id
     const controller = new AbortController()
+    const cached = getCachedLessonHistory(studentId)
+    const cacheFresh = isLessonHistoryCacheFresh(studentId)
+
+    if (cached) {
+      setLessonHistory(cached)
+      setLessonHistoryLoading(false)
+      setLessonHistoryError(null)
+    } else {
+      setLessonHistory(null)
+      setLessonHistoryLoading(true)
+    }
+
+    if (cacheFresh) {
+      return () => controller.abort()
+    }
 
     const loadHistory = async () => {
       try {
-        setLessonHistoryLoading(true)
+        if (!cached) {
+          setLessonHistoryLoading(true)
+        }
         setLessonHistoryError(null)
 
-        const res = await fetch(`/api/students/${student.id}/lesson-history`, {
+        const res = await fetch(`/api/students/${studentId}/lesson-history`, {
           signal: controller.signal,
         })
 
@@ -327,13 +379,17 @@ export function StudentDialog({
         }
 
         const data = await res.json() as { sessions: LessonHistoryItem[] }
-        setLessonHistory(data.sessions || [])
+        const sessions = data.sessions || []
+        setCachedLessonHistory(studentId, sessions)
+        setLessonHistory(sessions)
       } catch (error) {
         if ((error as Error).name === 'AbortError') return
         console.error('Error loading lesson history:', error)
-        setLessonHistoryError(
-          error instanceof Error ? error.message : 'Błąd podczas pobierania historii lekcji'
-        )
+        if (!cached) {
+          setLessonHistoryError(
+            error instanceof Error ? error.message : 'Błąd podczas pobierania historii lekcji'
+          )
+        }
       } finally {
         if (!controller.signal.aborted) {
           setLessonHistoryLoading(false)
@@ -420,6 +476,9 @@ export function StudentDialog({
       // Parent creation and linking is now handled in server actions (createStudent and createStudentWithAssignment)
       // No need to duplicate the logic here
 
+      if (student?.id) {
+        invalidateLessonHistoryCache(student.id)
+      }
       onClose()
       router.refresh()
     } catch (error) {
@@ -642,7 +701,14 @@ export function StudentDialog({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="w-[95vw] sm:max-w-[500px] max-h-[90vh] overflow-hidden flex flex-col">
+      <DialogContent
+        className={cn(
+          'w-[95vw] max-h-[90vh] overflow-hidden flex flex-col',
+          student && !isEditMode && isAdmin && profileTab === 'payments'
+            ? 'sm:max-w-[640px]'
+            : 'sm:max-w-[500px]'
+        )}
+      >
         {/* Header tylko dla trybu edycji/tworzenia */}
         {(!student || isEditMode) && (
           <DialogHeader className="flex-shrink-0 pb-3">
@@ -698,7 +764,43 @@ export function StudentDialog({
               </div>
             </div>
 
-            {/* Grid z sekcjami */}
+            {isAdmin && (
+              <Tabs
+                value={profileTab}
+                onValueChange={(value) => setProfileTab(value as 'profile' | 'payments')}
+                className="space-y-3"
+              >
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value="profile">Profil</TabsTrigger>
+                  <TabsTrigger value="payments">Płatności</TabsTrigger>
+                </TabsList>
+              </Tabs>
+            )}
+
+            {profileTab === 'payments' && isAdmin && student && (
+              <StudentPaymentsTab
+                studentId={student.id}
+                student={{
+                  id: student.id,
+                  first_name: student.first_name,
+                  last_name: student.last_name,
+                }}
+                lessons={lessonHistory}
+                primaryParent={(() => {
+                  const sp = studentParents.find((p) => p.is_primary) ?? studentParents[0]
+                  if (!sp?.parents) return undefined
+                  return {
+                    id: sp.parents.id,
+                    first_name: sp.parents.first_name,
+                    last_name: sp.parents.last_name,
+                    email: sp.parents.email,
+                    phone: sp.parents.phone,
+                  }
+                })()}
+              />
+            )}
+
+            {profileTab === 'profile' && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {/* Przedmioty i poziomy */}
               <div className="rounded-lg border bg-card p-4 space-y-3">
@@ -826,10 +928,10 @@ export function StudentDialog({
                 )}
               </div>
 
-              {/* Historia lekcji */}
+              {/* Lekcje ucznia */}
               <div className="rounded-lg border bg-card p-4 space-y-3 md:col-span-2">
                 <div className="flex items-center justify-between">
-                  <h3 className="font-semibold text-sm">Historia lekcji</h3>
+                  <h3 className="font-semibold text-sm">Lekcje ucznia</h3>
                   {lessonHistory && lessonHistory.length > 0 && (
                     <Badge variant="secondary" className="text-xs">
                       {lessonHistory.length}
@@ -849,32 +951,66 @@ export function StudentDialog({
                   </p>
                 )}
 
-                {!lessonHistoryLoading && !lessonHistoryError && (
+                {!lessonHistoryLoading && !lessonHistoryError && lessonHistory && (
                   <>
-                    {lessonHistory && lessonHistory.length > 0 ? (
+                    {pastLessons.length > 0 || plannedLessons.length > 0 ? (
                       <div className="space-y-2">
-                        {/* Podsumowanie */}
+                        <Tabs
+                          value={lessonTab}
+                          onValueChange={(value) => setLessonTab(value as 'history' | 'planned')}
+                          className="space-y-2"
+                        >
+                          <TabsList className="grid w-full grid-cols-2">
+                            <TabsTrigger value="history">
+                              Historia ({pastLessons.length})
+                            </TabsTrigger>
+                            <TabsTrigger value="planned">
+                              Zaplanowane ({plannedLessonCount})
+                            </TabsTrigger>
+                          </TabsList>
+                        </Tabs>
+
                         <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
                           <span>
-                            Łącznie lekcji: <span className="font-semibold text-foreground">{lessonHistory.length}</span>
+                            Odbyte: <span className="font-semibold text-foreground">{completedLessonCount}</span>
                           </span>
                           <span>
-                            Łącznie godzin:{" "}
+                            Godziny odbyte:{" "}
                             <span className="font-semibold text-foreground">
-                              {formatHours(
-                                lessonHistory.reduce(
-                                  (sum, s) => sum + (s.duration_minutes || 0) / 60,
-                                  0
-                                )
-                              )}
+                              {formatHours(completedLessonHours)}
                               {" "}h
                             </span>
                           </span>
+                          {plannedLessonCount > 0 && (
+                            <span>
+                              Zaplanowane:{" "}
+                              <span className="font-semibold text-foreground">
+                                {plannedLessonCount}
+                              </span>
+                            </span>
+                          )}
+                          {pastScheduledLessonCount > 0 && (
+                            <span>
+                              Przeszłe niepotwierdzone:{" "}
+                              <span className="font-semibold text-foreground">
+                                {pastScheduledLessonCount}
+                              </span>
+                              {" "}({formatHours(pastScheduledLessonHours)} h)
+                            </span>
+                          )}
+                          {cancelledLessonCount > 0 && (
+                            <span>
+                              Odwołane:{" "}
+                              <span className="font-semibold text-foreground">
+                                {cancelledLessonCount}
+                              </span>
+                            </span>
+                          )}
                         </div>
 
                         {/* Lista ostatnich lekcji */}
                         <div className="space-y-1 max-h-40 overflow-y-auto mt-1">
-                          {lessonHistory.slice(0, 20).map((lesson) => (
+                          {visibleLessons.slice(0, 20).map((lesson) => (
                             <div
                               key={lesson.id}
                               className="flex flex-col gap-0.5 p-2 rounded-md bg-muted/40"
@@ -885,9 +1021,17 @@ export function StudentDialog({
                                     locale: pl,
                                   })}
                                 </span>
-                                <span className="text-xs text-muted-foreground">
-                                  {lesson.duration_minutes} min
-                                </span>
+                                <div className="flex items-center gap-1.5">
+                                  <Badge
+                                    variant={getLessonStatusVariant(lesson)}
+                                    className="text-[10px] px-1.5 py-0"
+                                  >
+                                    {getLessonStatusLabel(lesson)}
+                                  </Badge>
+                                  <span className="text-xs text-muted-foreground">
+                                    {lesson.duration_minutes} min
+                                  </span>
+                                </div>
                               </div>
                               <div className="flex flex-wrap items-center gap-1 text-[11px] text-muted-foreground">
                                 {lesson.subject_name && (
@@ -911,22 +1055,31 @@ export function StudentDialog({
                           ))}
                         </div>
 
-                        {lessonHistory.length > 20 && (
+                        {visibleLessons.length === 0 && (
+                          <p className="text-xs text-muted-foreground italic">
+                            {lessonTab === 'planned'
+                              ? 'Brak zaplanowanych przyszłych lekcji dla tego ucznia.'
+                              : 'Brak przeszłych lekcji dla tego ucznia.'}
+                          </p>
+                        )}
+
+                        {visibleLessons.length > 20 && (
                           <p className="text-[11px] text-muted-foreground">
-                            Wyświetlono 20 z {lessonHistory.length} lekcji. Pełną historię znajdziesz w zakładce{" "}
+                            Wyświetlono 20 z {lessonHistory.length} lekcji. Pełną listę znajdziesz w zakładce{" "}
                             <span className="font-medium">Sesje / Historia</span>.
                           </p>
                         )}
                       </div>
                     ) : (
                       <p className="text-xs text-muted-foreground italic">
-                        Brak odbytych lekcji dla tego ucznia.
+                        Brak lekcji zapisanych dla tego ucznia.
                       </p>
                     )}
                   </>
                 )}
               </div>
             </div>
+            )}
 
             {/* Przyciski dla podglądu */}
             <div className="flex justify-between gap-2 pt-2">

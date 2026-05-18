@@ -26,6 +26,7 @@ import {
 } from "@tabler/icons-react"
 
 import { NavMain } from "@/components/nav-main"
+import { LABELS } from "@/lib/labels/reports-declarations"
 import { NavUser } from "@/components/nav-user"
 import {
   Sidebar,
@@ -123,7 +124,7 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
       title: "Rozliczenia & Płatności",
       items: [
         {
-          title: "Raporty tutorów",
+          title: LABELS.completedLessonsTutors,
           url: "/dashboard/raporty-tutorow",
           icon: IconClockDollar,
         },
@@ -133,17 +134,17 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
           icon: IconClockDollar,
         },
         {
-          title: "Rozliczenia z raportów",
+          title: LABELS.settlementsFromCompletedLessons,
           url: "/dashboard/billing-from-reports",
           icon: IconReceipt,
         },
         {
-          title: "Deklaracje tutorów",
+          title: LABELS.nextMonthPlansTutors,
           url: "/dashboard/deklaracje-tutorow",
           icon: IconFileReport,
         },
         {
-          title: "Rozliczenia deklaracji",
+          title: LABELS.settlementsFromNextMonthPlan,
           url: "/dashboard/rozliczenia-deklaracji",
           icon: IconReceipt,
         },
@@ -203,12 +204,12 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
       icon: IconFileReport,
     },
     {
-      title: "Moje raporty",
+      title: LABELS.completedLessons,
       url: "/dashboard/moje-raporty",
       icon: IconReceipt,
     },
     {
-      title: "Moje deklaracje",
+      title: LABELS.nextMonthPlan,
       url: "/dashboard/moje-deklaracje",
       icon: IconFileReport,
     },

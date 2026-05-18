@@ -670,6 +670,7 @@ export function BillingFromReportsTable({
                       <TableCell className="font-medium">
                         <StudentNameLink
                           student={billing.students}
+                          isAdmin
                         />
                       </TableCell>
                       <TableCell>

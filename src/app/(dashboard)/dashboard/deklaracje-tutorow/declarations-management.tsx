@@ -23,6 +23,7 @@ import { toast } from "sonner"
 import type { NotificationChannel } from "@/lib/types/notifications"
 import { sendDeclarationReminderToTutor } from "./actions"
 import { ComposeSendDialog } from "@/components/messaging/compose-send-dialog"
+import { LABELS, nextMonthPlanReminderMessage } from "@/lib/labels/reports-declarations"
 
 interface DeclarationEntry {
   id: string
@@ -189,7 +190,7 @@ export function DeclarationsManagement({ declarations, tutors = [], adminId }: D
 
   const getDefaultReminderMessage = (month: number, year: number) => {
     const monthLabel = months[month - 1] || `${month}`
-    return `Przypominamy o złożeniu deklaracji miesięcznej za okres ${monthLabel} ${year}.`
+    return nextMonthPlanReminderMessage(monthLabel, year)
   }
 
   const openComposeForSelected = () => {
@@ -206,7 +207,7 @@ export function DeclarationsManagement({ declarations, tutors = [], adminId }: D
       {/* Summary stats */}
       <div className="grid gap-4 md:grid-cols-3">
         <div className="p-4 border rounded">
-          <p className="text-sm text-muted-foreground">Deklaracje</p>
+          <p className="text-sm text-muted-foreground">{LABELS.nextMonthPlans}</p>
           <p className="text-2xl font-bold">{totalStats.declarationsCount}</p>
         </div>
         <div className="p-4 border rounded">
@@ -306,7 +307,7 @@ export function DeclarationsManagement({ declarations, tutors = [], adminId }: D
             {filteredSubmittedDeclarations.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={4} className="text-center text-muted-foreground">
-                  Brak deklaracji do wyświetlenia
+                  {LABELS.noNextMonthPlanToDisplay}
                 </TableCell>
               </TableRow>
             ) : (
@@ -336,7 +337,7 @@ export function DeclarationsManagement({ declarations, tutors = [], adminId }: D
         <TabsContent value="missing" className="space-y-4">
           {monthFilter === 'all' ? (
             <div className="p-4 rounded-md border text-sm text-muted-foreground">
-              Aby zobaczyć listę niezłożonych deklaracji i wysyłać przypomnienia, wybierz konkretny miesiąc (nie „Wszystkie”).
+              {LABELS.selectMonthForMissingNextMonthPlans}
             </div>
           ) : (
             <>
@@ -427,7 +428,7 @@ export function DeclarationsManagement({ declarations, tutors = [], adminId }: D
       <ComposeSendDialog
         open={composeOpen}
         onOpenChange={setComposeOpen}
-        title="Wyślij przypomnienie o deklaracji"
+        title={LABELS.reminderNextMonthPlanDialog}
         description={
           monthFilter === 'all'
             ? 'Wybierz konkretny miesiąc, aby wysłać przypomnienia.'

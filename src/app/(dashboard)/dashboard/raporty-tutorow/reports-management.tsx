@@ -23,6 +23,7 @@ import { IconDownload, IconSearch, IconMail } from "@tabler/icons-react"
 import { toast } from "sonner"
 import type { NotificationChannel } from "@/lib/types/notifications"
 import { ComposeSendDialog } from "@/components/messaging/compose-send-dialog"
+import { LABELS, completedLessonsReminderMessage } from "@/lib/labels/reports-declarations"
 
 interface ReportEntry {
   id: string
@@ -260,7 +261,7 @@ export function ReportsManagement({ reports, tutors = [], adminId }: ReportsMana
 
   const getDefaultReminderMessage = (month: number, year: number) => {
     const monthLabel = months[month - 1] || `${month}`
-    return `Przypominamy o złożeniu raportu miesięcznego za okres ${monthLabel} ${year}.`
+    return completedLessonsReminderMessage(monthLabel, year)
   }
 
   const openComposeForSelected = () => {
@@ -343,7 +344,7 @@ export function ReportsManagement({ reports, tutors = [], adminId }: ReportsMana
       <Tabs defaultValue="submitted" className="space-y-4">
         <TabsList>
           <TabsTrigger value="submitted">
-            Złożone raporty
+            {LABELS.submittedCompletedLessons}
           </TabsTrigger>
           <TabsTrigger value="missing">
             Nie złożone
@@ -392,7 +393,7 @@ export function ReportsManagement({ reports, tutors = [], adminId }: ReportsMana
                 {filteredReports.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={5} className="text-center text-muted-foreground">
-                      Brak raportów do wyświetlenia
+                      {LABELS.noCompletedLessonsToDisplay}
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -462,7 +463,7 @@ export function ReportsManagement({ reports, tutors = [], adminId }: ReportsMana
           {/* Table */}
           {tutorsWithoutReports.length === 0 ? (
             <div className="text-center py-6 text-muted-foreground border rounded-md">
-              <p>Wszyscy tutorzy złożyli już raport za {months[reminderMonth - 1]} {reminderYear}</p>
+              <p>{LABELS.allTutorsSubmittedCompletedLessons(months[reminderMonth - 1], reminderYear)}</p>
             </div>
           ) : (
             <div className="rounded-md border">
@@ -525,7 +526,7 @@ export function ReportsManagement({ reports, tutors = [], adminId }: ReportsMana
       <ComposeSendDialog
         open={composeOpen}
         onOpenChange={setComposeOpen}
-        title="Wyślij przypomnienie o raporcie"
+        title={LABELS.reminderCompletedLessonsDialog}
         description={
           `Okres: ${months[reminderMonth - 1]} ${reminderYear}`
         }

@@ -9,6 +9,10 @@ import type { NotificationChannel } from '@/lib/types/notifications'
 import { sendReportReminderSms } from '@/lib/sms/send'
 import { sendWithChannel } from '@/lib/notifications/send-with-channel'
 import { getDefaultTutorRate } from '@/app/(dashboard)/dashboard/stawki/actions'
+import {
+  LABELS,
+  completedLessonsReminderMessage,
+} from '@/lib/labels/reports-declarations'
 
 export async function approveReport(reportId: string, adminId: string) {
   const supabase = await createClient()
@@ -70,8 +74,8 @@ export async function approveReport(reportId: string, adminId: string) {
       await createNotification({
         userId: report.tutor_id,
         type: 'report_approved',
-        title: 'Raport zatwierdzony',
-        message: `Twój raport za ${monthName} ${report.year} został zatwierdzony. Kwota do wypłaty: ${totalAmount.toFixed(2)} zł`,
+        title: LABELS.completedLessonsApproved,
+        message: LABELS.completedLessonsApprovedMessage(monthName, report.year, totalAmount.toFixed(2)),
         metadata: {
           report_id: reportId,
           month: report.month,
@@ -131,8 +135,8 @@ export async function markAsPaid(reportId: string) {
       await createNotification({
         userId: report.tutor_id,
         type: 'report_paid',
-        title: 'Raport opłacony',
-        message: `Raport za ${monthName} ${report.year} został oznaczony jako opłacony. Wypłacona kwota: ${report.total_amount?.toFixed(2) || '0.00'} zł`,
+        title: LABELS.completedLessonsPaid,
+        message: LABELS.completedLessonsPaidMessage(monthName, report.year, report.total_amount?.toFixed(2) || '0.00'),
         metadata: {
           report_id: reportId,
           month: report.month,
@@ -193,8 +197,8 @@ export async function markManyAsPaid(reportIds: string[]) {
         return createNotification({
           userId: r.tutor_id as string,
           type: 'report_paid',
-          title: 'Raport opłacony',
-          message: `Raport za ${monthName} ${r.year} został oznaczony jako opłacony. Wypłacona kwota: ${r.total_amount?.toFixed(2) || '0.00'} zł`,
+          title: LABELS.completedLessonsPaid,
+          message: LABELS.completedLessonsPaidMessage(monthName, r.year, r.total_amount?.toFixed(2) || '0.00'),
           metadata: {
             report_id: r.id,
             month: r.month,
@@ -299,8 +303,8 @@ export async function autoApproveSubmittedReports() {
           await createNotification({
             userId: report.tutor_id,
             type: 'report_approved',
-            title: 'Raport zatwierdzony',
-            message: `Twój raport za ${monthName} ${report.year} został automatycznie zatwierdzony. Kwota do wypłaty: ${totalAmount.toFixed(2)} zł`,
+            title: LABELS.completedLessonsApproved,
+            message: LABELS.completedLessonsAutoApprovedMessage(monthName, report.year, totalAmount.toFixed(2)),
             metadata: {
               report_id: report.id,
               month: report.month,
@@ -396,14 +400,14 @@ export async function sendReportReminderToTutor(
   const monthName = monthNames[month - 1] || `Miesiąc ${month}`
   const notificationMessage =
     (message && message.trim()) ||
-    `Przypominamy o złożeniu raportu miesięcznego za okres ${monthName} ${year}.`
+    completedLessonsReminderMessage(monthName, year)
 
   // Utwórz powiadomienie
   try {
     await createNotification({
       userId: tutorId,
       type: 'report_reminder',
-      title: 'Przypomnienie o raporcie miesięcznym',
+      title: LABELS.reminderCompletedLessonsTitle,
       message: notificationMessage,
       metadata: {
         month,
@@ -503,13 +507,13 @@ export async function sendReportRemindersToAllMissing(
   const tutorsWithoutReports = allTutors.filter(tutor => !tutorsWithReports.has(tutor.id))
 
   if (tutorsWithoutReports.length === 0) {
-    return { success: true, sent: 0, errors: [], message: 'Wszyscy tutorzy złożyli już raport za ten okres.' }
+    return { success: true, sent: 0, errors: [], message: LABELS.allTutorsSubmittedCompletedLessonsPeriod }
   }
 
   const monthName = monthNames[month - 1] || `Miesiąc ${month}`
   const notificationMessage =
     (message && message.trim()) ||
-    `Przypominamy o złożeniu raportu miesięcznego za okres ${monthName} ${year}.`
+    completedLessonsReminderMessage(monthName, year)
   const errors: string[] = []
   const warnings: string[] = []
   let sentCount = 0
@@ -521,7 +525,7 @@ export async function sendReportRemindersToAllMissing(
       await createNotification({
         userId: tutor.id,
         type: 'report_reminder',
-        title: 'Przypomnienie o raporcie miesięcznym',
+        title: LABELS.reminderCompletedLessonsTitle,
         message: notificationMessage,
         metadata: {
           month,
@@ -593,7 +597,7 @@ export async function sendReportRemindersToAllMissing(
       errors.length === 0
         ? warnings.length > 0
           ? `Wysłano ${sentCount} przypomnień, ale część kanałów nie była dostępna lub nie powiodła się: ${warnings.join('; ')}`
-          : `Wysłano ${sentCount} przypomnień do tutorów bez raportu za ${monthName} ${year}.`
+          : `Wysłano ${sentCount} przypomnień do tutorów bez zrealizowanych lekcji za ${monthName} ${year}.`
         : `Wysłano ${sentCount} przypomnień, ${errors.length} błędów.`,
   }
 }

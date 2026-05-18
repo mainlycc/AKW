@@ -1,4 +1,5 @@
 import { getUserProfile } from '@/lib/actions/auth'
+import { LABELS } from '@/lib/labels/reports-declarations'
 import { TutorSettlementsTable } from './tutor-settlements-table'
 
 export default async function TutorSettlementsPage() {
@@ -31,7 +32,7 @@ export default async function TutorSettlementsPage() {
     <div className="space-y-4">
       <div>
         <p className="text-muted-foreground">
-          Rozliczenia tutorów na podstawie zatwierdzonych raportów miesięcznych.
+          {LABELS.settlementsTutorsDescription}
         </p>
       </div>
       <TutorSettlementsTable />

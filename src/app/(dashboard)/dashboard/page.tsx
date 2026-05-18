@@ -604,7 +604,7 @@ export default async function DashboardPage() {
               System zarządzania e-korepetycjami
             </div>
             <div className="mt-5 max-w-xl text-sm leading-relaxed text-muted-foreground">
-              Jako administrator masz pełny dostęp do zarządzania uczniami, tutorami, przedmiotami oraz raportami.
+              Jako administrator masz pełny dostęp do zarządzania uczniami, tutorami, przedmiotami oraz zrealizowanymi lekcjami.
             </div>
           </div>
 

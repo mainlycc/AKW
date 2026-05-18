@@ -11,6 +11,7 @@ import { generateReportReminderEmail, type ReportReminderEmailData } from './tem
 import { generateDeclarationReminderEmail, type DeclarationReminderEmailData } from './templates/declaration-reminder-email'
 import { generateTutorBookingNotificationEmail, type TutorBookingNotificationEmailData } from './templates/tutor-booking-notification-email'
 import { generatePasswordResetEmail } from './templates/password-reset-email'
+import { LABELS } from '@/lib/labels/reports-declarations'
 
 export interface SendInvitationEmailParams {
   to: string
@@ -690,7 +691,7 @@ export async function sendReportReminderEmail({
     const { data, error } = await resend.emails.send({
       from: FROM_EMAIL,
       to: [to],
-      subject: `Przypomnienie o raporcie miesięcznym - ${monthName} ${year} - Akademia Wiedzy`,
+      subject: `${LABELS.reminderCompletedLessonsTitle} - ${monthName} ${year} - Akademia Wiedzy`,
       html,
     })
 
@@ -787,7 +788,7 @@ export async function sendDeclarationReminderEmail({
     const { data, error } = await resend.emails.send({
       from: FROM_EMAIL,
       to: [to],
-      subject: `Przypomnienie o deklaracji miesięcznej - ${monthName} ${year} - Akademia Wiedzy`,
+      subject: `${LABELS.reminderNextMonthPlanTitle} - ${monthName} ${year} - Akademia Wiedzy`,
       html,
     })
 

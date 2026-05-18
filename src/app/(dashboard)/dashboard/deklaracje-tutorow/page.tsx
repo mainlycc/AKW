@@ -1,6 +1,7 @@
 import { getUserProfile } from "@/lib/actions/auth"
 import { createClient } from "@/lib/supabase/server"
 import { DeclarationsManagement } from "./declarations-management"
+import { LABELS } from "@/lib/labels/reports-declarations"
 
 interface MonthlyDeclaration {
   id: string
@@ -74,7 +75,7 @@ export default async function TutorDeclarationsPage() {
     return (
       <div className="p-4 rounded-lg border border-destructive/50 bg-destructive/10">
         <p className="text-sm text-destructive font-medium">
-          Błąd podczas pobierania deklaracji: {declarationsError.message}
+          {LABELS.fetchNextMonthPlansError}: {declarationsError.message}
         </p>
       </div>
     )

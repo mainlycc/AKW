@@ -1,4 +1,5 @@
 import { getSmsClient } from './client'
+import { smsCompletedLessonsReminder, smsNextMonthPlanReminder } from '@/lib/labels/reports-declarations'
 import type { SendNotificationResult } from '@/lib/types/notifications'
 
 const MAX_SMS_LENGTH = 320
@@ -6,6 +7,13 @@ const MAX_SMS_LENGTH = 320
 function truncate(body: string): string {
   if (body.length <= MAX_SMS_LENGTH) return body
   return `${body.slice(0, MAX_SMS_LENGTH - 3)}...`
+}
+
+const ANNOUNCEMENT_HEADER = 'AKADEMIA WIEDZY OGŁOSZENIE'
+
+function buildAnnouncementSms(message: string): string {
+  const content = message.trim()
+  return truncate(`${ANNOUNCEMENT_HEADER}\n${content}`)
 }
 
 export interface SendInvitationSmsParams {
@@ -63,14 +71,7 @@ export async function sendGroupMessageSms(
   params: GroupMessageSmsParams
 ): Promise<SendNotificationResult> {
   const client = getSmsClient()
-  const studentsLabel =
-    params.studentNames.length === 1
-      ? params.studentNames[0]
-      : `${params.studentNames[0]} i inni`
-
-  const body = truncate(
-    `Akademia Wiedzy: wiadomość dla opiekuna ${params.parentName} (${studentsLabel}): ${params.message}`
-  )
+  const body = buildAnnouncementSms(params.message)
 
   const result = await client.sendSms({ to: params.toPhone, body })
   return result.success
@@ -88,10 +89,7 @@ export async function sendTutorGroupMessageSms(
   params: TutorGroupMessageSmsParams
 ): Promise<SendNotificationResult> {
   const client = getSmsClient()
-
-  const body = truncate(
-    `Akademia Wiedzy: wiadomość do tutora ${params.tutorName}: ${params.message}`
-  )
+  const body = buildAnnouncementSms(params.message)
 
   const result = await client.sendSms({ to: params.toPhone, body })
   return result.success
@@ -176,7 +174,7 @@ export async function sendReportReminderSms(
     `Akademia Wiedzy: ${
       custom && custom.length > 0
         ? custom
-        : `przypomnienie o raporcie za ${params.month}/${params.year}. Prosimy o uzupełnienie raportu w panelu tutora.`
+        : smsCompletedLessonsReminder(params.month, params.year)
     }`
   )
 
@@ -204,7 +202,7 @@ export async function sendDeclarationReminderSms(
     `Akademia Wiedzy: ${
       custom && custom.length > 0
         ? custom
-        : `przypomnienie o deklaracji za ${params.month}/${params.year}. Prosimy o złożenie deklaracji w panelu tutora.`
+        : smsNextMonthPlanReminder(params.month, params.year)
     }`
   )
 

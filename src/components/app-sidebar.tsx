@@ -12,7 +12,6 @@ import {
   IconUsers,
   IconUserPlus,
   IconUserCircle,
-  IconUsersGroup,
   IconReceipt,
   IconClockDollar,
   IconMailPlus,
@@ -172,51 +171,72 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
     },
   ]
 
-  const tutorNavItems: NavItem[] = [
+  const tutorProfileItem: NavItem = {
+    title: "Profil",
+    url: "/dashboard/profil",
+    icon: IconUserCircle,
+  }
+
+  const tutorNavGroups: NavGroup[] = [
     {
-      title: "Dashboard",
-      url: "/dashboard",
-      icon: IconDashboard,
+      title: "Uczniowie",
+      items: [
+        {
+          title: "Moi uczniowie",
+          url: "/dashboard/uczniowie",
+          icon: IconUsers,
+        },
+      ],
     },
     {
-      title: "Profil",
-      url: "/dashboard/profil",
-      icon: IconUserCircle,
+      title: "Lekcje",
+      items: [
+        {
+          title: "Dostępność tygodniowa",
+          url: "/dashboard/kalendarz",
+          icon: IconCalendar,
+        },
+        {
+          title: "Kalendarz lekcji",
+          url: "/dashboard/kalendarz-lekcji",
+          icon: IconCalendarCheck,
+        },
+      ],
     },
     {
-      title: "Grafik",
-      url: "/dashboard/kalendarz",
-      icon: IconCalendarTime,
+      title: "Rozliczenia",
+      items: [
+        {
+          title: LABELS.nextMonthPlan,
+          url: "/dashboard/moje-deklaracje",
+          icon: IconFileReport,
+        },
+        {
+          title: LABELS.completedLessons,
+          url: "/dashboard/moje-raporty",
+          icon: IconReceipt,
+        },
+      ],
     },
     {
-      title: "Kalendarz lekcji",
-      url: "/dashboard/kalendarz-lekcji",
-      icon: IconCalendarCheck,
+      title: "Archiwum",
+      items: [
+        {
+          title: "Historia sesji",
+          url: "/dashboard/historia",
+          icon: IconHistory,
+        },
+      ],
     },
     {
-      title: "Moi Uczniowie",
-      url: "/dashboard/uczniowie",
-      icon: IconUsers,
-    },
-    {
-      title: "Historia",
-      url: "/dashboard/historia",
-      icon: IconFileReport,
-    },
-    {
-      title: LABELS.completedLessons,
-      url: "/dashboard/moje-raporty",
-      icon: IconReceipt,
-    },
-    {
-      title: LABELS.nextMonthPlan,
-      url: "/dashboard/moje-deklaracje",
-      icon: IconFileReport,
-    },
-    {
-      title: "Powiadomienia",
-      url: "/dashboard/powiadomienia",
-      icon: IconBell,
+      title: "System",
+      items: [
+        {
+          title: "Powiadomienia",
+          url: "/dashboard/powiadomienia",
+          icon: IconBell,
+        },
+      ],
     },
   ]
 
@@ -238,7 +258,11 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
         {user.role === 'admin' ? (
           <NavMain dashboardItem={dashboardItem} groups={adminNavGroups} />
         ) : (
-          <NavMain items={tutorNavItems} />
+          <NavMain
+            dashboardItem={dashboardItem}
+            groups={tutorNavGroups}
+            bottomItem={tutorProfileItem}
+          />
         )}
       </SidebarContent>
       <SidebarFooter>

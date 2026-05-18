@@ -31,62 +31,43 @@ type NavGroup = {
   items: NavItem[]
 }
 
+function NavStandaloneItem({ item }: { item: NavItem }) {
+  return (
+    <SidebarGroup>
+      <SidebarGroupContent>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton tooltip={item.title} asChild>
+              <Link href={item.url}>
+                {item.icon && <item.icon />}
+                <span className="font-semibold text-lg">{item.title}</span>
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarGroupContent>
+    </SidebarGroup>
+  )
+}
+
 export function NavMain({
-  items,
   dashboardItem,
   groups,
+  bottomItem,
 }: {
-  items?: NavItem[]
   dashboardItem?: NavItem
   groups?: NavGroup[]
+  bottomItem?: NavItem
 }) {
-  // Legacy support for tutor menu (flat structure)
-  if (items) {
-    return (
-      <SidebarGroup>
-        <SidebarGroupContent>
-          <SidebarMenu>
-            {items.map((item) => (
-              <SidebarMenuItem key={item.title}>
-                <SidebarMenuButton tooltip={item.title} asChild>
-                  <Link href={item.url}>
-                    {item.icon && <item.icon />}
-                    <span className="text-base">{item.title}</span>
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            ))}
-          </SidebarMenu>
-        </SidebarGroupContent>
-      </SidebarGroup>
-    )
-  }
-
-  // New grouped structure for admin menu
   return (
     <>
-      {/* Dashboard item */}
-      {dashboardItem && (
-        <SidebarGroup>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton tooltip={dashboardItem.title} asChild>
-                  <Link href={dashboardItem.url}>
-                    {dashboardItem.icon && <dashboardItem.icon />}
-                    <span className="font-semibold text-lg">{dashboardItem.title}</span>
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-      )}
+      {dashboardItem && <NavStandaloneItem item={dashboardItem} />}
 
-      {/* Grouped items */}
       {groups?.map((group) => (
         <NavGroup key={group.title} group={group} />
       ))}
+
+      {bottomItem && <NavStandaloneItem item={bottomItem} />}
     </>
   )
 }

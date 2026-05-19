@@ -173,7 +173,7 @@ export function NotificationBell({ initialUnreadCount }: NotificationBellProps) 
   return (
     <DropdownMenu open={isOpen} onOpenChange={handleOpenChange}>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" className="relative">
+        <Button variant="ghost" size="icon" className="relative" data-tour="notifications-bell">
           <IconBell className="h-5 w-5" />
           {unreadCount > 0 && (
             <Badge

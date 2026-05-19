@@ -116,7 +116,7 @@ export function SubjectSelection({ tutorId, subjects, tutorLevels }: SubjectSele
   }
 
   return (
-    <Card>
+    <Card data-tour="profile-subjects">
       <CardHeader>
         <CardTitle>Przedmioty i poziomy</CardTitle>
         <CardDescription>Wybierz przedmioty i poziomy, których nauczasz</CardDescription>

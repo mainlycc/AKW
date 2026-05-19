@@ -19,6 +19,7 @@ import {
   SidebarMenuSubButton,
   SidebarMenuSubItem,
 } from "@/components/ui/sidebar"
+import { navTourIdFromPath } from "@/lib/tutorials/nav-tour-ids"
 
 type NavItem = {
   title: string
@@ -38,7 +39,7 @@ function NavStandaloneItem({ item }: { item: NavItem }) {
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton tooltip={item.title} asChild>
-              <Link href={item.url}>
+              <Link href={item.url} data-tour={navTourIdFromPath(item.url)}>
                 {item.icon && <item.icon />}
                 <span className="font-semibold text-lg">{item.title}</span>
               </Link>
@@ -97,7 +98,7 @@ function NavGroup({ group }: { group: NavGroup }) {
                   {group.items.map((item) => (
                     <SidebarMenuSubItem key={item.title}>
                       <SidebarMenuSubButton asChild>
-                        <Link href={item.url}>
+                        <Link href={item.url} data-tour={navTourIdFromPath(item.url)}>
                           {item.icon && <item.icon />}
                           <span className="text-base">{item.title}</span>
                         </Link>

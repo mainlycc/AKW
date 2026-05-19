@@ -105,5 +105,6 @@ export async function confirmSession(sessionId: string) {
   }
 
   revalidatePath('/dashboard/sesje')
+  revalidatePath('/dashboard', 'layout')
 }
 

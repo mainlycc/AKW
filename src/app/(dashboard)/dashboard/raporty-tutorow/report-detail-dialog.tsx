@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import { formatHours } from "@/lib/utils"
+import { LABELS } from "@/lib/labels/reports-declarations"
 import {
   Table,
   TableBody,
@@ -63,7 +64,7 @@ export function ReportDetailDialog({ open, onClose, report }: ReportDetailDialog
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="w-[95vw] sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Szczegóły raportu</DialogTitle>
+          <DialogTitle>{LABELS.completedLessonsDetails}</DialogTitle>
           <DialogDescription>
             {report.profiles.full_name} - {months[report.month - 1]} {report.year}
           </DialogDescription>

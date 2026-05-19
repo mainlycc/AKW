@@ -2,6 +2,7 @@ import { getUserProfile } from '@/lib/actions/auth'
 import { getAllStudentBillingsFromReports } from '@/lib/actions/billing'
 import { BillingFromReportsTable } from './billing-from-reports-table'
 import { createClient } from '@/lib/supabase/server'
+import { LABELS } from '@/lib/labels/reports-declarations'
 
 export default async function BillingFromReportsPage() {
   let profile
@@ -152,7 +153,7 @@ export default async function BillingFromReportsPage() {
     <div className="space-y-4">
       <div>
         <p className="text-muted-foreground">
-          Przegląd należności i płatności dla wszystkich okresów (obliczone na podstawie raportów tutorów)
+          {LABELS.billingFromCompletedLessonsDescription}
         </p>
       </div>
       <BillingFromReportsTable

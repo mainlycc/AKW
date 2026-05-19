@@ -188,7 +188,7 @@ export function ReportsView({ sessions, tutors, students, subjects }: ReportsVie
       <Card>
         <CardHeader>
           <CardTitle>Filtry</CardTitle>
-          <CardDescription>Filtruj raporty według wybranych kryteriów</CardDescription>
+          <CardDescription>Filtruj zrealizowane lekcje według wybranych kryteriów</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
@@ -268,7 +268,7 @@ export function ReportsView({ sessions, tutors, students, subjects }: ReportsVie
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
-            <CardTitle>Raport szczegółowy</CardTitle>
+            <CardTitle>Szczegóły zrealizowanych lekcji</CardTitle>
             <CardDescription>Podsumowanie godzin według tutora, ucznia i przedmiotu</CardDescription>
           </div>
           <Button onClick={handleExportCSV} variant="outline">

@@ -16,6 +16,8 @@ import {
   DAY_NAMES,
   SLOT_DURATION_MINUTES,
 } from '@/lib/types/availability.types'
+import { resolveCorrelationId, resolveRoute, type MonitoringMeta } from '@/lib/monitoring/correlation'
+import { logActionFailure, logSupabaseFailure } from '@/lib/monitoring/support-events'
 
 const normalizeTimeForDb = (time: string): string => {
   const [hourStr = '00', minuteStr = '00'] = time.split(':')
@@ -138,14 +140,17 @@ export async function getAvailabilityHistory(tutorId: string): Promise<Availabil
 // Utwórz nowy szablon dostępności
 export async function createAvailabilityTemplate(
   tutorId: string,
-  slots: TimeSlot[]
+  slots: TimeSlot[],
+  meta?: MonitoringMeta
 ): Promise<TutorAvailabilityData> {
   const supabase = await createClient()
+  const correlationId = resolveCorrelationId(meta)
+  const route = resolveRoute(meta)
 
   // Normalizuj i popraw sloty przed walidacją
   const normalizedSlots: TimeSlot[] = slots.map((slot) => {
     const normalizedStart = normalizeTimeForDb(slot.startTime)
-    let startMinutes = timeToMinutes(normalizedStart)
+    const startMinutes = timeToMinutes(normalizedStart)
     
     // Zaokrąglij czas rozpoczęcia w dół do najbliższej pełnej godziny
     const correctedStartMinutes = Math.floor(startMinutes / SLOT_DURATION_MINUTES) * SLOT_DURATION_MINUTES
@@ -218,7 +223,16 @@ export async function createAvailabilityTemplate(
     .select()
     .single()
 
-  if (templateError) throw templateError
+  if (templateError) {
+    await logSupabaseFailure({
+      action: 'availability.template.insert',
+      correlationId,
+      route,
+      request: { tutorId, slotCount: slots.length, nextVersion },
+      supabaseError: templateError,
+    })
+    throw templateError
+  }
 
   // Dodaj sloty
   const slotsToInsert = deduplicatedSlots.map((slot) => ({
@@ -237,6 +251,13 @@ export async function createAvailabilityTemplate(
   if (slotsError) {
     // Usuń szablon jeśli nie udało się dodać slotów
     await supabase.from('tutor_availability_templates').delete().eq('id', template.id)
+    await logSupabaseFailure({
+      action: 'availability.slots.insert',
+      correlationId,
+      route,
+      request: { tutorId, slotCount: slots.length, templateId: template.id },
+      supabaseError: slotsError,
+    })
     throw slotsError
   }
 
@@ -252,9 +273,21 @@ export async function createAvailabilityTemplate(
 // Aktualizuj szablon (tworzy nową wersję)
 export async function updateAvailabilityTemplate(
   tutorId: string,
-  slots: TimeSlot[]
+  slots: TimeSlot[],
+  meta?: MonitoringMeta
 ): Promise<TutorAvailabilityData> {
-  return createAvailabilityTemplate(tutorId, slots)
+  try {
+    return await createAvailabilityTemplate(tutorId, slots, meta)
+  } catch (error) {
+    await logActionFailure({
+      action: 'availability.update',
+      correlationId: resolveCorrelationId(meta),
+      route: resolveRoute(meta),
+      request: { tutorId, slotCount: slots.length },
+      error,
+    })
+    throw error
+  }
 }
 
 // Pobierz dostępność wszystkich tutorów (dla admina)

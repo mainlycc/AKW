@@ -11,6 +11,7 @@ import { generateReportReminderEmail, type ReportReminderEmailData } from './tem
 import { generateDeclarationReminderEmail, type DeclarationReminderEmailData } from './templates/declaration-reminder-email'
 import { generateTutorBookingNotificationEmail, type TutorBookingNotificationEmailData } from './templates/tutor-booking-notification-email'
 import { generatePasswordResetEmail } from './templates/password-reset-email'
+import { LABELS } from '@/lib/labels/reports-declarations'
 
 export interface SendInvitationEmailParams {
   to: string
@@ -459,6 +460,7 @@ export async function sendPaymentReminderEmail({
   totalPaid,
   balance,
   hours,
+  customMessage,
 }: SendPaymentReminderEmailParams): Promise<SendEmailResult> {
   try {
     const resendApiKey = process.env.RESEND_API_KEY
@@ -494,6 +496,7 @@ export async function sendPaymentReminderEmail({
       totalPaid,
       balance,
       hours,
+      customMessage,
     })
     
     const { data, error } = await resend.emails.send({
@@ -636,6 +639,7 @@ export async function sendReportReminderEmail({
   tutorName,
   month,
   year,
+  customMessage,
 }: SendReportReminderEmailParams): Promise<SendEmailResult> {
   try {
     const resendApiKey = process.env.RESEND_API_KEY
@@ -681,12 +685,13 @@ export async function sendReportReminderEmail({
       month,
       year,
       appUrl,
+      customMessage,
     })
     
     const { data, error } = await resend.emails.send({
       from: FROM_EMAIL,
       to: [to],
-      subject: `Przypomnienie o raporcie miesięcznym - ${monthName} ${year} - Akademia Wiedzy`,
+      subject: `${LABELS.reminderCompletedLessonsTitle} - ${monthName} ${year} - Akademia Wiedzy`,
       html,
     })
 
@@ -732,6 +737,7 @@ export async function sendDeclarationReminderEmail({
   tutorName,
   month,
   year,
+  customMessage,
 }: SendDeclarationReminderEmailParams): Promise<SendEmailResult> {
   try {
     const resendApiKey = process.env.RESEND_API_KEY
@@ -776,12 +782,13 @@ export async function sendDeclarationReminderEmail({
       month,
       year,
       appUrl,
+      customMessage,
     })
 
     const { data, error } = await resend.emails.send({
       from: FROM_EMAIL,
       to: [to],
-      subject: `Przypomnienie o deklaracji miesięcznej - ${monthName} ${year} - Akademia Wiedzy`,
+      subject: `${LABELS.reminderNextMonthPlanTitle} - ${monthName} ${year} - Akademia Wiedzy`,
       html,
     })
 

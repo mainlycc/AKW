@@ -18,6 +18,7 @@ import { AddLessonDialog } from "./add-lesson-dialog"
 import { toast } from "sonner"
 import Link from "next/link"
 import { IconArrowLeft, IconPlus } from "@tabler/icons-react"
+import { LABELS } from "@/lib/labels/reports-declarations"
 
 interface Student {
   id: string
@@ -133,12 +134,12 @@ export function DeclarationForm({
       }
 
       await createOrUpdateDeclaration(tutorId, month, year, entries, status, declarationId)
-      toast.success(status === 'draft' ? 'Deklaracja zapisana' : 'Deklaracja złożona')
+      toast.success(status === 'draft' ? LABELS.nextMonthPlanSaved : LABELS.nextMonthPlanSubmitted)
       router.push('/dashboard/moje-deklaracje')
       router.refresh()
     } catch (error) {
       console.error('Error saving declaration:', error)
-      toast.error('Błąd podczas zapisywania deklaracji')
+      toast.error(LABELS.errorSavingNextMonthPlan)
     } finally {
       setLoading(false)
     }
@@ -252,7 +253,7 @@ export function DeclarationForm({
           onClick={handleSubmitDeclaration} 
           disabled={loading || entries.length === 0}
         >
-          {loading ? 'Wysyłanie...' : 'Złóż deklarację'}
+          {loading ? 'Wysyłanie...' : LABELS.submitNextMonthPlan}
         </Button>
       </div>
 

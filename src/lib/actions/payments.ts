@@ -41,6 +41,7 @@ export interface PaymentWithParent extends Payment {
 
 export interface PaymentFilters {
   studentId?: string
+  studentIds?: string[]
   parentId?: string
   paymentMethod?: PaymentMethod
   startDate?: string
@@ -204,7 +205,9 @@ export async function getPayments(
     )
     .order('payment_date', { ascending: false })
 
-  if (filters?.studentId) {
+  if (filters?.studentIds && filters.studentIds.length > 0) {
+    query = query.in('student_id', filters.studentIds)
+  } else if (filters?.studentId) {
     query = query.eq('student_id', filters.studentId)
   }
 

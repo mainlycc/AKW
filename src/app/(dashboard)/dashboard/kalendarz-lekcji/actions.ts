@@ -49,6 +49,7 @@ export async function updateSessionStatus(
   }
 
   revalidatePath('/dashboard/kalendarz-lekcji')
+  revalidatePath('/dashboard', 'layout')
 }
 
 export async function extendSessionsForAllBookedSlots() {

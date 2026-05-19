@@ -7,6 +7,7 @@ import { sendWithChannel } from '@/lib/notifications/send-with-channel'
 import type { NotificationChannel } from '@/lib/types/notifications'
 import { sendDeclarationReminderEmail } from '@/lib/email/send'
 import { sendDeclarationReminderSms } from '@/lib/sms/send'
+import { LABELS, nextMonthPlanReminderMessage } from '@/lib/labels/reports-declarations'
 
 const monthNames = [
   'Styczeń', 'Luty', 'Marzec', 'Kwiecień', 'Maj', 'Czerwiec',
@@ -20,7 +21,8 @@ export async function sendDeclarationReminderToTutor(
   tutorId: string,
   month: number,
   year: number,
-  channel: NotificationChannel = 'email'
+  channel: NotificationChannel = 'email',
+  message?: string
 ) {
   const supabase = await createClient()
 
@@ -36,14 +38,16 @@ export async function sendDeclarationReminderToTutor(
   }
 
   const monthName = monthNames[month - 1] || `Miesiąc ${month}`
+  const notificationMessage =
+    (message && message.trim()) ||
+    nextMonthPlanReminderMessage(monthName, year)
 
-  // Nie blokuj wysyłki email/SMS, jeśli system powiadomień (DB enum) nie jest zaktualizowany.
   try {
     await createNotification({
       userId: tutorId,
       type: 'declaration_reminder',
-      title: 'Przypomnienie o deklaracji miesięcznej',
-      message: `Przypominamy o złożeniu deklaracji miesięcznej za okres ${monthName} ${year}.`,
+      title: LABELS.reminderNextMonthPlanTitle,
+      message: notificationMessage,
       metadata: {
         month,
         year,
@@ -66,6 +70,7 @@ export async function sendDeclarationReminderToTutor(
               tutorName: tutor.full_name,
               month,
               year,
+              customMessage: message,
             })
         : undefined,
     sendSms:
@@ -76,15 +81,17 @@ export async function sendDeclarationReminderToTutor(
               tutorName: tutor.full_name,
               month,
               year,
+              customMessage: message,
             })
         : undefined,
   })
 
-  if (!result.success) {
-    console.error('Failed to send declaration reminder notification:', {
+  if (!result.success || result.error) {
+    console.error('Declaration reminder notification not fully successful:', {
       tutorId,
       email: tutorEmail,
       phone: tutorPhone,
+      success: result.success,
       error: result.error,
       details: result.details,
     })
@@ -103,7 +110,8 @@ export async function sendDeclarationReminderToTutor(
 export async function sendDeclarationRemindersToAllMissing(
   month: number,
   year: number,
-  channel: NotificationChannel = 'email'
+  channel: NotificationChannel = 'email',
+  message?: string
 ) {
   const supabase = await createClient()
 
@@ -136,11 +144,15 @@ export async function sendDeclarationRemindersToAllMissing(
   const tutorsWithoutDeclarations = allTutors.filter(t => !tutorsWithDeclarations.has(t.id))
 
   if (tutorsWithoutDeclarations.length === 0) {
-    return { success: true, sent: 0, errors: [] as string[], message: 'Wszyscy tutorzy złożyli już deklarację za ten okres.' }
+    return { success: true, sent: 0, errors: [] as string[], message: LABELS.allTutorsSubmittedNextMonthPlan }
   }
 
   const monthName = monthNames[month - 1] || `Miesiąc ${month}`
+  const notificationMessage =
+    (message && message.trim()) ||
+    nextMonthPlanReminderMessage(monthName, year)
   const errors: string[] = []
+  const warnings: string[] = []
   let sentCount = 0
 
   for (const tutor of tutorsWithoutDeclarations) {
@@ -149,8 +161,8 @@ export async function sendDeclarationRemindersToAllMissing(
         await createNotification({
           userId: tutor.id,
           type: 'declaration_reminder',
-          title: 'Przypomnienie o deklaracji miesięcznej',
-          message: `Przypominamy o złożeniu deklaracji miesięcznej za okres ${monthName} ${year}.`,
+          title: LABELS.reminderNextMonthPlanTitle,
+          message: notificationMessage,
           metadata: {
             month,
             year,
@@ -177,6 +189,7 @@ export async function sendDeclarationRemindersToAllMissing(
                   tutorName: tutor.full_name,
                   month,
                   year,
+                  customMessage: message,
                 })
             : undefined,
         sendSms:
@@ -187,14 +200,26 @@ export async function sendDeclarationRemindersToAllMissing(
                   tutorName: tutor.full_name,
                   month,
                   year,
+                  customMessage: message,
                 })
             : undefined,
       })
 
-      if (!result.success) {
-        errors.push(`${tutor.full_name}: ${result.error || 'Nie udało się wysłać powiadomienia'}`)
-      } else {
+      if (result.success) {
         sentCount++
+        if (result.error || result.details?.email || result.details?.sms) {
+          warnings.push(
+            `${tutor.full_name}: ${
+              result.error || result.details?.email || result.details?.sms || 'Częściowa wysyłka'
+            }`
+          )
+        }
+      } else {
+        errors.push(
+          `${tutor.full_name}: ${
+            result.error || result.details?.email || result.details?.sms || 'Nie udało się wysłać powiadomienia'
+          }`
+        )
       }
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Nieznany błąd'
@@ -212,7 +237,9 @@ export async function sendDeclarationRemindersToAllMissing(
     sent: sentCount,
     errors,
     message: success
-      ? `Wysłano ${sentCount} przypomnień`
+      ? warnings.length > 0
+        ? `Wysłano ${sentCount} przypomnień, ale część kanałów nie była dostępna lub nie powiodła się: ${warnings.join('; ')}`
+        : `Wysłano ${sentCount} przypomnień`
       : `Wysłano ${sentCount} przypomnień, ${errors.length} błędów`,
   }
 }

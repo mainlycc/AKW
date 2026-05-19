@@ -16,10 +16,12 @@ export async function recalculateBillingsAction(month: number, year: number) {
 export async function sendReminderAction(
   studentId: string,
   billingPeriodId: string,
-  channel: NotificationChannel = 'email'
+  channel: NotificationChannel = 'email',
+  message?: string
 ) {
-  await sendPaymentReminder(studentId, billingPeriodId, channel)
+  const result = await sendPaymentReminder(studentId, billingPeriodId, channel, message)
   revalidatePath('/dashboard/billing')
+  return result
 }
 
 export async function markBillingsAsPaidAction(billingIds: string[]) {
@@ -71,7 +73,8 @@ export async function markBillingsAsPaidAction(billingIds: string[]) {
 
 export async function sendGroupRemindersAction(
   billingIds: string[],
-  channel: NotificationChannel = 'email'
+  channel: NotificationChannel = 'email',
+  message?: string
 ) {
   const supabase = await createClient()
   
@@ -85,11 +88,22 @@ export async function sendGroupRemindersAction(
     throw new Error(`Failed to fetch billings: ${fetchError.message}`)
   }
 
-  // Send reminder for each billing (kanał email domyślny – kanał grupowy jest przekazywany z UI)
+  let sent = 0
+  let failed = 0
+  const warnings: string[] = []
+
   for (const billing of billings || []) {
-    await sendPaymentReminder(billing.student_id, billing.billing_period_id, channel)
+    const result = await sendPaymentReminder(billing.student_id, billing.billing_period_id, channel, message)
+    if (result.success) {
+      sent++
+      if (result.error) warnings.push(result.error)
+    } else {
+      failed++
+      warnings.push(result.error || 'Nie udało się wysłać przypomnienia')
+    }
   }
 
   revalidatePath('/dashboard/billing')
+  return { success: failed === 0, sent, failed, warnings }
 }
 

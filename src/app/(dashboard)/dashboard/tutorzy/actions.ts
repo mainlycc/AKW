@@ -6,6 +6,11 @@ import { sendTutorGroupMessageEmail } from '@/lib/email/send'
 import type { NotificationChannel } from '@/lib/types/notifications'
 import { sendTutorGroupMessageSms } from '@/lib/sms/send'
 import { sendWithChannel } from '@/lib/notifications/send-with-channel'
+import {
+  createBulkSendStats,
+  formatBulkSendResultMessage,
+  recordBulkSendOutcome,
+} from '@/lib/notifications/bulk-send-summary'
 
 export async function updateTutorDetails(
   tutorId: string,
@@ -149,7 +154,7 @@ export async function sendGroupMessageToTutors(
   // Wyślij wiadomość do każdego tutora według wybranego kanału
   let sentCount = 0
   let failedCount = 0
-  const errors: string[] = []
+  const bulkStats = createBulkSendStats()
 
   // URL aplikacji do budowy absolutnego linku do obrazka
   let appUrl = 'http://localhost:3000'
@@ -190,16 +195,22 @@ export async function sendGroupMessageToTutors(
 
     if (result.success) {
       sentCount++
+      recordBulkSendOutcome(bulkStats, {
+        success: true,
+        channel,
+        hasEmail,
+        hasPhone,
+        details: result.details,
+      })
     } else {
       failedCount++
-      errors.push(
-        `${tutor.full_name}: ${
-          result.error ||
-          result.details?.email ||
-          result.details?.sms ||
-          'Nieznany błąd'
-        }`
-      )
+      recordBulkSendOutcome(bulkStats, {
+        success: false,
+        channel,
+        hasEmail,
+        hasPhone,
+        details: result.details,
+      })
     }
 
     // Jeżeli są jeszcze kolejni tutorzy, odczekaj chwilę, aby nie przekroczyć limitu 2 req/s
@@ -210,19 +221,21 @@ export async function sendGroupMessageToTutors(
 
   revalidatePath('/dashboard/tutorzy')
 
+  const summaryMessage = formatBulkSendResultMessage(sentCount, bulkStats)
+
   if (failedCount > 0 && sentCount === 0) {
     return {
       success: false,
-      error: `Nie udało się wysłać żadnej wiadomości. Błędy: ${errors.join('; ')}`,
+      error: summaryMessage ?? 'Nie udało się wysłać żadnej wiadomości.',
       sentCount,
       failedCount,
     }
   }
 
-  if (failedCount > 0) {
+  if (summaryMessage) {
     return {
       success: true,
-      error: `Wysłano ${sentCount} wiadomości, nie udało się wysłać ${failedCount}. Błędy: ${errors.join('; ')}`,
+      error: summaryMessage,
       sentCount,
       failedCount,
     }

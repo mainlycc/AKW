@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { ReusableTable } from "@/components/reusable-table"
 import { deleteDeclaration, type DeclarationStatus } from "./actions"
 import { formatHours } from "@/lib/utils"
+import { LABELS } from "@/lib/labels/reports-declarations"
 
 interface MonthlyDeclaration {
   id: string
@@ -157,16 +158,16 @@ export function DeclarationsTable({ declarations, tutorId, students }: Declarati
         return period.includes(searchLower) || status.includes(searchLower)
       }}
       onAdd={handleAdd}
-      addButtonLabel="Utwórz deklarację"
+      addButtonLabel={LABELS.createNextMonthPlan}
       enableRowSelection={true}
       enablePagination={true}
       pageSize={10}
-      emptyMessage="Brak deklaracji. Utwórz pierwszą deklarację."
+      emptyMessage={LABELS.emptyNextMonthPlan}
       deleteButtonLabel="Usuń zaznaczone"
       enableDeleteDialog={true}
       onConfirmDelete={handleDeleteSelected}
-      deleteDialogTitle="Usuń zaznaczone deklaracje?"
-      deleteDialogDescription="Czy na pewno chcesz usunąć zaznaczone deklaracje? Ta operacja nie może być cofnięta. Uwaga: można usuwać tylko deklaracje w statusie 'Roboczy'."
+      deleteDialogTitle={LABELS.deleteNextMonthPlanTitle}
+      deleteDialogDescription={LABELS.deleteNextMonthPlanDescription}
       onRowClick={handleRowClick}
     />
   )

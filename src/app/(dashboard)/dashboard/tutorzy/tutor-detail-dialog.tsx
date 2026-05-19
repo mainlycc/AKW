@@ -238,7 +238,7 @@ export function TutorDetailDialog({ open, onClose, tutor, tutorSubjects }: Tutor
                 disabled={loading}
                 placeholder="np. 50.00"
               />
-              <p className="text-xs text-muted-foreground">Używane do kalkulacji wypłat w raportach miesięcznych</p>
+              <p className="text-xs text-muted-foreground">Używane do kalkulacji wypłat w zrealizowanych lekcjach miesięcznych</p>
             </div>
 
             <div className="space-y-2">

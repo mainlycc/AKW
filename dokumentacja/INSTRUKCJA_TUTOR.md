@@ -13,9 +13,14 @@ Witaj w systemie Akademii Wiedzy! Ten dokument pomoże Ci w codziennej pracy z p
 3. Utworzysz konto: podaj hasło i podstawowe dane
 4. Po zalogowaniu zobaczysz panel Dashboard
 
+### Samouczek interaktywny (Pomoc)
+- Tuż **po założeniu konta i pierwszym logowaniu** uruchomi się tour. System otworzy **Mój profil**, a pierwszym krokiem jest **wybór przedmiotu i poziomu** — zrób to i zapisz, zanim przejdziesz dalej.
+- Potem tour pokaże dashboard, uczniów, grafik, kalendarz lekcji, plan miesiąca i raport.
+- Kliknij **„Pomoc”** w nagłówku, aby powtórzyć tour w dowolnym momencie.
+
 ### Uzupełnij swój profil
 
-1. Przejdź do **"Profil"** w menu bocznym
+1. Przejdź do **"Mój profil"** w menu bocznym (sekcja System)
 2. Wypełnij:
    - Imię i nazwisko
    - Numer telefonu

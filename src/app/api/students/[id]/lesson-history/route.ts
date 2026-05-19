@@ -5,8 +5,8 @@ interface LessonHistoryItem {
   id: string
   session_date: string
   duration_minutes: number
+  status: 'completed' | 'scheduled' | 'cancelled'
   notes: string | null
-  status: 'scheduled' | 'completed' | 'cancelled'
   tutor_name: string | null
   subject_name: string | null
   level_name: string | null
@@ -27,11 +27,36 @@ export async function GET(
 
   const supabase = await createClient()
 
-  // W profilu ucznia chcemy pokazać lekcje przeszłe:
-  // - completed (odbyte)
-  // - scheduled, ale tylko jeśli data już minęła (niepotwierdzone/nieoznaczone)
-  // - cancelled pomijamy
-  const nowIso = new Date().toISOString()
+  const { data: student, error: studentError } = await supabase
+    .from('students')
+    .select('first_name, last_name')
+    .eq('id', studentId)
+    .single()
+
+  if (studentError || !student) {
+    console.error('Error fetching student for lesson history:', studentError)
+    return NextResponse.json(
+      { error: 'Student not found' },
+      { status: 404 }
+    )
+  }
+
+  const { data: matchingStudents, error: matchingStudentsError } = await supabase
+    .rpc('get_student_history_student_ids', {
+      p_student_id: studentId,
+    })
+
+  if (matchingStudentsError) {
+    console.error('Error fetching duplicate student ids for lesson history:', matchingStudentsError)
+    return NextResponse.json(
+      { error: 'Failed to fetch lesson history' },
+      { status: 500 }
+    )
+  }
+
+  const studentIds = Array.from(
+    new Set([studentId, ...(matchingStudents || []).map((row: { id: string }) => row.id)])
+  )
 
   const { data, error } = await supabase
     .from('tutoring_sessions')
@@ -39,8 +64,8 @@ export async function GET(
       id,
       session_date,
       duration_minutes,
-      notes,
       status,
+      notes,
       profiles!tutoring_sessions_tutor_id_fkey (
         id,
         full_name
@@ -56,11 +81,10 @@ export async function GET(
         )
       )
     `)
-    .eq('student_id', studentId)
-    .in('status', ['completed', 'scheduled'])
-    .lt('session_date', nowIso)
+    .in('student_id', studentIds)
+    .in('status', ['completed', 'scheduled', 'cancelled'])
     .order('session_date', { ascending: false })
-    .limit(100)
+    .limit(300)
 
   if (error) {
     console.error('Error fetching student lesson history:', error)
@@ -92,8 +116,8 @@ export async function GET(
         id: session.id,
         session_date: session.session_date,
         duration_minutes: session.duration_minutes ?? 0,
-        notes: session.notes ?? null,
         status: session.status ?? 'scheduled',
+        notes: session.notes ?? null,
         tutor_name: tutor?.full_name ?? null,
         subject_name: subject?.name ?? null,
         level_name: level?.level_name ?? null,
@@ -102,4 +126,3 @@ export async function GET(
 
   return NextResponse.json({ sessions })
 }
-

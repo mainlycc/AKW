@@ -208,6 +208,77 @@ export function LessonsCalendar({ sessions, isAdmin = false }: LessonsCalendarPr
 
   return (
     <div className="space-y-4">
+      {/* Sekcja potwierdzania przeszłych lekcji (tylko dla tutora) */}
+      {isTutor && pastScheduledSessions.length > 0 && (
+        <Card className="border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/20">
+          <CardHeader>
+            <CardTitle className="text-lg font-semibold text-amber-900 dark:text-amber-100">
+              Potwierdź status lekcji
+            </CardTitle>
+            <CardDescription className="text-amber-800 dark:text-amber-200">
+              Poniżej znajdują się lekcje, których termin już minął. Proszę potwierdzić czy się odbyły.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {pastScheduledSessions.map((session) => {
+                const studentName = `${session.students.first_name} ${session.students.last_name}`
+                const sessionDate = new Date(session.session_date)
+                const isUpdating = updatingSessions.has(session.id)
+                
+                return (
+                  <Card key={session.id} className="bg-background">
+                    <CardContent className="p-4">
+                      <div className="space-y-3">
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex-1 space-y-1">
+                            <p className="font-medium text-base">
+                              Czy lekcja z <span className="font-semibold text-primary">{studentName}</span> odbyła się?
+                            </p>
+                            <div className="text-sm text-muted-foreground space-y-1">
+                              <div>
+                                <span className="font-medium">Data i godzina: </span>
+                                {format(sessionDate, 'd MMMM yyyy, HH:mm', { locale: pl })}
+                              </div>
+                              <div>
+                                <span className="font-medium">Przedmiot: </span>
+                                {session.student_assignments.subjects.name} - {session.student_assignments.subject_levels.level_name}
+                              </div>
+                              <div>
+                                <span className="font-medium">Czas trwania: </span>
+                                {session.duration_minutes} minut
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex gap-2 pt-2">
+                          <Button
+                            onClick={() => handleStatusUpdate(session.id, 'completed')}
+                            disabled={isUpdating || isPending}
+                            className="flex-1 bg-green-500/20 text-green-700 border-green-500 hover:bg-green-500/30 dark:text-green-400 dark:border-green-500"
+                            variant="outline"
+                          >
+                            {isUpdating ? 'Aktualizowanie...' : 'Odbyta'}
+                          </Button>
+                          <Button
+                            onClick={() => handleStatusUpdate(session.id, 'cancelled')}
+                            disabled={isUpdating || isPending}
+                            className="flex-1 bg-red-500/20 text-red-700 border-red-500 hover:bg-red-500/30 dark:text-red-400 dark:border-red-500"
+                            variant="outline"
+                          >
+                            {isUpdating ? 'Aktualizowanie...' : 'Odwołana'}
+                          </Button>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Kalendarz */}
       <Card>
         <CardHeader>
@@ -377,77 +448,6 @@ export function LessonsCalendar({ sessions, isAdmin = false }: LessonsCalendarPr
           </div>
         </CardContent>
       </Card>
-
-      {/* Sekcja potwierdzania przeszłych lekcji (tylko dla tutora) */}
-      {isTutor && pastScheduledSessions.length > 0 && (
-        <Card className="border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/20">
-          <CardHeader>
-            <CardTitle className="text-lg font-semibold text-amber-900 dark:text-amber-100">
-              Potwierdź status lekcji
-            </CardTitle>
-            <CardDescription className="text-amber-800 dark:text-amber-200">
-              Poniżej znajdują się lekcje, których termin już minął. Proszę potwierdzić czy się odbyły.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {pastScheduledSessions.map((session) => {
-                const studentName = `${session.students.first_name} ${session.students.last_name}`
-                const sessionDate = new Date(session.session_date)
-                const isUpdating = updatingSessions.has(session.id)
-                
-                return (
-                  <Card key={session.id} className="bg-background">
-                    <CardContent className="p-4">
-                      <div className="space-y-3">
-                        <div className="flex items-start justify-between gap-4">
-                          <div className="flex-1 space-y-1">
-                            <p className="font-medium text-base">
-                              Czy lekcja z <span className="font-semibold text-primary">{studentName}</span> odbyła się?
-                            </p>
-                            <div className="text-sm text-muted-foreground space-y-1">
-                              <div>
-                                <span className="font-medium">Data i godzina: </span>
-                                {format(sessionDate, 'd MMMM yyyy, HH:mm', { locale: pl })}
-                              </div>
-                              <div>
-                                <span className="font-medium">Przedmiot: </span>
-                                {session.student_assignments.subjects.name} - {session.student_assignments.subject_levels.level_name}
-                              </div>
-                              <div>
-                                <span className="font-medium">Czas trwania: </span>
-                                {session.duration_minutes} minut
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex gap-2 pt-2">
-                          <Button
-                            onClick={() => handleStatusUpdate(session.id, 'completed')}
-                            disabled={isUpdating || isPending}
-                            className="flex-1 bg-green-500/20 text-green-700 border-green-500 hover:bg-green-500/30 dark:text-green-400 dark:border-green-500"
-                            variant="outline"
-                          >
-                            {isUpdating ? 'Aktualizowanie...' : 'Odbyta'}
-                          </Button>
-                          <Button
-                            onClick={() => handleStatusUpdate(session.id, 'cancelled')}
-                            disabled={isUpdating || isPending}
-                            className="flex-1 bg-red-500/20 text-red-700 border-red-500 hover:bg-red-500/30 dark:text-red-400 dark:border-red-500"
-                            variant="outline"
-                          >
-                            {isUpdating ? 'Aktualizowanie...' : 'Odwołana'}
-                          </Button>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                )
-              })}
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
       {/* Dialog ze szczegółami sesji dla wybranego dnia */}
       <Dialog open={selectedDate !== null} onOpenChange={(open) => !open && setSelectedDate(null)}>

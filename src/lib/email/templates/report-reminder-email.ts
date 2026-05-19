@@ -1,8 +1,14 @@
+import {
+  LABELS,
+  completedLessonsReminderMessage,
+} from '@/lib/labels/reports-declarations'
+
 export interface ReportReminderEmailData {
   tutorName: string
   month: number
   year: number
   appUrl?: string
+  customMessage?: string
 }
 
 const monthNames = [
@@ -11,8 +17,11 @@ const monthNames = [
 ]
 
 export function generateReportReminderEmail(data: ReportReminderEmailData) {
-  const { tutorName, month, year, appUrl = 'http://localhost:3000' } = data
+  const { tutorName, month, year, appUrl = 'http://localhost:3000', customMessage } = data
   const monthName = monthNames[month - 1] || `Miesiąc ${month}`
+  const mainMessage =
+    (customMessage && customMessage.trim()) ||
+    completedLessonsReminderMessage(monthName, year)
 
   return `
 <!DOCTYPE html>
@@ -20,7 +29,7 @@ export function generateReportReminderEmail(data: ReportReminderEmailData) {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Przypomnienie o raporcie miesięcznym - Akademia Wiedzy</title>
+  <title>${LABELS.reminderCompletedLessonsTitle} - Akademia Wiedzy</title>
 </head>
 <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
   <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
@@ -28,11 +37,11 @@ export function generateReportReminderEmail(data: ReportReminderEmailData) {
   </div>
   
   <div style="background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px;">
-    <h2 style="color: #333; margin-top: 0;">Przypomnienie o raporcie miesięcznym</h2>
+    <h2 style="color: #333; margin-top: 0;">${LABELS.reminderCompletedLessonsTitle}</h2>
     
     <p>Dzień dobry ${tutorName},</p>
     
-    <p>Przypominamy o złożeniu raportu miesięcznego za okres <strong>${monthName} ${year}</strong>.</p>
+    <p>${mainMessage}</p>
     
     <div style="background: white; border: 2px solid #667eea; border-radius: 8px; padding: 20px; margin: 20px 0;">
       <h3 style="margin-top: 0; color: #667eea;">Szczegóły:</h3>
@@ -45,13 +54,13 @@ export function generateReportReminderEmail(data: ReportReminderEmailData) {
     </div>
     
     <p style="margin-top: 30px; color: #666; font-size: 14px;">
-      Prosimy o złożenie raportu w najbliższym możliwym terminie poprzez panel tutora w systemie.
+      Prosimy o uzupełnienie zrealizowanych lekcji w najbliższym możliwym terminie poprzez panel tutora w systemie.
     </p>
     
     <div style="text-align: center; margin: 30px 0;">
       <a href="${appUrl}/dashboard/moje-raporty" 
          style="background: #667eea; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; display: inline-block; font-weight: bold;">
-        Złóż raport
+        ${LABELS.submitCompletedLessons}
       </a>
     </div>
     

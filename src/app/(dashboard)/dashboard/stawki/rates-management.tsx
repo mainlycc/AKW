@@ -21,6 +21,7 @@ export function RatesManagement() {
   })
   const [hasChanges, setHasChanges] = useState(false)
   const [updateAllStudents, setUpdateAllStudents] = useState(false)
+  const [updateAllTutors, setUpdateAllTutors] = useState(false)
 
   useEffect(() => {
     async function loadRates() {
@@ -94,13 +95,15 @@ export function RatesManagement() {
         rates.default_student_rate_level_2,
         rates.default_student_rate_level_3,
         rates.default_tutor_rate,
-        updateAllStudents
+        updateAllStudents,
+        updateAllTutors
       )
 
       if (result.success) {
         setInitialRates(rates)
         setHasChanges(false)
         setUpdateAllStudents(false)
+        setUpdateAllTutors(false)
         toast.success(
           `Stawki zostały zaktualizowane.${
             result.updatedCount && result.updatedCount > 0
@@ -155,6 +158,20 @@ export function RatesManagement() {
                 {updateAllStudents
                   ? 'Uwaga: Wszyscy uczniowie otrzymają nowe stawki wg poziomu, nawet jeśli mieli ustawioną indywidualną stawkę. Indywidualne nadpisania zostaną wyłączone.'
                   : 'Domyślnie aktualizowani są tylko uczniowie bez indywidualnej stawki (override wyłączony).'}
+              </p>
+              <label className="flex items-center gap-2 cursor-pointer pt-2">
+                <Checkbox
+                  checked={updateAllTutors}
+                  onCheckedChange={(checked) => setUpdateAllTutors(checked === true)}
+                />
+                <span className="text-sm text-amber-800 dark:text-amber-200">
+                  Nadpisz stawki wszystkich tutorów (ustaw każdemu tę samą stawkę)
+                </span>
+              </label>
+              <p className="text-xs text-amber-700 dark:text-amber-300">
+                {updateAllTutors
+                  ? 'Uwaga: Wszyscy tutorzy dostaną nową stawkę, także ci z ustawioną wcześniej indywidualną stawką.'
+                  : 'Domyślnie aktualizowani są tylko tutorzy, którzy mieli pustą stawkę (NULL).'}
               </p>
             </div>
           </div>

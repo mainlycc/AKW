@@ -30,7 +30,8 @@ import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
-import { CheckCircle2, Mail, Clock, AlertCircle, Search } from 'lucide-react'
+import Link from 'next/link'
+import { CheckCircle2, AlertCircle, Search, CalendarX } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface PublicBookingPageProps {
@@ -244,14 +245,21 @@ export function PublicBookingPage({ subjects }: PublicBookingPageProps) {
 
   if (subjects.length === 0) {
     return (
-      <div className="space-y-4 text-center">
-        <h1 className="text-3xl font-semibold sm:text-4xl">Zarezerwuj korepetycje</h1>
-        <p className="text-muted-foreground">
-          Obecnie brak publicznie dostępnych terminów. Spróbuj ponownie później lub skontaktuj się z administratorem.
+      <div
+        data-testid="public-booking-empty"
+        className="mx-auto flex max-w-md flex-col items-center py-16 text-center"
+      >
+        <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-muted">
+          <CalendarX className="h-8 w-8 text-muted-foreground" aria-hidden />
+        </div>
+        <h2 className="text-xl font-semibold">Rezerwacja tymczasowo niedostępna</h2>
+        <p className="mt-3 text-muted-foreground">
+          Obecnie nie ma korepetytorów z włączoną rezerwacją online. Spróbuj ponownie później lub skontaktuj się z
+          nami, jeśli chcesz umówić zajęcia.
         </p>
-        <p className="text-xs text-muted-foreground mt-4">
-          Sprawdź konsolę przeglądarki (F12) dla szczegółów diagnostycznych.
-        </p>
+        <Button asChild variant="outline" className="mt-8">
+          <Link href="/">Wróć na stronę główną</Link>
+        </Button>
       </div>
     )
   }

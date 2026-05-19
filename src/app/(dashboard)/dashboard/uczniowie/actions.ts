@@ -6,6 +6,11 @@ import { sendGroupMessageEmail } from '@/lib/email/send'
 import type { NotificationChannel } from '@/lib/types/notifications'
 import { sendGroupMessageSms } from '@/lib/sms/send'
 import { sendWithChannel } from '@/lib/notifications/send-with-channel'
+import {
+  createBulkSendStats,
+  formatBulkSendResultMessage,
+  recordBulkSendOutcome,
+} from '@/lib/notifications/bulk-send-summary'
 import { linkParentToStudent as linkParentToStudentLib, unlinkParentFromStudent as unlinkParentFromStudentLib, createParent } from '@/lib/actions/parents'
 import { getDefaultStudentRateForLevel } from '../stawki/actions'
 import { getUserProfile } from '@/lib/actions/auth'
@@ -438,6 +443,11 @@ export async function sendGroupMessage(
   channel: NotificationChannel = 'email'
 ): Promise<{ success: boolean; error?: string; sentCount?: number; failedCount?: number }> {
   const supabase = await createClient()
+  const profile = await getUserProfile()
+
+  if (profile?.role === 'tutor' && channel !== 'email') {
+    return { success: false, error: 'Tutor może wysyłać wiadomości wyłącznie e-mailem' }
+  }
 
   if (!selectedStudentIds || selectedStudentIds.length === 0) {
     return { success: false, error: 'Nie wybrano uczniów' }
@@ -604,7 +614,7 @@ export async function sendGroupMessage(
   // Wyślij wiadomość do każdego rodzica według wybranego kanału
   let sentCount = 0
   let failedCount = 0
-  const errors: string[] = []
+  const bulkStats = createBulkSendStats()
 
   // URL aplikacji do budowy absolutnego linku do obrazka
   let appUrl = 'http://localhost:3000'
@@ -645,34 +655,42 @@ export async function sendGroupMessage(
 
     if (result.success) {
       sentCount++
+      recordBulkSendOutcome(bulkStats, {
+        success: true,
+        channel,
+        hasEmail,
+        hasPhone,
+        details: result.details,
+      })
     } else {
       failedCount++
-      errors.push(
-        `${data.parentName}: ${
-          result.error ||
-          result.details?.email ||
-          result.details?.sms ||
-          'Nieznany błąd'
-        }`
-      )
+      recordBulkSendOutcome(bulkStats, {
+        success: false,
+        channel,
+        hasEmail,
+        hasPhone,
+        details: result.details,
+      })
     }
   }
 
   revalidatePath('/dashboard/uczniowie')
 
+  const summaryMessage = formatBulkSendResultMessage(sentCount, bulkStats)
+
   if (failedCount > 0 && sentCount === 0) {
     return {
       success: false,
-      error: `Nie udało się wysłać żadnej wiadomości. Błędy: ${errors.join('; ')}`,
+      error: summaryMessage ?? 'Nie udało się wysłać żadnej wiadomości.',
       sentCount,
       failedCount,
     }
   }
 
-  if (failedCount > 0) {
+  if (summaryMessage) {
     return {
       success: true,
-      error: `Wysłano ${sentCount} wiadomości, nie udało się wysłać ${failedCount}. Błędy: ${errors.join('; ')}`,
+      error: summaryMessage,
       sentCount,
       failedCount,
     }
@@ -695,6 +713,19 @@ export async function sendGroupMessageToAllMyStudents(
   channel: NotificationChannel = 'email'
 ): Promise<{ success: boolean; error?: string; sentCount?: number; failedCount?: number }> {
   const supabase = await createClient()
+  const profile = await getUserProfile()
+
+  if (!profile || profile.role !== 'tutor') {
+    return { success: false, error: 'Brak uprawnień do wysyłania wiadomości' }
+  }
+
+  if (profile.id !== tutorId) {
+    return { success: false, error: 'Brak uprawnień do wysyłania wiadomości' }
+  }
+
+  if (channel !== 'email') {
+    return { success: false, error: 'Tutor może wysyłać wiadomości wyłącznie e-mailem' }
+  }
 
   if (!message || !message.trim()) {
     return { success: false, error: 'Treść wiadomości nie może być pusta' }
@@ -718,8 +749,7 @@ export async function sendGroupMessageToAllMyStudents(
 
   const studentIds = assignments.map(a => a.student_id)
 
-  // Użyj istniejącej funkcji sendGroupMessage
-  return await sendGroupMessage(studentIds, message, channel)
+  return await sendGroupMessage(studentIds, message, 'email')
 }
 
 /**

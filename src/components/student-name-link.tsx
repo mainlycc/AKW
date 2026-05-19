@@ -48,6 +48,7 @@ interface StudentNameLinkProps {
     }>
   }>
   isTutor?: boolean
+  isAdmin?: boolean
   tutorId?: string
   tutorSubjectLevels?: Array<{
     subject_level_id: string
@@ -66,6 +67,7 @@ export function StudentNameLink({
   allParents = [],
   allSubjects = [],
   isTutor = false,
+  isAdmin = false,
   tutorId,
   tutorSubjectLevels = [],
   currentUserId,
@@ -175,6 +177,7 @@ export function StudentNameLink({
         allParents={loadedAllParents}
         allSubjects={loadedAllSubjects}
         isTutor={isTutor}
+        isAdmin={isAdmin}
         tutorId={tutorId}
         tutorSubjectLevels={tutorSubjectLevels}
         currentUserId={currentUserId}

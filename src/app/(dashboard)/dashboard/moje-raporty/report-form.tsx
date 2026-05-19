@@ -21,6 +21,7 @@ import { pl } from "date-fns/locale"
 import { cn } from "@/lib/utils"
 import { IconArrowLeft } from "@tabler/icons-react"
 import Link from "next/link"
+import { LABELS } from "@/lib/labels/reports-declarations"
 
 interface Student {
   id: string
@@ -166,7 +167,7 @@ export function ReportForm({ tutorId, students, reportId, initialReport, initial
       router.refresh()
     } catch (error) {
       console.error('Error saving report:', error)
-      alert(error instanceof Error ? error.message : 'Błąd podczas zapisywania raportu')
+      alert(error instanceof Error ? error.message : LABELS.errorSavingCompletedLessons)
     } finally {
       setLoading(false)
     }
@@ -281,7 +282,7 @@ export function ReportForm({ tutorId, students, reportId, initialReport, initial
       <Link href="/dashboard/moje-raporty">
         <Button variant="ghost" size="sm">
           <IconArrowLeft className="mr-2 h-4 w-4" />
-          Powrót do listy raportów
+          {LABELS.backToCompletedLessonsList}
         </Button>
       </Link>
 
@@ -676,7 +677,7 @@ export function ReportForm({ tutorId, students, reportId, initialReport, initial
         </Button>
         {(!reportId || !initialStatus || initialStatus === 'draft') ? (
           <Button type="button" onClick={handleSubmitReport} disabled={loading}>
-            {loading ? 'Wysyłanie...' : 'Złóż raport'}
+            {loading ? 'Wysyłanie...' : LABELS.submitCompletedLessons}
           </Button>
         ) : null}
       </div>

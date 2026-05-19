@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useTransition } from 'react'
+import { useState, useEffect, useCallback, useTransition } from 'react'
 import { IconBell } from '@tabler/icons-react'
 import { format } from 'date-fns'
 import { pl } from 'date-fns/locale'
@@ -14,40 +14,100 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { getNotifications, getUnreadCount, markAsRead, markAllAsRead, type Notification } from '@/lib/actions/notifications'
+import { markAsRead, markAllAsRead } from '@/lib/actions/notifications'
+import type { Notification } from '@/lib/notifications/types'
 import { cn } from '@/lib/utils'
 
-export function NotificationBell() {
+const POLL_INTERVAL_MS = 60_000
+const SUMMARY_LIMIT = 10
+
+interface NotificationBellProps {
+  initialUnreadCount: number
+}
+
+export function NotificationBell({ initialUnreadCount }: NotificationBellProps) {
   const [notifications, setNotifications] = useState<Notification[]>([])
-  const [unreadCount, setUnreadCount] = useState(0)
+  const [unreadCount, setUnreadCount] = useState(initialUnreadCount)
   const [isOpen, setIsOpen] = useState(false)
+  const [isLoadingSummary, setIsLoadingSummary] = useState(false)
+  const [hasLoadedSummary, setHasLoadedSummary] = useState(false)
   const [isPending, startTransition] = useTransition()
 
-  const loadNotifications = async () => {
+  useEffect(() => {
+    setUnreadCount(initialUnreadCount)
+  }, [initialUnreadCount])
+
+  const fetchUnreadCount = useCallback(async () => {
     try {
-      const [notifs, count] = await Promise.all([
-        getNotifications(10),
-        getUnreadCount(),
-      ])
-      setNotifications(notifs)
-      setUnreadCount(count)
+      const res = await fetch('/api/notifications/unread-count', { cache: 'no-store' })
+      if (!res.ok) return
+      const data = (await res.json()) as { unreadCount: number }
+      setUnreadCount(data.unreadCount)
     } catch (error) {
-      console.error('Error loading notifications:', error)
+      console.error('Error fetching unread count:', error)
     }
-  }
+  }, [])
+
+  const fetchSummary = useCallback(async () => {
+    setIsLoadingSummary(true)
+    try {
+      const res = await fetch(`/api/notifications/summary?limit=${SUMMARY_LIMIT}`, {
+        cache: 'no-store',
+      })
+      if (!res.ok) return
+      const data = (await res.json()) as {
+        notifications: Notification[]
+        unreadCount: number
+      }
+      setNotifications(data.notifications)
+      setUnreadCount(data.unreadCount)
+      setHasLoadedSummary(true)
+    } catch (error) {
+      console.error('Error loading notifications summary:', error)
+    } finally {
+      setIsLoadingSummary(false)
+    }
+  }, [])
 
   useEffect(() => {
-    loadNotifications()
-    // Refresh every 30 seconds
-    const interval = setInterval(loadNotifications, 30000)
-    return () => clearInterval(interval)
-  }, [])
+    const poll = () => {
+      if (document.visibilityState !== 'visible') return
+      void fetchUnreadCount()
+    }
+
+    const interval = setInterval(poll, POLL_INTERVAL_MS)
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void fetchUnreadCount()
+      }
+    }
+
+    document.addEventListener('visibilitychange', onVisibilityChange)
+
+    return () => {
+      clearInterval(interval)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+    }
+  }, [fetchUnreadCount])
+
+  const handleOpenChange = (open: boolean) => {
+    setIsOpen(open)
+    if (open && !hasLoadedSummary) {
+      void fetchSummary()
+    }
+  }
 
   const handleMarkAsRead = async (notificationId: string) => {
     startTransition(async () => {
       try {
         await markAsRead(notificationId)
-        await loadNotifications()
+        setNotifications((prev) =>
+          prev.map((n) =>
+            n.id === notificationId ? { ...n, read_at: new Date().toISOString() } : n
+          )
+        )
+        setUnreadCount((prev) => Math.max(0, prev - 1))
       } catch (error) {
         console.error('Error marking notification as read:', error)
       }
@@ -58,7 +118,10 @@ export function NotificationBell() {
     startTransition(async () => {
       try {
         await markAllAsRead()
-        await loadNotifications()
+        setNotifications((prev) =>
+          prev.map((n) => ({ ...n, read_at: n.read_at || new Date().toISOString() }))
+        )
+        setUnreadCount(0)
       } catch (error) {
         console.error('Error marking all as read:', error)
       }
@@ -72,20 +135,19 @@ export function NotificationBell() {
 
     if (diffInSeconds < 60) {
       return 'przed chwilą'
-    } else if (diffInSeconds < 3600) {
+    }
+    if (diffInSeconds < 3600) {
       const minutes = Math.floor(diffInSeconds / 60)
       return `${minutes} ${minutes === 1 ? 'minutę' : 'minut'} temu`
-    } else if (diffInSeconds < 86400) {
+    }
+    if (diffInSeconds < 86400) {
       const hours = Math.floor(diffInSeconds / 3600)
       return `${hours} ${hours === 1 ? 'godzinę' : 'godzin'} temu`
-    } else {
-      return format(date, 'd MMM yyyy, HH:mm', { locale: pl })
     }
+    return format(date, 'd MMM yyyy, HH:mm', { locale: pl })
   }
 
   const getNotificationLink = (notification: Notification): string => {
-    const metadata = notification.metadata || {}
-    
     switch (notification.type) {
       case 'public_booking_created':
       case 'public_booking_confirmed':
@@ -101,15 +163,17 @@ export function NotificationBell() {
         return '/dashboard/moje-raporty'
       case 'session_created':
         return '/dashboard/sesje'
+      case 'support_incident':
+        return '/dashboard/kalendarz'
       default:
         return '/dashboard/powiadomienia'
     }
   }
 
   return (
-    <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
+    <DropdownMenu open={isOpen} onOpenChange={handleOpenChange}>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" className="relative">
+        <Button variant="ghost" size="icon" className="relative" data-tour="notifications-bell">
           <IconBell className="h-5 w-5" />
           {unreadCount > 0 && (
             <Badge
@@ -138,9 +202,13 @@ export function NotificationBell() {
         </div>
         <DropdownMenuSeparator />
         <div className="max-h-[400px] overflow-y-auto">
-          {notifications.length === 0 ? (
+          {isLoadingSummary ? (
             <div className="p-4 text-center text-sm text-muted-foreground">
-              Brak powiadomień
+              Ładowanie...
+            </div>
+          ) : notifications.length === 0 ? (
+            <div className="p-4 text-center text-sm text-muted-foreground">
+              {hasLoadedSummary ? 'Brak powiadomień' : 'Otwórz, aby zobaczyć powiadomienia'}
             </div>
           ) : (
             notifications.map((notification) => {
@@ -157,7 +225,7 @@ export function NotificationBell() {
                   )}
                   onClick={() => {
                     if (isUnread) {
-                      handleMarkAsRead(notification.id)
+                      void handleMarkAsRead(notification.id)
                     }
                     setIsOpen(false)
                   }}
@@ -166,9 +234,7 @@ export function NotificationBell() {
                     <div className="flex items-start justify-between w-full gap-2">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
-                          <p className="text-sm font-medium truncate">
-                            {notification.title}
-                          </p>
+                          <p className="text-sm font-medium truncate">{notification.title}</p>
                           {isUnread && (
                             <span className="h-2 w-2 rounded-full bg-primary shrink-0" />
                           )}
@@ -197,4 +263,3 @@ export function NotificationBell() {
     </DropdownMenu>
   )
 }
-

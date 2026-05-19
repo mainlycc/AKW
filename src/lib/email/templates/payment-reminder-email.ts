@@ -7,6 +7,7 @@ export interface PaymentReminderEmailData {
   totalPaid: number
   balance: number
   hours: number
+  customMessage?: string
 }
 
 const monthNames = [
@@ -15,11 +16,19 @@ const monthNames = [
 ]
 
 export function generatePaymentReminderEmail(data: PaymentReminderEmailData) {
-  const { parentName, studentName, month, year, totalDue, totalPaid, balance, hours } = data
+  const { parentName, studentName, month, year, totalDue, totalPaid, balance, hours, customMessage } = data
   const monthName = monthNames[month - 1] || `Miesiąc ${month}`
   const formattedTotalDue = totalDue.toFixed(2).replace('.', ',')
   const formattedTotalPaid = totalPaid.toFixed(2).replace('.', ',')
   const formattedBalance = balance.toFixed(2).replace('.', ',')
+  const customBlock =
+    customMessage && customMessage.trim()
+      ? `
+    <div style="background: white; border-left: 4px solid #667eea; padding: 16px; margin: 16px 0; white-space: pre-wrap;">
+      ${customMessage.replace(/\\n/g, '<br>')}
+    </div>
+      `.trim()
+      : ''
 
   return `
 <!DOCTYPE html>
@@ -40,6 +49,7 @@ export function generatePaymentReminderEmail(data: PaymentReminderEmailData) {
     <p>Dzień dobry ${parentName},</p>
     
     <p>Przypominamy o zaległej płatności za zajęcia dla ucznia <strong>${studentName}</strong> za okres <strong>${monthName} ${year}</strong>.</p>
+    ${customBlock}
     
     <div style="background: white; border: 2px solid #667eea; border-radius: 8px; padding: 20px; margin: 20px 0;">
       <h3 style="margin-top: 0; color: #667eea;">Szczegóły rozliczenia:</h3>

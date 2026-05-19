@@ -13,6 +13,9 @@ export interface Profile {
   email: string
   created_at: string
   updated_at: string
+  onboarding_completed_at?: string | null
+  onboarding_step?: number | null
+  onboarding_skipped_at?: string | null
 }
 
 export interface Subject {

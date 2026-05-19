@@ -1,5 +1,6 @@
 "use client"
 
+import Link from "next/link"
 import {
   IconDotsVertical,
   IconLogout,
@@ -97,9 +98,11 @@ export function NavUser({
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuGroup>
-              <DropdownMenuItem>
-                <IconUserCircle />
-                Profil
+              <DropdownMenuItem asChild>
+                <Link href="/dashboard/profil">
+                  <IconUserCircle />
+                  Profil
+                </Link>
               </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />

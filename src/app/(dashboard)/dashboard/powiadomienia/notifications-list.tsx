@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { ConfirmDialog } from '@/components/confirm-dialog'
+import { LABELS } from '@/lib/labels/reports-declarations'
 import {
   Pagination,
   PaginationContent,
@@ -18,7 +19,8 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from '@/components/ui/pagination'
-import { getNotifications, getNotificationsCount, markAsRead, markAllAsRead, deleteAllNotifications, type Notification } from '@/lib/actions/notifications'
+import { markAsRead, markAllAsRead, deleteAllNotifications } from '@/lib/actions/notifications'
+import type { Notification } from '@/lib/notifications/types'
 import { cn } from '@/lib/utils'
 
 interface NotificationsListProps {
@@ -42,26 +44,36 @@ export function NotificationsList({
   const totalPages = Math.ceil(totalCount / itemsPerPage)
 
   useEffect(() => {
+    if (currentPage === 1) return
+
+    const controller = new AbortController()
+
     const loadNotifications = async () => {
       setIsLoading(true)
       try {
-        const offset = (currentPage - 1) * itemsPerPage
-        const [newNotifications, newTotalCount] = await Promise.all([
-          getNotifications(itemsPerPage, offset),
-          getNotificationsCount(),
-        ])
-        setNotifications(newNotifications)
-        setTotalCount(newTotalCount)
+        const res = await fetch(
+          `/api/notifications?page=${currentPage}&limit=${itemsPerPage}`,
+          { signal: controller.signal, cache: 'no-store' }
+        )
+        if (!res.ok) throw new Error('Failed to fetch notifications')
+        const data = (await res.json()) as {
+          notifications: Notification[]
+          totalCount: number
+        }
+        setNotifications(data.notifications)
+        setTotalCount(data.totalCount)
       } catch (error) {
+        if ((error as Error).name === 'AbortError') return
         console.error('Error loading notifications:', error)
       } finally {
-        setIsLoading(false)
+        if (!controller.signal.aborted) {
+          setIsLoading(false)
+        }
       }
     }
 
-    if (currentPage !== 1) {
-      loadNotifications()
-    }
+    void loadNotifications()
+    return () => controller.abort()
   }, [currentPage, itemsPerPage])
 
   const unreadCount = notifications.filter(n => !n.read_at).length
@@ -75,9 +87,6 @@ export function NotificationsList({
             n.id === notificationId ? { ...n, read_at: new Date().toISOString() } : n
           )
         )
-        // Aktualizuj liczbę nieprzeczytanych
-        const newTotalCount = await getNotificationsCount()
-        setTotalCount(newTotalCount)
       } catch (error) {
         console.error('Error marking notification as read:', error)
       }
@@ -91,9 +100,6 @@ export function NotificationsList({
         setNotifications(prev =>
           prev.map(n => ({ ...n, read_at: n.read_at || new Date().toISOString() }))
         )
-        // Aktualizuj liczbę nieprzeczytanych
-        const newTotalCount = await getNotificationsCount()
-        setTotalCount(newTotalCount)
       } catch (error) {
         console.error('Error marking all as read:', error)
       }
@@ -140,6 +146,8 @@ export function NotificationsList({
       case 'session_created':
       case 'session_confirmation_required':
         return '/dashboard/sesje'
+      case 'support_incident':
+        return '/dashboard/kalendarz'
       default:
         return '/dashboard/powiadomienia'
     }
@@ -147,18 +155,19 @@ export function NotificationsList({
 
   const getNotificationTypeLabel = (type: Notification['type']): string => {
     const labels: Record<Notification['type'], string> = {
-      public_booking_created: 'Rezerwacja',
-      public_booking_confirmed: 'Rezerwacja',
-      public_booking_cancelled: 'Rezerwacja',
+      public_booking_created: LABELS.notificationClientSubmission,
+      public_booking_confirmed: LABELS.notificationClientSubmission,
+      public_booking_cancelled: LABELS.notificationClientSubmission,
       assignment_created: 'Przypisanie',
       assignment_status_changed: 'Przypisanie',
-      report_submitted: 'Raport',
-      report_approved: 'Raport',
-      report_paid: 'Raport',
-      report_reminder: 'Raport',
-      declaration_reminder: 'Deklaracja',
+      report_submitted: LABELS.notificationTutorReport,
+      report_approved: LABELS.notificationMonthlyReport,
+      report_paid: LABELS.notificationMonthlyReport,
+      report_reminder: LABELS.notificationTutorReport,
+      declaration_reminder: LABELS.notificationMonthlyPlan,
       session_created: 'Sesja',
       session_confirmation_required: 'Sesja',
+      support_incident: 'Problem',
     }
     return labels[type] || 'Powiadomienie'
   }

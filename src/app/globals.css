@@ -181,3 +181,46 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Onboarding tour (driver.js) — dopasowanie do motywu shadcn */
+.aw-driver-popover.driver-popover {
+  background: var(--popover);
+  color: var(--popover-foreground);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  max-width: min(360px, calc(100vw - 2rem));
+}
+
+.aw-driver-popover .driver-popover-title {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.aw-driver-popover .driver-popover-description {
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--muted-foreground);
+}
+
+.aw-driver-popover .driver-popover-progress-text {
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+}
+
+.aw-driver-popover .driver-popover-footer button {
+  border-radius: calc(var(--radius) - 2px);
+  font-size: 0.875rem;
+  text-shadow: none;
+}
+
+.aw-driver-popover .driver-popover-next-btn,
+.aw-driver-popover .driver-popover-prev-btn {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  border: none;
+}
+
+.aw-driver-popover .driver-popover-close-btn {
+  color: var(--muted-foreground);
+}

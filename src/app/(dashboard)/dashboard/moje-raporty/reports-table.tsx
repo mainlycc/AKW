@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { deleteReport, type ReportStatus } from "./actions"
 import { ReusableTable } from "@/components/reusable-table"
 import { formatHours } from "@/lib/utils"
+import { LABELS } from "@/lib/labels/reports-declarations"
 
 interface MonthlyReport {
   id: string
@@ -133,16 +134,16 @@ export function ReportsTable({ reports, tutorId, students }: ReportsTableProps) 
         return period.includes(searchLower) || status.includes(searchLower)
       }}
       onAdd={handleAdd}
-      addButtonLabel="Utwórz raport"
+      addButtonLabel={LABELS.createCompletedLessons}
       enableRowSelection={true}
       enablePagination={true}
       pageSize={10}
-      emptyMessage="Brak raportów. Utwórz pierwszy raport."
+      emptyMessage={LABELS.emptyCompletedLessons}
       deleteButtonLabel="Usuń zaznaczone"
       enableDeleteDialog={true}
       onConfirmDelete={handleDeleteSelected}
-      deleteDialogTitle="Usuń zaznaczone raporty?"
-      deleteDialogDescription="Czy na pewno chcesz usunąć zaznaczone raporty? Ta operacja nie może być cofnięta. Uwaga: można usuwać tylko raporty w statusie 'Roboczy'."
+      deleteDialogTitle={LABELS.deleteCompletedLessonsTitle}
+      deleteDialogDescription={LABELS.deleteCompletedLessonsDescription}
       onRowClick={handleRowClick}
     />
   )

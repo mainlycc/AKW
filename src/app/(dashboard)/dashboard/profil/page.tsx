@@ -36,7 +36,7 @@ export default async function ProfilePage() {
   return (
     <div className="space-y-6">
       <ProfileForm profile={profile} />
-      <SubjectSelection 
+      <SubjectSelection
         tutorId={profile.id}
         subjects={subjects || []}
         tutorLevels={tutorLevels}

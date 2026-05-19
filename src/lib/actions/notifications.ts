@@ -3,31 +3,14 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import {
+  getNotifications,
+  getNotificationsCount,
+  getUnreadCount,
+} from '@/lib/notifications/queries'
 
-export type NotificationType =
-  | 'public_booking_created'
-  | 'public_booking_confirmed'
-  | 'public_booking_cancelled'
-  | 'assignment_created'
-  | 'assignment_status_changed'
-  | 'report_submitted'
-  | 'report_approved'
-  | 'report_paid'
-  | 'report_reminder'
-  | 'declaration_reminder'
-  | 'session_created'
-  | 'session_confirmation_required'
-
-export interface Notification {
-  id: string
-  user_id: string
-  type: NotificationType
-  title: string
-  message: string
-  read_at: string | null
-  metadata: Record<string, unknown>
-  created_at: string
-}
+export type { Notification, NotificationType } from '@/lib/notifications/types'
+import type { NotificationType } from '@/lib/notifications/types'
 
 export interface CreateNotificationParams {
   userId: string
@@ -37,6 +20,8 @@ export interface CreateNotificationParams {
   metadata?: Record<string, unknown>
   skipRevalidate?: boolean
 }
+
+export { getNotifications, getNotificationsCount, getUnreadCount }
 
 /**
  * Creates a notification for a user (uses admin client to bypass RLS)
@@ -61,73 +46,12 @@ export async function createNotification(params: CreateNotificationParams): Prom
     throw error
   }
 
-  // Revalidate notifications page and header (skip during render)
   if (!params.skipRevalidate) {
     revalidatePath('/dashboard/powiadomienia')
     revalidatePath('/dashboard', 'layout')
   }
 
   return data.id
-}
-
-/**
- * Gets notifications for the current user
- */
-export async function getNotifications(
-  limit: number = 50,
-  offset: number = 0
-): Promise<Notification[]> {
-  const supabase = await createClient()
-
-  const { data, error } = await supabase
-    .from('notifications')
-    .select('*')
-    .order('created_at', { ascending: false })
-    .range(offset, offset + limit - 1)
-
-  if (error) {
-    console.error('Error fetching notifications:', error)
-    throw error
-  }
-
-  return (data || []) as Notification[]
-}
-
-/**
- * Gets total count of notifications for the current user
- */
-export async function getNotificationsCount(): Promise<number> {
-  const supabase = await createClient()
-
-  const { count, error } = await supabase
-    .from('notifications')
-    .select('id', { count: 'exact', head: true })
-
-  if (error) {
-    console.error('Error fetching notifications count:', error)
-    throw error
-  }
-
-  return count || 0
-}
-
-/**
- * Gets unread notifications count for the current user
- */
-export async function getUnreadCount(): Promise<number> {
-  const supabase = await createClient()
-
-  const { count, error } = await supabase
-    .from('notifications')
-    .select('id', { count: 'exact', head: true })
-    .is('read_at', null)
-
-  if (error) {
-    console.error('Error fetching unread count:', error)
-    throw error
-  }
-
-  return count || 0
 }
 
 /**
@@ -176,13 +100,41 @@ export async function markAllAsRead(): Promise<void> {
 export async function deleteAllNotifications(): Promise<void> {
   const supabase = await createClient()
 
-  const { error } = await supabase
-    .from('notifications')
-    .delete()
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser()
 
-  if (error) {
-    console.error('Error deleting all notifications:', error)
-    throw error
+  if (authError || !user) {
+    throw new Error('Nie jesteś zalogowany')
+  }
+
+  const { data: rows, error: fetchError } = await supabase
+    .from('notifications')
+    .select('id')
+    .eq('user_id', user.id)
+
+  if (fetchError) {
+    console.error('Error fetching notifications for delete:', fetchError)
+    throw fetchError
+  }
+
+  const ids = (rows ?? []).map((row) => row.id)
+  if (ids.length === 0) {
+    revalidatePath('/dashboard/powiadomienia')
+    revalidatePath('/dashboard', 'layout')
+    return
+  }
+
+  const BATCH_SIZE = 500
+  for (let i = 0; i < ids.length; i += BATCH_SIZE) {
+    const batch = ids.slice(i, i + BATCH_SIZE)
+    const { error } = await supabase.from('notifications').delete().in('id', batch)
+
+    if (error) {
+      console.error('Error deleting all notifications:', error)
+      throw error
+    }
   }
 
   revalidatePath('/dashboard/powiadomienia')

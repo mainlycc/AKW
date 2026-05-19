@@ -11,6 +11,11 @@ Witaj w systemie zarządzania Akademią Wiedzy! Ten dokument pomoże Ci w codzie
 2. Zaloguj się swoim emailem i hasłem administratora
 3. Po zalogowaniu zobaczysz panel Dashboard
 
+### Samouczek interaktywny (Pomoc)
+- Przy **pierwszym wejściu** uruchomi się tour (ok. 14 kroków): użytkownicy, lekcje, a potem pełna ścieżka **rozliczeń** (plany, raporty, wypłaty tutorów, należności uczniów, historia płatności). Stawki i przypisania nie są omawiane w tourze — znajdziesz je w menu, gdy będą potrzebne.
+- Kliknij **„Pomoc”** w nagłówku, aby powtórzyć tour.
+- **„Pominij tour”** wyłącza auto-start; postęp można wznowić przez Pomoc.
+
 ---
 
 ## 👥 Zarządzanie Tutorami

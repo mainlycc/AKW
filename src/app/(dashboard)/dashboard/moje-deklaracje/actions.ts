@@ -1,5 +1,6 @@
 'use server'
 
+import { LABELS } from '@/lib/labels/reports-declarations'
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createNotification } from '@/lib/actions/notifications'
@@ -40,7 +41,7 @@ export async function createOrUpdateDeclaration(
       .single()
 
     if (!existingById) {
-      throw new Error('Nie znaleziono deklaracji lub brak uprawnień')
+      throw new Error(LABELS.notFoundNextMonthPlan)
     }
 
     // Sprawdź konflikt: czy istnieje inna deklaracja dla tego samego tutora na ten sam miesiąc/rok
@@ -54,7 +55,7 @@ export async function createOrUpdateDeclaration(
       .maybeSingle()
 
     if (conflict) {
-      throw new Error('Deklaracja dla wybranego miesiąca i roku już istnieje')
+      throw new Error(LABELS.duplicateNextMonthPlan)
     }
 
     // Update deklaracji

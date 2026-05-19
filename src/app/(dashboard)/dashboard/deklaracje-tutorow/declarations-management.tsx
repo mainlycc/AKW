@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from "react"
+import { useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import {
   Table,
@@ -21,7 +21,9 @@ import { IconSearch } from "@tabler/icons-react"
 import { formatHours } from "@/lib/utils"
 import { toast } from "sonner"
 import type { NotificationChannel } from "@/lib/types/notifications"
-import { sendDeclarationReminderToTutor, sendDeclarationRemindersToAllMissing } from "./actions"
+import { sendDeclarationReminderToTutor } from "./actions"
+import { ComposeSendDialog } from "@/components/messaging/compose-send-dialog"
+import { LABELS, nextMonthPlanReminderMessage } from "@/lib/labels/reports-declarations"
 
 interface DeclarationEntry {
   id: string
@@ -81,9 +83,9 @@ export function DeclarationsManagement({ declarations, tutors = [], adminId }: D
   const [monthFilter, setMonthFilter] = useState<string>('all')
   const currentDate = new Date()
   const [yearFilter, setYearFilter] = useState<number>(currentDate.getFullYear())
-  const [channel, setChannel] = useState<NotificationChannel>('email')
-  const [sendingReminder, setSendingReminder] = useState<string | null>(null)
-  const [sendingAllReminders, setSendingAllReminders] = useState(false)
+  const [composeChannel, setComposeChannel] = useState<NotificationChannel>('email')
+  const [composeOpen, setComposeOpen] = useState(false)
+  const [composeDefaultMessage, setComposeDefaultMessage] = useState('')
   const [sendingSelectedReminders, setSendingSelectedReminders] = useState(false)
   const [selectedTutorIds, setSelectedTutorIds] = useState<Set<string>>(new Set())
   const years = Array.from({ length: 3 }, (_, i) => currentDate.getFullYear() - i)
@@ -146,32 +148,21 @@ export function DeclarationsManagement({ declarations, tutors = [], adminId }: D
     return tutors.filter(t => !tutorsWithDeclaration.has(t.id))
   }, [declarations, monthFilter, tutors, yearFilter])
 
-  const filteredTutorsWithoutDeclarations = useMemo(() => {
-    if (!searchMissing.trim()) return tutorsWithoutDeclarationsForPeriod
-    const searchLower = searchMissing.toLowerCase().trim()
-    return tutorsWithoutDeclarationsForPeriod.filter(t => {
+  const filterTutorsBySearch = (list: { id: string; full_name: string }[], query: string) => {
+    if (!query.trim()) return list
+    const searchLower = query.toLowerCase().trim()
+    return list.filter(t => {
       const fullNameLower = t.full_name.toLowerCase()
       if (fullNameLower.includes(searchLower)) return true
       const nameWords = fullNameLower.split(/\s+/)
       const searchWords = searchLower.split(/\s+/)
       return searchWords.every(word => nameWords.some(nameWord => nameWord.includes(word)))
     })
+  }
+
+  const filteredTutorsWithoutDeclarations = useMemo(() => {
+    return filterTutorsBySearch(tutorsWithoutDeclarationsForPeriod, searchMissing)
   }, [searchMissing, tutorsWithoutDeclarationsForPeriod])
-
-  useEffect(() => {
-    const visibleTutorIds = new Set(filteredTutorsWithoutDeclarations.map(t => t.id))
-    setSelectedTutorIds(prev => {
-      const next = new Set<string>()
-      prev.forEach(id => {
-        if (visibleTutorIds.has(id)) next.add(id)
-      })
-      return next
-    })
-  }, [searchMissing, filteredTutorsWithoutDeclarations])
-
-  useEffect(() => {
-    setSelectedTutorIds(new Set())
-  }, [monthFilter, yearFilter])
 
   const toggleSelectAll = (checked: boolean) => {
     if (checked) {
@@ -197,113 +188,18 @@ export function DeclarationsManagement({ declarations, tutors = [], adminId }: D
     selectedTutorIds.size > 0 &&
     selectedTutorIds.size < filteredTutorsWithoutDeclarations.length
 
-  const handleSendReminder = async (tutorId: string, tutorName: string) => {
-    if (monthFilter === 'all') {
-      toast.info('Wybierz konkretny miesiąc, aby wysłać przypomnienia.')
-      return
-    }
-    setSendingReminder(tutorId)
-    try {
-      const result = await sendDeclarationReminderToTutor(
-        tutorId,
-        Number(monthFilter),
-        yearFilter,
-        channel
-      )
-      if (!result.success) {
-        toast.error(result.error || 'Nie udało się wysłać przypomnienia')
-      } else {
-        toast.success(`Wysłano przypomnienie do ${tutorName}`)
-      }
-      router.refresh()
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Nie udało się wysłać przypomnienia')
-    } finally {
-      setSendingReminder(null)
-    }
+  const getDefaultReminderMessage = (month: number, year: number) => {
+    const monthLabel = months[month - 1] || `${month}`
+    return nextMonthPlanReminderMessage(monthLabel, year)
   }
 
-  const handleSendAllReminders = async () => {
+  const openComposeForSelected = () => {
     if (monthFilter === 'all') {
       toast.info('Wybierz konkretny miesiąc, aby wysłać przypomnienia.')
       return
     }
-    if (tutorsWithoutDeclarationsForPeriod.length === 0) {
-      toast.info('Wszyscy tutorzy złożyli już deklarację za wybrany okres.')
-      return
-    }
-    setSendingAllReminders(true)
-    try {
-      const result = await sendDeclarationRemindersToAllMissing(Number(monthFilter), yearFilter, channel)
-      if (result.success) {
-        toast.success(result.message || `Wysłano ${result.sent} przypomnień`)
-      } else {
-        toast.warning(result.message || `Wysłano ${result.sent} przypomnień${result.errors.length > 0 ? `, ${result.errors.length} błędów` : ''}`)
-      }
-      if (result.errors.length > 0) {
-        console.error('Errors sending reminders:', result.errors)
-      }
-      setSelectedTutorIds(new Set())
-      setSearchMissing('')
-      router.refresh()
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Nie udało się wysłać przypomnień')
-    } finally {
-      setSendingAllReminders(false)
-    }
-  }
-
-  const handleSendSelectedReminders = async () => {
-    if (monthFilter === 'all') {
-      toast.info('Wybierz konkretny miesiąc, aby wysłać przypomnienia.')
-      return
-    }
-    if (selectedTutorIds.size === 0) {
-      toast.info('Wybierz przynajmniej jednego tutora.')
-      return
-    }
-    setSendingSelectedReminders(true)
-    let successCount = 0
-    let errorCount = 0
-    const errors: string[] = []
-
-    try {
-      for (const tutorId of selectedTutorIds) {
-        const tutor = filteredTutorsWithoutDeclarations.find(t => t.id === tutorId)
-        if (!tutor) continue
-        try {
-          const result = await sendDeclarationReminderToTutor(
-            tutorId,
-            Number(monthFilter),
-            yearFilter,
-            channel
-          )
-          if (!result.success) {
-            errorCount++
-            errors.push(`${tutor.full_name}: ${result.error || 'Nie udało się wysłać powiadomienia'}`)
-          } else {
-            successCount++
-          }
-        } catch (error) {
-          errorCount++
-          const msg = error instanceof Error ? error.message : 'Nieznany błąd'
-          errors.push(`${tutor.full_name}: ${msg}`)
-        }
-      }
-
-      if (errorCount === 0) {
-        toast.success(`Wysłano ${successCount} przypomnień`)
-      } else {
-        toast.warning(`Wysłano ${successCount} przypomnień, ${errorCount} błędów`)
-        if (errors.length > 0) console.error('Errors sending reminders:', errors)
-      }
-      setSelectedTutorIds(new Set())
-      router.refresh()
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Nie udało się wysłać przypomnień')
-    } finally {
-      setSendingSelectedReminders(false)
-    }
+    setComposeDefaultMessage(getDefaultReminderMessage(Number(monthFilter), yearFilter))
+    setComposeOpen(true)
   }
 
   return (
@@ -311,7 +207,7 @@ export function DeclarationsManagement({ declarations, tutors = [], adminId }: D
       {/* Summary stats */}
       <div className="grid gap-4 md:grid-cols-3">
         <div className="p-4 border rounded">
-          <p className="text-sm text-muted-foreground">Deklaracje</p>
+          <p className="text-sm text-muted-foreground">{LABELS.tutorPlans}</p>
           <p className="text-2xl font-bold">{totalStats.declarationsCount}</p>
         </div>
         <div className="p-4 border rounded">
@@ -331,7 +227,14 @@ export function DeclarationsManagement({ declarations, tutors = [], adminId }: D
         </div>
         <div className="space-y-2">
           <Label htmlFor="month-filter">Miesiąc</Label>
-          <Select value={monthFilter} onValueChange={setMonthFilter}>
+          <Select
+            value={monthFilter}
+            onValueChange={(v) => {
+              setMonthFilter(v)
+              setSelectedTutorIds(new Set())
+              setSearchMissing('')
+            }}
+          >
             <SelectTrigger id="month-filter" className="w-[220px]">
               <SelectValue placeholder="Wszystkie" />
             </SelectTrigger>
@@ -349,7 +252,11 @@ export function DeclarationsManagement({ declarations, tutors = [], adminId }: D
           <Label htmlFor="year-filter">Rok</Label>
           <Select
             value={yearFilter.toString()}
-            onValueChange={(v) => setYearFilter(parseInt(v))}
+            onValueChange={(v) => {
+              setYearFilter(parseInt(v))
+              setSelectedTutorIds(new Set())
+              setSearchMissing('')
+            }}
           >
             <SelectTrigger id="year-filter" className="w-[140px]">
               <SelectValue />
@@ -360,19 +267,6 @@ export function DeclarationsManagement({ declarations, tutors = [], adminId }: D
                   {y}
                 </SelectItem>
               ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="channel">Kanał przypomnień</Label>
-          <Select value={channel} onValueChange={(v) => setChannel(v as NotificationChannel)}>
-            <SelectTrigger id="channel" className="w-[180px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="email">Email</SelectItem>
-              <SelectItem value="sms">SMS</SelectItem>
-              <SelectItem value="both">Email + SMS</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -413,7 +307,7 @@ export function DeclarationsManagement({ declarations, tutors = [], adminId }: D
             {filteredSubmittedDeclarations.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={4} className="text-center text-muted-foreground">
-                  Brak deklaracji do wyświetlenia
+                  {LABELS.noNextMonthPlanToDisplay}
                 </TableCell>
               </TableRow>
             ) : (
@@ -443,7 +337,7 @@ export function DeclarationsManagement({ declarations, tutors = [], adminId }: D
         <TabsContent value="missing" className="space-y-4">
           {monthFilter === 'all' ? (
             <div className="p-4 rounded-md border text-sm text-muted-foreground">
-              Aby zobaczyć listę niezłożonych deklaracji i wysyłać przypomnienia, wybierz konkretny miesiąc (nie „Wszystkie”).
+              {LABELS.selectMonthForMissingNextMonthPlans}
             </div>
           ) : (
             <>
@@ -453,32 +347,33 @@ export function DeclarationsManagement({ declarations, tutors = [], adminId }: D
                   <Input
                     placeholder="Szukaj po nazwisku tutora..."
                     value={searchMissing}
-                    onChange={(e) => setSearchMissing(e.target.value)}
+                    onChange={(e) => {
+                      const nextQuery = e.target.value
+                      setSearchMissing(nextQuery)
+
+                      // usuń zaznaczenia tutorów niewidocznych po zmianie wyszukiwania
+                      const nextVisibleIds = new Set(
+                        filterTutorsBySearch(tutorsWithoutDeclarationsForPeriod, nextQuery).map((t) => t.id)
+                      )
+                      setSelectedTutorIds((prev) => {
+                        const next = new Set<string>()
+                        prev.forEach((id) => {
+                          if (nextVisibleIds.has(id)) next.add(id)
+                        })
+                        return next
+                      })
+                    }}
                     className="pl-8"
                   />
                 </div>
                 <div className="flex gap-2">
-                  {selectedTutorIds.size > 0 ? (
-                    <Button
-                      onClick={handleSendSelectedReminders}
-                      disabled={sendingSelectedReminders}
-                    >
-                      {sendingSelectedReminders
-                        ? 'Wysyłanie...'
-                        : selectedTutorIds.size === tutorsWithoutDeclarationsForPeriod.length
-                          ? `Wyślij do wszystkich (${tutorsWithoutDeclarationsForPeriod.length})`
-                          : `Wyślij do zaznaczonych (${selectedTutorIds.size})`}
-                    </Button>
-                  ) : (
-                    <Button
-                      onClick={handleSendAllReminders}
-                      disabled={sendingAllReminders || tutorsWithoutDeclarationsForPeriod.length === 0}
-                    >
-                      {sendingAllReminders
-                        ? 'Wysyłanie...'
-                        : `Wyślij do wszystkich (${tutorsWithoutDeclarationsForPeriod.length})`}
-                    </Button>
-                  )}
+                  <Button
+                    variant="outline"
+                    onClick={openComposeForSelected}
+                    disabled={sendingSelectedReminders || selectedTutorIds.size === 0}
+                  >
+                    {sendingSelectedReminders ? 'Wysyłanie...' : `Wyślij (${selectedTutorIds.size})`}
+                  </Button>
                 </div>
               </div>
 
@@ -493,13 +388,12 @@ export function DeclarationsManagement({ declarations, tutors = [], adminId }: D
                         />
                       </TableHead>
                       <TableHead>Tutor</TableHead>
-                      <TableHead className="text-right">Akcje</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filteredTutorsWithoutDeclarations.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={3} className="text-center text-muted-foreground">
+                        <TableCell colSpan={2} className="text-center text-muted-foreground">
                           Brak tutorów do wyświetlenia
                         </TableCell>
                       </TableRow>
@@ -513,16 +407,6 @@ export function DeclarationsManagement({ declarations, tutors = [], adminId }: D
                             />
                           </TableCell>
                           <TableCell className="font-medium">{t.full_name}</TableCell>
-                          <TableCell className="text-right">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleSendReminder(t.id, t.full_name)}
-                              disabled={sendingReminder === t.id}
-                            >
-                              {sendingReminder === t.id ? 'Wysyłanie...' : 'Wyślij przypomnienie'}
-                            </Button>
-                          </TableCell>
                         </TableRow>
                       ))
                     )}
@@ -539,6 +423,69 @@ export function DeclarationsManagement({ declarations, tutors = [], adminId }: D
         onClose={() => setDialogOpen(false)}
         declaration={selectedDeclaration}
         adminId={adminId}
+      />
+
+      <ComposeSendDialog
+        open={composeOpen}
+        onOpenChange={setComposeOpen}
+        title={LABELS.reminderNextMonthPlanDialog}
+        description={
+          monthFilter === 'all'
+            ? 'Wybierz konkretny miesiąc, aby wysłać przypomnienia.'
+            : `Okres: ${months[Number(monthFilter) - 1]} ${yearFilter}`
+        }
+        defaultMessage={composeDefaultMessage}
+        defaultChannel={composeChannel}
+        messagePlaceholder="Wpisz treść przypomnienia..."
+        confirmLabel="Wyślij przypomnienie"
+        onSend={async ({ message, channel }) => {
+          setComposeChannel(channel)
+
+          if (monthFilter === 'all') {
+            toast.info('Wybierz konkretny miesiąc, aby wysłać przypomnienia.')
+            return
+          }
+
+          const month = Number(monthFilter)
+          const year = yearFilter
+          if (selectedTutorIds.size === 0) {
+            toast.info('Wybierz przynajmniej jednego tutora.')
+            return
+          }
+
+          setSendingSelectedReminders(true)
+          let successCount = 0
+          let errorCount = 0
+          const errors: string[] = []
+          try {
+            for (const tutorId of selectedTutorIds) {
+              const tutor = filteredTutorsWithoutDeclarations.find((t) => t.id === tutorId)
+              if (!tutor) continue
+              const result = await sendDeclarationReminderToTutor(tutorId, month, year, channel, message)
+              if (result.success) {
+                successCount++
+                if (result.error) {
+                  errorCount++
+                  errors.push(`${tutor.full_name}: ${result.error}`)
+                }
+              } else {
+                errorCount++
+                errors.push(`${tutor.full_name}: ${result.error || 'Nie udało się wysłać przypomnienia'}`)
+              }
+            }
+
+            if (errorCount === 0) {
+              toast.success(`Wysłano ${successCount} przypomnień`)
+            } else {
+              toast.warning(`Wysłano ${successCount} przypomnień, ${errorCount} błędów`)
+              if (errors.length > 0) console.error('Errors sending reminders:', errors)
+            }
+            setSelectedTutorIds(new Set())
+            router.refresh()
+          } finally {
+            setSendingSelectedReminders(false)
+          }
+        }}
       />
     </div>
   )

@@ -20,6 +20,7 @@ import {
 import type { DeclarationEntry } from "../actions"
 import { format } from "date-fns"
 import { pl } from "date-fns/locale"
+import { LABELS } from "@/lib/labels/reports-declarations"
 
 interface Student {
   id: string
@@ -112,7 +113,7 @@ export function AddLessonDialog({
         <DialogHeader>
           <DialogTitle>Dodaj lekcję</DialogTitle>
           <DialogDescription>
-            Dodaj nową lekcję do deklaracji
+            {LABELS.addLessonToNextMonthPlan}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">

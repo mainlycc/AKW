@@ -1,8 +1,11 @@
+import { LABELS, nextMonthPlanReminderMessage } from '@/lib/labels/reports-declarations'
+
 export interface DeclarationReminderEmailData {
   tutorName: string
   month: number
   year: number
   appUrl?: string
+  customMessage?: string
 }
 
 const monthNames = [
@@ -11,8 +14,11 @@ const monthNames = [
 ]
 
 export function generateDeclarationReminderEmail(data: DeclarationReminderEmailData) {
-  const { tutorName, month, year, appUrl = 'http://localhost:3000' } = data
+  const { tutorName, month, year, appUrl = 'http://localhost:3000', customMessage } = data
   const monthName = monthNames[month - 1] || `Miesiąc ${month}`
+  const mainMessage =
+    (customMessage && customMessage.trim()) ||
+    nextMonthPlanReminderMessage(monthName, year)
 
   return `
 <!DOCTYPE html>
@@ -20,7 +26,7 @@ export function generateDeclarationReminderEmail(data: DeclarationReminderEmailD
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Przypomnienie o deklaracji miesięcznej - Akademia Wiedzy</title>
+  <title>${LABELS.reminderNextMonthPlanTitle} - Akademia Wiedzy</title>
 </head>
 <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
   <div style="background: linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
@@ -28,11 +34,11 @@ export function generateDeclarationReminderEmail(data: DeclarationReminderEmailD
   </div>
   
   <div style="background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px;">
-    <h2 style="color: #333; margin-top: 0;">Przypomnienie o deklaracji miesięcznej</h2>
+    <h2 style="color: #333; margin-top: 0;">${LABELS.reminderNextMonthPlanTitle}</h2>
     
     <p>Dzień dobry ${tutorName},</p>
     
-    <p>Przypominamy o złożeniu deklaracji miesięcznej za okres <strong>${monthName} ${year}</strong>.</p>
+    <p>${mainMessage}</p>
     
     <div style="background: white; border: 2px solid #0ea5e9; border-radius: 8px; padding: 20px; margin: 20px 0;">
       <h3 style="margin-top: 0; color: #0ea5e9;">Szczegóły:</h3>
@@ -45,13 +51,13 @@ export function generateDeclarationReminderEmail(data: DeclarationReminderEmailD
     </div>
     
     <p style="margin-top: 30px; color: #666; font-size: 14px;">
-      Prosimy o złożenie deklaracji w najbliższym możliwym terminie poprzez panel tutora w systemie.
+      Prosimy o złożenie planu na przyszły miesiąc w najbliższym możliwym terminie poprzez panel tutora w systemie.
     </p>
     
     <div style="text-align: center; margin: 30px 0;">
       <a href="${appUrl}/dashboard/moje-deklaracje" 
          style="background: #0ea5e9; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; display: inline-block; font-weight: bold;">
-        Złóż deklarację
+        ${LABELS.submitNextMonthPlan}
       </a>
     </div>
     

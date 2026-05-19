@@ -36,7 +36,7 @@ export function OnboardingTrigger() {
     hasTriggered.current = true
     const timer = window.setTimeout(() => {
       void tutorial.startTour()
-    }, 600)
+    }, 250)
 
     return () => window.clearTimeout(timer)
   }, [pathname, router, tutorial])

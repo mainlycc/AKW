@@ -21,7 +21,13 @@ import {
   type TutorialContextValue,
   type TutorialStep,
 } from '@/lib/tutorials/types'
-import { waitForElement, waitForPath } from '@/lib/tutorials/wait-for-element'
+import { canSkipRouteNavigation } from '@/lib/tutorials/tutorial-navigation'
+import {
+  isLayoutTourSelector,
+  revealNavTarget,
+  waitForElement,
+  waitForPath,
+} from '@/lib/tutorials/wait-for-element'
 
 const TutorialContext = React.createContext<TutorialContextValue | null>(null)
 
@@ -52,9 +58,12 @@ function clearLocalStep(userId: string) {
 }
 
 async function resolveElement(selector: string): Promise<string | Element> {
-  const found = await waitForElement(selector)
+  if (isLayoutTourSelector(selector)) {
+    revealNavTarget(selector)
+  }
+  const found = await waitForElement(selector, 2000)
   if (found) return found
-  const fallback = await waitForElement('[data-tour="page-main"]')
+  const fallback = await waitForElement('[data-tour="page-main"]', 800)
   if (fallback) return fallback
   return 'body'
 }
@@ -102,6 +111,14 @@ export function TutorialProvider({
     [userId]
   )
 
+  const prefetchStepRoute = React.useCallback(
+    (index: number) => {
+      const next = steps[index]
+      if (next?.path) router.prefetch(next.path)
+    },
+    [router, steps]
+  )
+
   const showStep = React.useCallback(
     async (index: number) => {
       if (index < 0 || index >= steps.length) return
@@ -111,19 +128,21 @@ export function TutorialProvider({
       stepIndexRef.current = index
 
       const step: TutorialStep = steps[index]
-      destroyDriver()
+      prefetchStepRoute(index + 1)
 
-      if (pathname !== step.path) {
+      const skipNav = canSkipRouteNavigation(step, pathname)
+      if (!skipNav && pathname !== step.path) {
         router.push(step.path)
         await waitForPath(step.path)
       }
 
       const element = await resolveElement(step.element)
+      destroyDriver()
+
       const isLast = index === steps.length - 1
       const isFirst = index === 0
 
       const goToStep = async (targetIndex: number) => {
-        destroyDriver()
         isTransitioningRef.current = false
         await showStep(targetIndex)
       }
@@ -156,16 +175,17 @@ export function TutorialProvider({
                   return
                 }
                 void (async () => {
-                  await persistStep(index)
-                  d.destroy()
+                  void persistStep(index)
                   isTransitioningRef.current = false
                   await showStep(index + 1)
                 })()
               },
               onPrevClick: (_el, _s, { driver: d }) => {
                 if (isFirst) return
-                d.destroy()
-                void goToStep(index - 1)
+                void (async () => {
+                  isTransitioningRef.current = false
+                  await goToStep(index - 1)
+                })()
               },
               onCloseClick: (_el, _s, { driver: d }) => {
                 d.destroy()
@@ -209,7 +229,7 @@ export function TutorialProvider({
       driverObj.drive()
       isTransitioningRef.current = false
     },
-    [destroyDriver, pathname, persistStep, router, steps, userId]
+    [destroyDriver, pathname, persistStep, prefetchStepRoute, router, steps, userId]
   )
 
   const startTour = React.useCallback(

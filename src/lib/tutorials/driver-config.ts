@@ -2,7 +2,7 @@ import type { Config } from 'driver.js'
 
 export const DRIVER_BASE_CONFIG: Partial<Config> = {
   animate: true,
-  smoothScroll: true,
+  smoothScroll: false,
   allowClose: true,
   overlayOpacity: 0.55,
   stagePadding: 8,

@@ -443,6 +443,11 @@ export async function sendGroupMessage(
   channel: NotificationChannel = 'email'
 ): Promise<{ success: boolean; error?: string; sentCount?: number; failedCount?: number }> {
   const supabase = await createClient()
+  const profile = await getUserProfile()
+
+  if (profile?.role === 'tutor' && channel !== 'email') {
+    return { success: false, error: 'Tutor może wysyłać wiadomości wyłącznie e-mailem' }
+  }
 
   if (!selectedStudentIds || selectedStudentIds.length === 0) {
     return { success: false, error: 'Nie wybrano uczniów' }
@@ -708,6 +713,19 @@ export async function sendGroupMessageToAllMyStudents(
   channel: NotificationChannel = 'email'
 ): Promise<{ success: boolean; error?: string; sentCount?: number; failedCount?: number }> {
   const supabase = await createClient()
+  const profile = await getUserProfile()
+
+  if (!profile || profile.role !== 'tutor') {
+    return { success: false, error: 'Brak uprawnień do wysyłania wiadomości' }
+  }
+
+  if (profile.id !== tutorId) {
+    return { success: false, error: 'Brak uprawnień do wysyłania wiadomości' }
+  }
+
+  if (channel !== 'email') {
+    return { success: false, error: 'Tutor może wysyłać wiadomości wyłącznie e-mailem' }
+  }
 
   if (!message || !message.trim()) {
     return { success: false, error: 'Treść wiadomości nie może być pusta' }
@@ -731,8 +749,7 @@ export async function sendGroupMessageToAllMyStudents(
 
   const studentIds = assignments.map(a => a.student_id)
 
-  // Użyj istniejącej funkcji sendGroupMessage
-  return await sendGroupMessage(studentIds, message, channel)
+  return await sendGroupMessage(studentIds, message, 'email')
 }
 
 /**

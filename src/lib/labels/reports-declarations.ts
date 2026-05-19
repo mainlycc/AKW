@@ -1,4 +1,15 @@
 export const LABELS = {
+  // Menu / nagłówki stron
+  clientSubmissions: 'Zgłoszenia klientów',
+  tutorPlans: 'Plany tutorów',
+  planSettlements: 'Rozliczenia planów',
+  tutorReports: 'Raporty tutorów',
+  lessonReceivables: 'Należności za lekcje',
+  mySchedule: 'Mój grafik',
+  monthlyPlan: 'Plan miesiąca',
+  monthlyReport: 'Raport miesięczny',
+  myProfile: 'Mój profil',
+
   completedLessons: 'Zrealizowane lekcje',
   completedLessonsTutors: 'Zrealizowane lekcje tutorów',
   completedLessonsGenitive: 'zrealizowanych lekcji',
@@ -72,6 +83,10 @@ export const LABELS = {
 
   notificationCompletedLessons: 'Zrealizowane lekcje',
   notificationNextMonthPlan: 'Plan na przyszły miesiąc',
+  notificationClientSubmission: 'Zgłoszenie klienta',
+  notificationTutorReport: 'Raport tutora',
+  notificationMonthlyPlan: 'Plan miesiąca',
+  notificationMonthlyReport: 'Raport miesięczny',
 
   addLessonToNextMonthPlan: 'Dodaj nową lekcję do planu na przyszły miesiąc',
 
@@ -95,9 +110,9 @@ export const LABELS = {
   settlementsTutorsDescription:
     'Rozliczenia tutorów na podstawie zatwierdzonych zrealizowanych lekcji miesięcznych.',
   billingFromCompletedLessonsDescription:
-    'Przegląd należności i płatności dla wszystkich okresów (obliczone na podstawie zrealizowanych lekcji tutorów)',
+    'Przegląd należności od uczniów dla wszystkich okresów (obliczone na podstawie zatwierdzonych raportów tutorów)',
   billingFromNextMonthPlanDescription:
-    'Przegląd należności i płatności dla wszystkich okresów (obliczone na podstawie zatwierdzonych planów na przyszły miesiąc)',
+    'Przegląd należności od uczniów dla wszystkich okresów (obliczone na podstawie zatwierdzonych planów tutorów)',
 } as const
 
 export function completedLessonsReminderMessage(monthName: string, year: number): string {

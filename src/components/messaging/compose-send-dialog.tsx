@@ -43,6 +43,9 @@ export interface ComposeSendDialogProps {
   confirmLabel?: string
   cancelLabel?: string
 
+  /** Gdy true — ukrywa wybór SMS i wymusza wysyłkę tylko e-mailem. */
+  emailOnly?: boolean
+
   onSend: (params: { message: string; channel: ComposeSendChannel }) => Promise<void>
 }
 
@@ -58,33 +61,35 @@ export function ComposeSendDialog({
   warnings,
   confirmLabel = 'Wyślij',
   cancelLabel = 'Anuluj',
+  emailOnly = false,
   onSend,
 }: ComposeSendDialogProps) {
   const [message, setMessage] = useState(defaultMessage)
   const [channelEmail, setChannelEmail] = useState<boolean>(
-    defaultChannel === 'email' || defaultChannel === 'both'
+    emailOnly || defaultChannel === 'email' || defaultChannel === 'both'
   )
   const [channelSms, setChannelSms] = useState<boolean>(
-    defaultChannel === 'sms' || defaultChannel === 'both'
+    !emailOnly && (defaultChannel === 'sms' || defaultChannel === 'both')
   )
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const channel: ComposeSendChannel | null = useMemo(() => {
+    if (emailOnly) return 'email'
     if (channelEmail && channelSms) return 'both'
     if (channelEmail) return 'email'
     if (channelSms) return 'sms'
     return null
-  }, [channelEmail, channelSms])
+  }, [channelEmail, channelSms, emailOnly])
 
   useEffect(() => {
     if (!open) return
     setMessage(defaultMessage)
-    setChannelEmail(defaultChannel === 'email' || defaultChannel === 'both')
-    setChannelSms(defaultChannel === 'sms' || defaultChannel === 'both')
+    setChannelEmail(emailOnly || defaultChannel === 'email' || defaultChannel === 'both')
+    setChannelSms(!emailOnly && (defaultChannel === 'sms' || defaultChannel === 'both'))
     setError(null)
     setLoading(false)
-  }, [open, defaultMessage, defaultChannel])
+  }, [open, defaultMessage, defaultChannel, emailOnly])
 
   const showEmailStats = typeof stats?.emailAvailable === 'number' || typeof stats?.emailUnavailable === 'number'
   const showSmsStats = typeof stats?.smsAvailable === 'number' || typeof stats?.smsUnavailable === 'number'
@@ -150,40 +155,42 @@ export function ComposeSendDialog({
         </DialogHeader>
 
         <div className="space-y-4 py-4">
-          <div className="space-y-2">
-            <Label>Kanał wiadomości</Label>
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-6">
-              <label className="flex items-center gap-2 text-sm select-none">
-                <Checkbox
-                  checked={channelEmail}
-                  onCheckedChange={(v) => {
-                    setChannelEmail(!!v)
-                    setError(null)
-                  }}
-                  disabled={loading}
-                />
-                <span className="flex items-center gap-1.5">
-                  <IconMail className="h-4 w-4 text-muted-foreground" />
-                  Email
-                </span>
-              </label>
+          {!emailOnly ? (
+            <div className="space-y-2">
+              <Label>Kanał wiadomości</Label>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-6">
+                <label className="flex items-center gap-2 text-sm select-none">
+                  <Checkbox
+                    checked={channelEmail}
+                    onCheckedChange={(v) => {
+                      setChannelEmail(!!v)
+                      setError(null)
+                    }}
+                    disabled={loading}
+                  />
+                  <span className="flex items-center gap-1.5">
+                    <IconMail className="h-4 w-4 text-muted-foreground" />
+                    Email
+                  </span>
+                </label>
 
-              <label className="flex items-center gap-2 text-sm select-none">
-                <Checkbox
-                  checked={channelSms}
-                  onCheckedChange={(v) => {
-                    setChannelSms(!!v)
-                    setError(null)
-                  }}
-                  disabled={loading}
-                />
-                <span className="flex items-center gap-1.5">
-                  <IconPhone className="h-4 w-4 text-muted-foreground" />
-                  SMS
-                </span>
-              </label>
+                <label className="flex items-center gap-2 text-sm select-none">
+                  <Checkbox
+                    checked={channelSms}
+                    onCheckedChange={(v) => {
+                      setChannelSms(!!v)
+                      setError(null)
+                    }}
+                    disabled={loading}
+                  />
+                  <span className="flex items-center gap-1.5">
+                    <IconPhone className="h-4 w-4 text-muted-foreground" />
+                    SMS
+                  </span>
+                </label>
+              </div>
             </div>
-          </div>
+          ) : null}
 
           <div className="space-y-2">
             <Label htmlFor="compose-message">Treść wiadomości</Label>

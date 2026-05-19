@@ -15,6 +15,7 @@ import { TimeSlotGrid } from "../../kalendarz/time-slot-grid"
 import type { TutorAvailabilityData } from "@/lib/types/availability.types"
 import type { BookedSlot } from "@/lib/actions/booked-slots"
 import { SLOT_DURATION_MINUTES } from "@/lib/types/availability.types"
+import { LABELS } from "@/lib/labels/reports-declarations"
 import { Button } from "@/components/ui/button"
 import {
   IconArrowLeft,
@@ -306,7 +307,7 @@ export function TutorDetailsView({
               <p className="text-lg font-semibold">{tutor.full_name}</p>
             </div>
             <div>
-              <p className="text-sm font-medium text-muted-foreground">Publiczne rezerwacje</p>
+              <p className="text-sm font-medium text-muted-foreground">{LABELS.clientSubmissions}</p>
               <div className="mt-1 inline-flex items-center gap-2">
                 {tutor.public_booking_enabled === false ? (
                   <>

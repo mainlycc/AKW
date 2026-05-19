@@ -207,7 +207,7 @@ export function DeclarationsManagement({ declarations, tutors = [], adminId }: D
       {/* Summary stats */}
       <div className="grid gap-4 md:grid-cols-3">
         <div className="p-4 border rounded">
-          <p className="text-sm text-muted-foreground">{LABELS.nextMonthPlans}</p>
+          <p className="text-sm text-muted-foreground">{LABELS.tutorPlans}</p>
           <p className="text-2xl font-bold">{totalStats.declarationsCount}</p>
         </div>
         <div className="p-4 border rounded">

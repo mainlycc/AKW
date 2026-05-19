@@ -113,17 +113,32 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
           icon: IconCalendarTime,
         },
         {
-          title: "Publiczne rezerwacje",
+          title: LABELS.clientSubmissions,
           url: "/dashboard/rezerwacje-publiczne",
           icon: IconCalendarPlus,
         },
       ],
     },
     {
-      title: "Rozliczenia & Płatności",
+      title: "Planowanie",
       items: [
         {
-          title: LABELS.completedLessonsTutors,
+          title: LABELS.tutorPlans,
+          url: "/dashboard/deklaracje-tutorow",
+          icon: IconFileReport,
+        },
+        {
+          title: LABELS.planSettlements,
+          url: "/dashboard/rozliczenia-deklaracji",
+          icon: IconReceipt,
+        },
+      ],
+    },
+    {
+      title: "Rozliczenia",
+      items: [
+        {
+          title: LABELS.tutorReports,
           url: "/dashboard/raporty-tutorow",
           icon: IconClockDollar,
         },
@@ -133,18 +148,8 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
           icon: IconClockDollar,
         },
         {
-          title: LABELS.settlementsFromCompletedLessons,
+          title: LABELS.lessonReceivables,
           url: "/dashboard/billing-from-reports",
-          icon: IconReceipt,
-        },
-        {
-          title: LABELS.nextMonthPlansTutors,
-          url: "/dashboard/deklaracje-tutorow",
-          icon: IconFileReport,
-        },
-        {
-          title: LABELS.settlementsFromNextMonthPlan,
-          url: "/dashboard/rozliczenia-deklaracji",
           icon: IconReceipt,
         },
         {
@@ -171,12 +176,6 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
     },
   ]
 
-  const tutorProfileItem: NavItem = {
-    title: "Profil",
-    url: "/dashboard/profil",
-    icon: IconUserCircle,
-  }
-
   const tutorNavGroups: NavGroup[] = [
     {
       title: "Uczniowie",
@@ -189,13 +188,23 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
       ],
     },
     {
-      title: "Lekcje",
+      title: "Planowanie",
       items: [
         {
-          title: "Dostępność tygodniowa",
+          title: LABELS.mySchedule,
           url: "/dashboard/kalendarz",
           icon: IconCalendar,
         },
+        {
+          title: LABELS.monthlyPlan,
+          url: "/dashboard/moje-deklaracje",
+          icon: IconFileReport,
+        },
+      ],
+    },
+    {
+      title: "Lekcje",
+      items: [
         {
           title: "Kalendarz lekcji",
           url: "/dashboard/kalendarz-lekcji",
@@ -207,12 +216,7 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
       title: "Rozliczenia",
       items: [
         {
-          title: LABELS.nextMonthPlan,
-          url: "/dashboard/moje-deklaracje",
-          icon: IconFileReport,
-        },
-        {
-          title: LABELS.completedLessons,
+          title: LABELS.monthlyReport,
           url: "/dashboard/moje-raporty",
           icon: IconReceipt,
         },
@@ -236,6 +240,11 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
           url: "/dashboard/powiadomienia",
           icon: IconBell,
         },
+        {
+          title: LABELS.myProfile,
+          url: "/dashboard/profil",
+          icon: IconUserCircle,
+        },
       ],
     },
   ]
@@ -258,11 +267,7 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
         {user.role === 'admin' ? (
           <NavMain dashboardItem={dashboardItem} groups={adminNavGroups} />
         ) : (
-          <NavMain
-            dashboardItem={dashboardItem}
-            groups={tutorNavGroups}
-            bottomItem={tutorProfileItem}
-          />
+          <NavMain dashboardItem={dashboardItem} groups={tutorNavGroups} />
         )}
       </SidebarContent>
       <SidebarFooter>

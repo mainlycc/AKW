@@ -11,11 +11,11 @@ const pageMeta: Record<string, PageMeta> = {
     description: 'Szybki podgląd najważniejszych informacji i najbliższych zajęć.',
   },
   '/dashboard/profil': {
-    title: 'Profil',
+    title: LABELS.myProfile,
     description: 'Twoje dane, ustawienia konta i informacje potrzebne do pracy w systemie.',
   },
   '/dashboard/kalendarz': {
-    title: 'Grafik',
+    title: LABELS.mySchedule,
     description: 'Ustaw swoją dostępność – na tej podstawie planowane są zajęcia.',
   },
   '/dashboard/uczniowie': {
@@ -47,8 +47,8 @@ const pageMeta: Record<string, PageMeta> = {
     description: 'Widok kalendarza wszystkich zaplanowanych lekcji i terminów.',
   },
   '/dashboard/rezerwacje-publiczne': {
-    title: 'Publiczne rezerwacje',
-    description: 'Włączaj/wyłączaj możliwość rezerwacji i kontroluj zapisy z formularza publicznego.',
+    title: LABELS.clientSubmissions,
+    description: 'Obsługa wniosków o rezerwację z publicznego formularza dla rodziców i uczniów.',
   },
   '/dashboard/historia': {
     title: 'Historia sesji',
@@ -59,7 +59,7 @@ const pageMeta: Record<string, PageMeta> = {
     description: 'Zestawienia godzin z zajęć – przydatne do kontroli i rozliczeń.',
   },
   '/dashboard/moje-raporty': {
-    title: LABELS.completedLessons,
+    title: LABELS.monthlyReport,
     description: 'Miesięczne podsumowanie godzin i kwot do rozliczenia.',
   },
   '/dashboard/moje-raporty/nowy': {
@@ -67,7 +67,7 @@ const pageMeta: Record<string, PageMeta> = {
     description: 'Dodaj zrealizowane lekcje za wybrany miesiąc na podstawie swoich zajęć.',
   },
   '/dashboard/moje-deklaracje': {
-    title: LABELS.nextMonthPlan,
+    title: LABELS.monthlyPlan,
     description: 'Plan planowanych zajęć na przyszły miesiąc – pomaga ustalić dostępność i harmonogram.',
   },
   '/dashboard/moje-deklaracje/nowa': {
@@ -75,28 +75,28 @@ const pageMeta: Record<string, PageMeta> = {
     description: 'Zaplanuj terminy na przyszły miesiąc – ułatwia organizację pracy.',
   },
   '/dashboard/deklaracje-tutorow': {
-    title: LABELS.nextMonthPlansTutors,
+    title: LABELS.tutorPlans,
     description: 'Przegląd planów tutorów na przyszły miesiąc – kontrola harmonogramu.',
   },
   '/dashboard/rozliczenia-deklaracji': {
-    title: LABELS.settlementsFromNextMonthPlan,
-    description: 'Rozliczenia na podstawie planu na przyszły miesiąc – podsumowania i statusy.',
+    title: LABELS.planSettlements,
+    description: 'Należności od uczniów wyliczone na podstawie zatwierdzonych planów – podsumowania i statusy.',
   },
   '/dashboard/rozliczenia-tutorow': {
     title: 'Rozliczenia tutorów',
     description: 'Lista zrealizowanych lekcji do wypłaty – zaznacz i oznacz jako wypłacone.',
   },
   '/dashboard/raporty-tutorow': {
-    title: LABELS.completedLessonsTutors,
-    description: 'Podgląd zrealizowanych lekcji tutorów oraz ich rozliczeń.',
+    title: LABELS.tutorReports,
+    description: 'Przegląd i kontrola miesięcznych raportów godzin składanych przez tutorów.',
   },
   '/dashboard/billing': {
     title: 'Rozliczenia miesięczne',
     description: 'Zestawienia do rozliczeń – kwoty, statusy i podsumowania.',
   },
   '/dashboard/billing-from-reports': {
-    title: LABELS.settlementsFromCompletedLessons,
-    description: 'Rozliczenia wyliczane ze zrealizowanych lekcji – szybkie podsumowanie miesiąca.',
+    title: LABELS.lessonReceivables,
+    description: 'Należności od uczniów wyliczone na podstawie zatwierdzonych raportów tutorów.',
   },
   '/dashboard/payments': {
     title: 'Historia płatności',
@@ -117,6 +117,10 @@ const pageMeta: Record<string, PageMeta> = {
   '/dashboard/regulamin': {
     title: 'Regulamin',
     description: 'Zasady korzystania z platformy i ważne informacje organizacyjne.',
+  },
+  '/dashboard/stawki': {
+    title: 'Stawki',
+    description: 'Domyślne stawki godzinowe dla uczniów i tutorów w systemie.',
   },
 }
 

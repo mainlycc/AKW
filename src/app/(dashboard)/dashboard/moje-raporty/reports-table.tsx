@@ -116,7 +116,7 @@ export function ReportsTable({ reports, tutorId, students }: ReportsTableProps) 
   }
 
   const handleRowClick = (report: MonthlyReport) => {
-    if (report.status !== 'paid') {
+    if (report.status === 'draft') {
       router.push(`/dashboard/moje-raporty/${report.id}`)
     }
   }

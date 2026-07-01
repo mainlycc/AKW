@@ -26,13 +26,17 @@ export async function createOrUpdateReport(
     // Upewnij się, że raport należy do tutora
     const { data: existingById } = await supabase
       .from('monthly_reports')
-      .select('id, tutor_id')
+      .select('id, tutor_id, status')
       .eq('id', reportId)
       .eq('tutor_id', tutorId)
       .single()
 
     if (!existingById) {
       throw new Error(LABELS.notFoundCompletedLessons)
+    }
+
+    if (existingById.status !== 'draft') {
+      throw new Error(LABELS.cannotEditSubmittedCompletedLessons)
     }
 
     // Sprawdź konflikt: czy istnieje inny raport dla tego samego tutora na ten sam miesiąc/rok
@@ -161,11 +165,15 @@ export async function createOrUpdateReport(
   // Check if report exists
   const { data: existing } = await supabase
     .from('monthly_reports')
-    .select('id')
+    .select('id, status')
     .eq('tutor_id', tutorId)
     .eq('month', month)
     .eq('year', year)
     .single()
+
+  if (existing && existing.status !== 'draft') {
+    throw new Error(LABELS.cannotEditSubmittedCompletedLessons)
+  }
 
   // Jeśli raport jest składany, automatycznie go zatwierdzamy
   const shouldAutoApprove = status === 'submitted'
@@ -324,6 +332,20 @@ export async function createOrUpdateReport(
 
 export async function deleteReport(reportId: string) {
   const supabase = await createClient()
+
+  const { data: report } = await supabase
+    .from('monthly_reports')
+    .select('id, status')
+    .eq('id', reportId)
+    .single()
+
+  if (!report) {
+    throw new Error(LABELS.notFoundCompletedLessons)
+  }
+
+  if (report.status !== 'draft') {
+    throw new Error(LABELS.cannotEditSubmittedCompletedLessons)
+  }
 
   const { error } = await supabase
     .from('monthly_reports')

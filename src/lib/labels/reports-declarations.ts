@@ -71,6 +71,7 @@ export const LABELS = {
   completedLessonsPaidMessage: (monthName: string, year: number, amount: string) =>
     `Zrealizowane lekcje za ${monthName} ${year} zostały oznaczone jako opłacone. Wypłacona kwota: ${amount} zł`,
 
+  cannotEditSubmittedCompletedLessons: 'Nie można edytować złożonych zrealizowanych lekcji',
   notFoundCompletedLessons: 'Nie znaleziono zrealizowanych lekcji lub brak uprawnień',
   notFoundNextMonthPlan: 'Nie znaleziono planu na przyszły miesiąc lub brak uprawnień',
   duplicateCompletedLessons: 'Zrealizowane lekcje dla wybranego miesiąca i roku już istnieją',

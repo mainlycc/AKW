@@ -33,7 +33,6 @@ interface ReportFormProps {
   tutorId: string
   students: Student[]
   reportId?: string
-  initialStatus?: ReportStatus
   initialReport?: { month: number; year: number; entries: { student_id: string; hours: number }[] }
 }
 
@@ -52,7 +51,7 @@ const months = [
   { value: 12, label: 'Grudzień' },
 ]
 
-export function ReportForm({ tutorId, students, reportId, initialReport, initialStatus }: ReportFormProps) {
+export function ReportForm({ tutorId, students, reportId, initialReport }: ReportFormProps) {
   const router = useRouter()
   const currentDate = new Date()
   const [loading, setLoading] = useState(false)
@@ -133,11 +132,6 @@ export function ReportForm({ tutorId, students, reportId, initialReport, initial
   }
 
   const handleSaveDraft = async () => {
-    // Jeśli edytujemy istniejący raport o statusie innym niż draft, nie degraduj statusu
-    if (reportId && initialStatus && initialStatus !== 'draft') {
-      await handleSubmit(initialStatus)
-      return
-    }
     await handleSubmit('draft')
   }
 
@@ -673,13 +667,11 @@ export function ReportForm({ tutorId, students, reportId, initialReport, initial
           </Button>
         </Link>
         <Button type="button" variant="secondary" onClick={handleSaveDraft} disabled={loading}>
-          {loading ? 'Zapisywanie...' : reportId && initialStatus && initialStatus !== 'draft' ? 'Zapisz zmiany' : 'Zapisz roboczą'}
+          {loading ? 'Zapisywanie...' : 'Zapisz roboczą'}
         </Button>
-        {(!reportId || !initialStatus || initialStatus === 'draft') ? (
-          <Button type="button" onClick={handleSubmitReport} disabled={loading}>
-            {loading ? 'Wysyłanie...' : LABELS.submitCompletedLessons}
-          </Button>
-        ) : null}
+        <Button type="button" onClick={handleSubmitReport} disabled={loading}>
+          {loading ? 'Wysyłanie...' : LABELS.submitCompletedLessons}
+        </Button>
       </div>
     </div>
   )

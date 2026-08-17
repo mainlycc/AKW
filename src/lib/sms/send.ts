@@ -138,6 +138,7 @@ export interface PaymentLinkSmsParams {
   month: number
   year: number
   paymentUrl: string
+  periodLabel?: string
 }
 
 export async function sendPaymentLinkSms(
@@ -145,9 +146,10 @@ export async function sendPaymentLinkSms(
 ): Promise<SendNotificationResult> {
   const client = getSmsClient()
   const formattedAmount = params.amount.toFixed(2)
+  const period = params.periodLabel || `${params.month}/${params.year}`
 
   const body = truncate(
-    `Akademia Wiedzy: płatność za ${params.studentName}, kwota ${formattedAmount} zł za ${params.month}/${params.year}. Link: ${params.paymentUrl}`
+    `Akademia Wiedzy: płatność za ${params.studentName}, kwota ${formattedAmount} zł za ${period}. Link: ${params.paymentUrl}`
   )
 
   const result = await client.sendSms({ to: params.toPhone, body })

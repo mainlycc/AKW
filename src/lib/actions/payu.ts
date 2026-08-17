@@ -37,6 +37,8 @@ export type PayUPaymentLinkPreview = {
   toPhone: string | null
   month: number
   year: number
+  /** Gdy ustawione (np. „rok 2026”), używane zamiast miesiąca w UI/wiadomościach */
+  periodLabel?: string
   amount: number
   paymentUrl: string
   email?: {
@@ -69,6 +71,10 @@ export async function createPayUOrder(
   year: number,
   options?: {
     continueUrlOverride?: string
+    descriptionOverride?: string
+    productNameOverride?: string
+    /** Rozbicie wpłaty na wiele okresów (po COMPLETED webhook tworzy osobne payments) */
+    allocation?: Array<{ billingPeriodId: string; amount: number }>
   }
 ): Promise<CreatePayUOrderResult> {
   try {
@@ -141,9 +147,22 @@ export async function createPayUOrder(
     // Amount must be in grosze (smallest currency unit)
     const totalAmount = Math.round(amount * 100).toString()
 
+    const humanDescription =
+      options?.descriptionOverride ||
+      `Opłata za korepetycje - ${studentName} - ${monthName} ${year}`
+    const productName =
+      options?.productNameOverride ||
+      `Korepetycje - ${studentName} - ${monthName} ${year}`
+
+    // Allocation encoded in description for webhook (no schema migration)
+    const description =
+      options?.allocation && options.allocation.length > 0
+        ? `YEAR_ALLOC:${JSON.stringify(options.allocation)}\n${humanDescription}`
+        : humanDescription
+
     const orderResponse = await payuClient.createOrder({
       customerIp: '185.68.12.34', // Test IP for sandbox (PayU may reject 127.0.0.1)
-      description: `Opłata za korepetycje - ${studentName} - ${monthName} ${year}`,
+      description: humanDescription,
       currencyCode: 'PLN',
       totalAmount,
       extOrderId,
@@ -155,7 +174,7 @@ export async function createPayUOrder(
       },
       products: [
         {
-          name: `Korepetycje - ${studentName} - ${monthName} ${year}`,
+          name: productName,
           unitPrice: totalAmount,
           quantity: '1',
         },
@@ -179,7 +198,7 @@ export async function createPayUOrder(
         redirect_url: orderResponse.redirectUrl, // redirectUrl z PayU GPO Europe API v2
         notify_url: notifyUrl,
         continue_url: continueUrl,
-        description: `Opłata za korepetycje - ${studentName} - ${monthName} ${year}`,
+        description,
         buyer_email: parentEmail,
         buyer_first_name: firstName,
         buyer_last_name: lastName,
@@ -222,7 +241,15 @@ function truncateSms(body: string): string {
   return `${body.slice(0, MAX_SMS_LENGTH - 3)}...`
 }
 
-function buildPaymentLinkEmailSubject(studentName: string, month: number, year: number): string {
+function buildPaymentLinkEmailSubject(
+  studentName: string,
+  month: number,
+  year: number,
+  periodLabel?: string
+): string {
+  if (periodLabel) {
+    return `Płatność za korepetycje - ${studentName} - ${periodLabel} - Akademia Wiedzy`
+  }
   const monthNames = [
     'Styczeń', 'Luty', 'Marzec', 'Kwiecień', 'Maj', 'Czerwiec',
     'Lipiec', 'Sierpień', 'Wrzesień', 'Październik', 'Listopad', 'Grudzień'
@@ -237,10 +264,13 @@ function buildPaymentLinkSmsBody(params: {
   month: number
   year: number
   paymentUrl: string
+  periodLabel?: string
 }): string {
   const formattedAmount = params.amount.toFixed(2)
+  const period =
+    params.periodLabel || `${params.month}/${params.year}`
   return truncateSms(
-    `Akademia Wiedzy: płatność za ${params.studentName}, kwota ${formattedAmount} zł za ${params.month}/${params.year}. Link: ${params.paymentUrl}`
+    `Akademia Wiedzy: płatność za ${params.studentName}, kwota ${formattedAmount} zł za ${period}. Link: ${params.paymentUrl}`
   )
 }
 
@@ -1049,6 +1079,252 @@ export async function sendPayUPaymentsFromReports(
   }
 }
 
+export type AnnualPayUStudentTarget = {
+  studentId: string
+  year: number
+  periods: Array<{
+    month: number
+    billingPeriodId: string
+    amount: number
+  }>
+}
+
+async function processAnnualPayUFromReports(
+  targets: AnnualPayUStudentTarget[],
+  channel: NotificationChannel,
+  mode: 'preview' | 'send'
+): Promise<PreviewPayUPaymentsResult & { sent?: number }> {
+  const profile = await getUserProfile()
+  if (!profile || profile.role !== 'admin') {
+    return {
+      success: false,
+      previews: [],
+      failed: targets.length,
+      sent: 0,
+      errors: targets.map((t) => ({ studentId: t.studentId, error: 'Brak uprawnień' })),
+    }
+  }
+
+  const baseUrlRaw = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+  const baseUrl = baseUrlRaw.replace(/\/+$/, '')
+  const continueUrlOverride = `${baseUrl}/dashboard/billing-from-reports`
+
+  const { getStudentBillingsFromReports } = await import('@/lib/actions/billing')
+  const { generatePaymentLinkEmail } = await import('@/lib/email/templates/payment-link-email')
+  const { sendPaymentLinkEmail } = await import('@/lib/email/send')
+
+  const previews: PayUPaymentLinkPreview[] = []
+  const errors: Array<{ studentId: string; error: string }> = []
+  let sent = 0
+
+  for (const target of targets) {
+    const studentId = target.studentId
+    const periodsWithAmount = target.periods
+      .filter((p) => p.amount > 0 && p.billingPeriodId)
+      .sort((a, b) => a.month - b.month)
+
+    if (periodsWithAmount.length === 0) {
+      errors.push({ studentId, error: 'Brak salda do zapłaty w wybranym roku' })
+      continue
+    }
+
+    const totalAmount = periodsWithAmount.reduce((sum, p) => sum + p.amount, 0)
+    if (totalAmount <= 0) {
+      errors.push({ studentId, error: 'Kwota do zapłaty wynosi 0' })
+      continue
+    }
+
+    // Pobierz dane ucznia/rodzica z dowolnego miesiąca z saldem
+    let billing: StudentBillingWithParent | undefined
+    for (const period of periodsWithAmount) {
+      try {
+        const monthBillings = await getStudentBillingsFromReports(period.month, target.year)
+        billing = monthBillings.find((b) => b.student_id === studentId)
+        if (billing) break
+      } catch {
+        // try next period
+      }
+    }
+
+    if (!billing?.students) {
+      errors.push({ studentId, error: 'Uczeń nie został znaleziony' })
+      continue
+    }
+
+    const parent =
+      billing.parent ||
+      (billing.parents && billing.parents.length > 0 ? billing.parents[0] : undefined)
+
+    if (!parent || (!parent.email && !parent.phone)) {
+      errors.push({ studentId, error: 'Brak danych kontaktowych rodzica (email/telefon)' })
+      continue
+    }
+
+    const studentName = `${billing.students.first_name} ${billing.students.last_name}`
+    const parentName = `${parent.first_name} ${parent.last_name}`
+    const periodLabel = `rok ${target.year}`
+    const primaryPeriod = periodsWithAmount[0]
+
+    const allocation = periodsWithAmount.map((p) => ({
+      billingPeriodId: p.billingPeriodId,
+      amount: Math.round(p.amount * 100) / 100,
+    }))
+
+    const orderResult = await createPayUOrder(
+      studentId,
+      primaryPeriod.billingPeriodId,
+      totalAmount,
+      parent.email || '',
+      parentName,
+      studentName,
+      primaryPeriod.month,
+      target.year,
+      {
+        continueUrlOverride,
+        descriptionOverride: `Opłata za korepetycje - ${studentName} - ${periodLabel}`,
+        productNameOverride: `Korepetycje - ${studentName} - ${periodLabel}`,
+        allocation,
+      }
+    )
+
+    if (!orderResult.success || !orderResult.redirectUrl) {
+      errors.push({
+        studentId,
+        error: orderResult.error || 'Nie udało się utworzyć zamówienia',
+      })
+      continue
+    }
+
+    const paymentUrl = orderResult.redirectUrl
+    const preview: PayUPaymentLinkPreview = {
+      studentId,
+      studentName,
+      parentName,
+      toEmail: parent.email || null,
+      toPhone: parent.phone || null,
+      month: 0,
+      year: target.year,
+      periodLabel,
+      amount: totalAmount,
+      paymentUrl,
+    }
+
+    if (channel === 'email' || channel === 'both') {
+      preview.email = {
+        subject: buildPaymentLinkEmailSubject(studentName, 0, target.year, periodLabel),
+        html: generatePaymentLinkEmail({
+          parentName,
+          studentName,
+          amount: totalAmount,
+          month: 1,
+          year: target.year,
+          paymentUrl,
+          periodLabel,
+        }),
+      }
+    }
+
+    if (channel === 'sms' || channel === 'both') {
+      preview.sms = {
+        body: buildPaymentLinkSmsBody({
+          studentName,
+          amount: totalAmount,
+          month: 1,
+          year: target.year,
+          paymentUrl,
+          periodLabel,
+        }),
+      }
+    }
+
+    previews.push(preview)
+
+    if (mode === 'send') {
+      const notificationResult = await sendWithChannel(channel, {
+        sendEmail:
+          parent.email && (channel === 'email' || channel === 'both')
+            ? () =>
+                sendPaymentLinkEmail({
+                  to: parent.email as string,
+                  parentName,
+                  studentName,
+                  amount: totalAmount,
+                  month: 1,
+                  year: target.year,
+                  paymentUrl,
+                  periodLabel,
+                })
+            : undefined,
+        sendSms:
+          parent.phone && (channel === 'sms' || channel === 'both')
+            ? () =>
+                sendPaymentLinkSms({
+                  toPhone: parent.phone as string,
+                  parentName,
+                  studentName,
+                  amount: totalAmount,
+                  month: 1,
+                  year: target.year,
+                  paymentUrl,
+                  periodLabel,
+                })
+            : undefined,
+      })
+
+      if (notificationResult.success) {
+        sent++
+      } else {
+        errors.push({
+          studentId,
+          error:
+            notificationResult.error ||
+            notificationResult.details?.email ||
+            notificationResult.details?.sms ||
+            'Zamówienie utworzone, ale powiadomienie nie zostało wysłane',
+        })
+      }
+    }
+  }
+
+  if (mode === 'send') {
+    revalidatePath('/dashboard/billing-from-reports')
+  }
+
+  return {
+    success: errors.length === 0,
+    previews,
+    failed: errors.length,
+    sent,
+    errors,
+  }
+}
+
+export async function previewPayUAnnualPaymentsFromReports(
+  targets: AnnualPayUStudentTarget[],
+  channel: NotificationChannel = 'email'
+): Promise<PreviewPayUPaymentsResult> {
+  const result = await processAnnualPayUFromReports(targets, channel, 'preview')
+  return {
+    success: result.success,
+    previews: result.previews,
+    failed: result.failed,
+    errors: result.errors,
+  }
+}
+
+export async function sendPayUAnnualPaymentsFromReports(
+  targets: AnnualPayUStudentTarget[],
+  channel: NotificationChannel = 'email'
+): Promise<SendPayUPaymentsResult> {
+  const result = await processAnnualPayUFromReports(targets, channel, 'send')
+  return {
+    success: result.success,
+    sent: result.sent || 0,
+    failed: result.failed,
+    errors: result.errors,
+  }
+}
+
 /**
  * Handle booking payment completion - confirm booking and send email
  */
@@ -1322,40 +1598,97 @@ export async function processPayUWebhook(
     // If payment completed, create or update payment record (for billing payments)
     if (notification.status === 'COMPLETED' && payuPayment.billing_period_id) {
       // Check if payment record already exists
-      const { data: existingPayment } = await supabase
+      const { data: existingPayments } = await supabase
         .from('payments')
         .select('id')
         .eq('payu_order_id', notification.orderId)
-        .single()
+        .limit(1)
 
-      if (!existingPayment) {
-        // Create new payment record
+      if (!existingPayments || existingPayments.length === 0) {
         const paymentDate = new Date().toISOString().split('T')[0]
-        const amount = parseFloat(notification.totalAmount) / 100 // Convert grosze to PLN
+        const paidAmount = parseFloat(notification.totalAmount) / 100 // Convert grosze to PLN
 
-        const { error: paymentError } = await supabase
-          .from('payments')
-          .insert({
-            student_id: payuPayment.student_id,
-            billing_period_id: payuPayment.billing_period_id,
-            amount: amount,
-            payment_method: 'online',
-            payment_date: paymentDate,
-            payu_order_id: notification.orderId,
-            notes: `Płatność online PayU - ${notification.payMethod?.type || 'unknown'}`,
-            created_by: payuPayment.student_id, // Will be updated by RLS with actual user
-          })
+        // Year allocation encoded in description: YEAR_ALLOC:[{billingPeriodId,amount},...]
+        const { data: payuFull } = await supabase
+          .from('payu_payments')
+          .select('description')
+          .eq('id', payuPayment.id)
+          .single()
 
-        if (paymentError) {
-          console.error('Error creating payment record:', paymentError)
-          // Don't throw - the payu_payment is already updated
+        const description = payuFull?.description || ''
+        let allocation: Array<{ billingPeriodId: string; amount: number }> | null = null
+        if (description.startsWith('YEAR_ALLOC:')) {
+          try {
+            const jsonPart = description.slice('YEAR_ALLOC:'.length).split('\n')[0]
+            allocation = JSON.parse(jsonPart)
+          } catch (e) {
+            console.error('Failed to parse YEAR_ALLOC from PayU description:', e)
+          }
+        }
+
+        if (allocation && allocation.length > 0) {
+          const rows = allocation
+            .filter((a) => a.billingPeriodId && a.amount > 0)
+            .map((a) => ({
+              student_id: payuPayment.student_id,
+              billing_period_id: a.billingPeriodId,
+              amount: a.amount,
+              payment_method: 'online' as const,
+              payment_date: paymentDate,
+              payu_order_id: notification.orderId,
+              notes: `Płatność online PayU (rozliczenie roczne) - ${notification.payMethod?.type || 'unknown'}`,
+              created_by: payuPayment.student_id,
+            }))
+
+          // Korekta groszy: jeśli suma alokacji ≠ kwota PayU, dopisz różnicę do ostatniego okresu
+          const allocatedSum = rows.reduce((s, r) => s + r.amount, 0)
+          const diff = Math.round((paidAmount - allocatedSum) * 100) / 100
+          if (rows.length > 0 && Math.abs(diff) >= 0.01) {
+            rows[rows.length - 1].amount =
+              Math.round((rows[rows.length - 1].amount + diff) * 100) / 100
+          }
+
+          const { error: paymentError } = await supabase.from('payments').insert(rows)
+          if (paymentError) {
+            console.error('Error creating year-allocated payment records:', paymentError)
+          } else {
+            console.log(
+              'Year-allocated payment records created for completed PayU order:',
+              notification.orderId,
+              rows.length
+            )
+            revalidatePath('/dashboard/payments')
+            revalidatePath('/dashboard/billing')
+            revalidatePath('/dashboard/billing-from-reports')
+            revalidatePath('/dashboard/rozliczenia-deklaracji')
+          }
         } else {
-          console.log('Payment record created for completed PayU order:', notification.orderId)
-          
-          // Revalidate paths
-          revalidatePath('/dashboard/payments')
-          revalidatePath('/dashboard/billing')
-          revalidatePath('/dashboard/rozliczenia-deklaracji')
+          // Create new payment record (single period)
+          const { error: paymentError } = await supabase
+            .from('payments')
+            .insert({
+              student_id: payuPayment.student_id,
+              billing_period_id: payuPayment.billing_period_id,
+              amount: paidAmount,
+              payment_method: 'online',
+              payment_date: paymentDate,
+              payu_order_id: notification.orderId,
+              notes: `Płatność online PayU - ${notification.payMethod?.type || 'unknown'}`,
+              created_by: payuPayment.student_id, // Will be updated by RLS with actual user
+            })
+
+          if (paymentError) {
+            console.error('Error creating payment record:', paymentError)
+            // Don't throw - the payu_payment is already updated
+          } else {
+            console.log('Payment record created for completed PayU order:', notification.orderId)
+            
+            // Revalidate paths
+            revalidatePath('/dashboard/payments')
+            revalidatePath('/dashboard/billing')
+            revalidatePath('/dashboard/billing-from-reports')
+            revalidatePath('/dashboard/rozliczenia-deklaracji')
+          }
         }
       } else {
         console.log('Payment record already exists for orderId:', notification.orderId)

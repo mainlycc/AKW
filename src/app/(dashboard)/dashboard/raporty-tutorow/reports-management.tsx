@@ -11,7 +11,6 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
@@ -59,20 +58,6 @@ interface ReportsManagementProps {
   reports: MonthlyReport[]
   tutors?: Tutor[]
   adminId: string
-}
-
-const statusLabels: Record<string, string> = {
-  draft: 'Roboczy',
-  submitted: 'Złożony',
-  approved: 'Zatwierdzony',
-  paid: 'Opłacony',
-}
-
-const statusVariants: Record<string, "default" | "secondary" | "outline" | "destructive"> = {
-  draft: 'outline',
-  submitted: 'secondary',
-  approved: 'default',
-  paid: 'default',
 }
 
 const months = ['Styczeń', 'Luty', 'Marzec', 'Kwiecień', 'Maj', 'Czerwiec', 'Lipiec', 'Sierpień', 'Wrzesień', 'Październik', 'Listopad', 'Grudzień']
@@ -279,13 +264,13 @@ export function ReportsManagement({ reports, tutors = [], adminId }: ReportsMana
   return (
     <div className="space-y-4">
       {/* Wybór okresu - wspólny dla obu zakładek */}
-      <div className="flex items-end gap-4 flex-wrap border rounded-md p-4 bg-muted/50">
+      <div className="flex items-end gap-4 flex-wrap border-2 border-primary/25 rounded-md p-4 bg-primary/5">
         <div className="flex items-center gap-2">
-          <Label className="text-sm font-medium">Okres:</Label>
+          <Label className="text-sm font-semibold">Okres raportów:</Label>
         </div>
         <div className="grid grid-cols-3 gap-4 max-w-3xl">
           <div className="space-y-2">
-            <Label htmlFor="reminder-month">Miesiąc</Label>
+            <Label htmlFor="reminder-month" className="font-medium">Miesiąc</Label>
             <Select
               value={reminderMonth}
               onValueChange={(v) => {
@@ -294,7 +279,7 @@ export function ReportsManagement({ reports, tutors = [], adminId }: ReportsMana
                 setSearchMissing('')
               }}
             >
-              <SelectTrigger id="reminder-month">
+              <SelectTrigger id="reminder-month" className="font-semibold">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -308,7 +293,7 @@ export function ReportsManagement({ reports, tutors = [], adminId }: ReportsMana
             </Select>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="reminder-year">Rok</Label>
+            <Label htmlFor="reminder-year" className="font-medium">Rok</Label>
             <Select
               value={reminderYear.toString()}
               onValueChange={(v) => {
@@ -317,7 +302,7 @@ export function ReportsManagement({ reports, tutors = [], adminId }: ReportsMana
                 setSearchMissing('')
               }}
             >
-              <SelectTrigger id="reminder-year">
+              <SelectTrigger id="reminder-year" className="font-semibold">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -396,7 +381,11 @@ export function ReportsManagement({ reports, tutors = [], adminId }: ReportsMana
                       onClick={() => handleRowClick(report)}
                     >
                       <TableCell className="px-4 font-medium">{report.profiles.full_name}</TableCell>
-                      <TableCell className="px-4">{months[report.month - 1]} {report.year}</TableCell>
+                      <TableCell className="px-4">
+                        <span className="font-semibold">
+                          {months[report.month - 1]} {report.year}
+                        </span>
+                      </TableCell>
                       <TableCell className="px-4 text-right">{formatHours(report.total_hours)} h</TableCell>
                       <TableCell className="px-4 text-right">
                         {report.profiles.hourly_rate ? `${report.profiles.hourly_rate.toFixed(0)} zł` : '-'}

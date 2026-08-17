@@ -6,7 +6,8 @@ import {
 } from '@/lib/actions/billing'
 import type { NotificationChannel } from '@/lib/types/notifications'
 import { createClient } from '@/lib/supabase/server'
-import { previewPayUPaymentsFromReports, sendPayUPaymentsFromReports } from '@/lib/actions/payu'
+import { previewPayUPaymentsFromReports, sendPayUPaymentsFromReports, previewPayUAnnualPaymentsFromReports, sendPayUAnnualPaymentsFromReports } from '@/lib/actions/payu'
+import type { AnnualPayUStudentTarget } from '@/lib/actions/payu'
 
 export async function sendReminderAction(
   studentId: string,
@@ -222,4 +223,18 @@ export async function previewPayUPaymentsFromReportsAction(
   channel: NotificationChannel = 'email'
 ) {
   return await previewPayUPaymentsFromReports(studentIds, month, year, channel)
+}
+
+export async function previewPayUAnnualPaymentsFromReportsAction(
+  targets: AnnualPayUStudentTarget[],
+  channel: NotificationChannel = 'email'
+) {
+  return await previewPayUAnnualPaymentsFromReports(targets, channel)
+}
+
+export async function sendPayUAnnualPaymentsFromReportsAction(
+  targets: AnnualPayUStudentTarget[],
+  channel: NotificationChannel = 'email'
+) {
+  return await sendPayUAnnualPaymentsFromReports(targets, channel)
 }

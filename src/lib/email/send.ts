@@ -550,6 +550,7 @@ export async function sendPaymentLinkEmail({
   month,
   year,
   paymentUrl,
+  periodLabel,
 }: SendPaymentLinkEmailParams): Promise<SendEmailResult> {
   try {
     const resendApiKey = process.env.RESEND_API_KEY
@@ -583,6 +584,7 @@ export async function sendPaymentLinkEmail({
       month,
       year,
       paymentUrl,
+      periodLabel,
     })
     
     const monthNames = [
@@ -590,11 +592,12 @@ export async function sendPaymentLinkEmail({
       'Lipiec', 'Sierpień', 'Wrzesień', 'Październik', 'Listopad', 'Grudzień'
     ]
     const monthName = monthNames[month - 1] || `Miesiąc ${month}`
+    const subjectPeriod = periodLabel || `${monthName} ${year}`
     
     const { data, error } = await resend.emails.send({
       from: FROM_EMAIL,
       to: [to],
-      subject: `Płatność za korepetycje - ${studentName} - ${monthName} ${year} - Akademia Wiedzy`,
+      subject: `Płatność za korepetycje - ${studentName} - ${subjectPeriod} - Akademia Wiedzy`,
       html,
     })
 

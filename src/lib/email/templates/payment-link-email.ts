@@ -5,6 +5,8 @@ export interface PaymentLinkEmailData {
   month: number
   year: number
   paymentUrl: string
+  /** np. „rok 2026” — gdy ustawione, zastępuje miesiąc w treści */
+  periodLabel?: string
 }
 
 const monthNames = [
@@ -13,8 +15,8 @@ const monthNames = [
 ]
 
 export function generatePaymentLinkEmail(data: PaymentLinkEmailData) {
-  const { parentName, studentName, amount, month, year, paymentUrl } = data
-  const monthName = monthNames[month - 1] || `Miesiąc ${month}`
+  const { parentName, studentName, amount, month, year, paymentUrl, periodLabel } = data
+  const periodText = periodLabel || `${monthNames[month - 1] || `Miesiąc ${month}`} ${year}`
   const formattedAmount = amount.toFixed(2).replace('.', ',')
 
   return `
@@ -35,14 +37,14 @@ export function generatePaymentLinkEmail(data: PaymentLinkEmailData) {
     
     <p>Dzień dobry ${parentName},</p>
     
-    <p>Przesyłamy link do płatności za zajęcia dla ucznia <strong>${studentName}</strong> za okres <strong>${monthName} ${year}</strong>.</p>
+    <p>Przesyłamy link do płatności za zajęcia dla ucznia <strong>${studentName}</strong> za okres <strong>${periodText}</strong>.</p>
     
     <div style="background: white; border: 2px solid #667eea; border-radius: 8px; padding: 20px; margin: 20px 0;">
       <h3 style="margin-top: 0; color: #667eea;">Szczegóły płatności:</h3>
       <table style="width: 100%; border-collapse: collapse;">
         <tr>
           <td style="padding: 8px 0; border-bottom: 1px solid #eee;">Okres:</td>
-          <td style="padding: 8px 0; border-bottom: 1px solid #eee; text-align: right; font-weight: bold;">${monthName} ${year}</td>
+          <td style="padding: 8px 0; border-bottom: 1px solid #eee; text-align: right; font-weight: bold;">${periodText}</td>
         </tr>
         <tr>
           <td style="padding: 12px 0; font-size: 16px; font-weight: bold; color: #667eea;">Kwota do zapłaty:</td>

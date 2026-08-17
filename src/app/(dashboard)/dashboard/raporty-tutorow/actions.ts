@@ -344,6 +344,82 @@ export async function deleteReports(reportIds: string[]) {
   revalidatePath('/dashboard/raporty-tutorow')
 }
 
+/** Admin: zmiana miesiąca/roku raportu (np. gdy tutor wpisał zły okres). */
+export async function updateReportPeriod(
+  reportId: string,
+  month: number,
+  year: number
+): Promise<{ success: true } | { success: false; error: string }> {
+  if (month < 1 || month > 12) {
+    return { success: false, error: 'Nieprawidłowy miesiąc' }
+  }
+  if (year < 2000 || year > 2100) {
+    return { success: false, error: 'Nieprawidłowy rok' }
+  }
+
+  const supabase = await createClient()
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) {
+    return { success: false, error: 'Brak autoryzacji' }
+  }
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .single()
+
+  if (profile?.role !== 'admin') {
+    return { success: false, error: 'Brak uprawnień. Tylko administrator może zmieniać okres raportu.' }
+  }
+
+  const { data: report } = await supabase
+    .from('monthly_reports')
+    .select('id, tutor_id, month, year')
+    .eq('id', reportId)
+    .single()
+
+  if (!report) {
+    return { success: false, error: LABELS.notFoundCompletedLessons }
+  }
+
+  if (report.month === month && report.year === year) {
+    return { success: true }
+  }
+
+  const { data: conflict } = await supabase
+    .from('monthly_reports')
+    .select('id')
+    .eq('tutor_id', report.tutor_id)
+    .eq('month', month)
+    .eq('year', year)
+    .neq('id', reportId)
+    .maybeSingle()
+
+  if (conflict) {
+    return { success: false, error: LABELS.duplicateCompletedLessons }
+  }
+
+  const { error } = await supabase
+    .from('monthly_reports')
+    .update({ month, year })
+    .eq('id', reportId)
+
+  if (error) {
+    return { success: false, error: error.message }
+  }
+
+  revalidatePath('/dashboard/raporty-tutorow')
+  revalidatePath('/dashboard/moje-raporty')
+  revalidatePath('/dashboard/rozliczenia-tutorow')
+  revalidatePath('/dashboard/naleznosci-za-lekcje')
+
+  return { success: true }
+}
+
 export async function exportReportsToCSV(reports: {
   tutor_name: string
   month: number

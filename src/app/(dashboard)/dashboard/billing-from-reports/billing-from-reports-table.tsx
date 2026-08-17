@@ -14,7 +14,9 @@ import { Input } from '@/components/ui/input'
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
@@ -34,6 +36,8 @@ import {
   sendGroupRemindersAction,
   previewPayUPaymentsFromReportsAction,
   sendPayUPaymentsFromReportsAction,
+  previewPayUAnnualPaymentsFromReportsAction,
+  sendPayUAnnualPaymentsFromReportsAction,
 } from './actions'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
@@ -104,6 +108,97 @@ const ITEMS_PER_PAGE = 50
 type SortField = 'month' | 'student' | 'subject' | 'tutor' | 'balance' | 'status'
 type SortDirection = 'asc' | 'desc'
 
+function getStudentNameKey(billing: StudentBillingWithParent) {
+  return `${billing.students.last_name.trim().toLowerCase()}::${billing.students.first_name.trim().toLowerCase()}`
+}
+
+function mergeYearBillings(
+  items: StudentBillingWithParent[],
+  year: number
+): StudentBillingWithParent {
+  const first = items[0]
+  const totalHours = items.reduce((sum, b) => sum + (b.hours_this_month || 0), 0)
+  const totalDue = items.reduce((sum, b) => sum + (b.total_due || 0), 0)
+  const totalPaid = items.reduce((sum, b) => sum + (b.total_paid || 0), 0)
+  const balance = totalDue - totalPaid
+
+  let status: BillingStatus = 'unpaid'
+  if (totalDue === 0) {
+    status = 'unpaid'
+  } else if (balance <= 0) {
+    status = 'paid'
+  } else if (totalPaid > 0) {
+    status = 'partially_paid'
+  }
+
+  const tutors = new Map<string, { id: string; full_name: string }>()
+  for (const b of items) {
+    for (const t of b.tutors || []) {
+      tutors.set(t.id, t)
+    }
+  }
+
+  const categories = new Map<string, { subject_name: string; level_name: string }>()
+  for (const b of items) {
+    for (const c of b.categories || []) {
+      categories.set(`${c.subject_name} - ${c.level_name}`, c)
+    }
+  }
+
+  const parents = new Map<string, NonNullable<StudentBillingWithParent['parent']>>()
+  for (const b of items) {
+    for (const p of b.parents || []) {
+      parents.set(p.id, p)
+    }
+    if (b.parent) {
+      parents.set(b.parent.id, b.parent)
+    }
+  }
+  const parentsList = Array.from(parents.values())
+
+  const tutorHours = new Map<string, { tutor_id: string; tutor_name: string; hours: number }>()
+  for (const b of items) {
+    for (const th of b.tutor_hours || []) {
+      const existing = tutorHours.get(th.tutor_id)
+      tutorHours.set(th.tutor_id, {
+        tutor_id: th.tutor_id,
+        tutor_name: th.tutor_name,
+        hours: (existing?.hours || 0) + (th.hours || 0),
+      })
+    }
+  }
+  const mergedTutorHours = Array.from(tutorHours.values()).sort((a, b) =>
+    a.tutor_name.localeCompare(b.tutor_name, 'pl', { sensitivity: 'base' })
+  )
+
+  const nameKey = getStudentNameKey(first)
+
+  return {
+    ...first,
+    id: `year::${year}::${nameKey}`,
+    total_due: totalDue,
+    total_paid: totalPaid,
+    balance,
+    status,
+    hours_this_month: totalHours,
+    total_hours: totalHours,
+    tutors: Array.from(tutors.values()).sort((a, b) =>
+      a.full_name.localeCompare(b.full_name, 'pl', { sensitivity: 'base' })
+    ),
+    categories: Array.from(categories.values()).sort((a, b) =>
+      a.subject_name.localeCompare(b.subject_name, 'pl', { sensitivity: 'base' })
+    ),
+    parents: parentsList,
+    parent: parentsList.find((p) => p.email?.trim()) || parentsList[0] || first.parent,
+    tutor_hours: mergedTutorHours.length > 0 ? mergedTutorHours : undefined,
+    billing_periods: {
+      ...first.billing_periods,
+      month: 0, // marker: agregat roczny
+      year,
+    },
+  }
+}
+
 export function BillingFromReportsTable({
   billings,
   students,
@@ -125,48 +220,9 @@ export function BillingFromReportsTable({
   const [composeDefaultMessage, setComposeDefaultMessage] = useState('')
   const [composeMode, setComposeMode] = useState<'single' | 'group'>('single')
   const [composeTarget, setComposeTarget] = useState<{ studentId: string; billingPeriodId: string } | null>(null)
-  const composeStats = useMemo(() => {
-    if (composeMode === 'single' && composeTarget) {
-      const b = billings.find(
-        (x) => x.student_id === composeTarget.studentId && x.billing_period_id === composeTarget.billingPeriodId
-      )
-      const parents = b?.parents && b.parents.length > 0 ? b.parents : b?.parent ? [b.parent] : []
-      const hasEmail = parents.some((p) => !!(p.email && p.email.trim()))
-      const hasPhone = parents.some((p) => !!(p.phone && p.phone.trim()))
-      return {
-        totalRecipients: 1,
-        emailAvailable: hasEmail ? 1 : 0,
-        smsAvailable: hasPhone ? 1 : 0,
-        emailUnavailable: hasEmail ? 0 : 1,
-        smsUnavailable: hasPhone ? 0 : 1,
-      }
-    }
 
-    if (selectedIds.size === 0) {
-      return { totalRecipients: 0, emailAvailable: 0, smsAvailable: 0, emailUnavailable: 0, smsUnavailable: 0 }
-    }
-
-    const selected = billings.filter((b) => selectedIds.has(b.id))
-    const total = selected.length
-    const emailAvailable = selected.filter((b) => {
-      const parents = b.parents && b.parents.length > 0 ? b.parents : b.parent ? [b.parent] : []
-      return parents.some((p) => !!(p.email && p.email.trim()))
-    }).length
-    const smsAvailable = selected.filter((b) => {
-      const parents = b.parents && b.parents.length > 0 ? b.parents : b.parent ? [b.parent] : []
-      return parents.some((p) => !!(p.phone && p.phone.trim()))
-    }).length
-
-    return {
-      totalRecipients: total,
-      emailAvailable,
-      smsAvailable,
-      emailUnavailable: total - emailAvailable,
-      smsUnavailable: total - smsAvailable,
-    }
-  }, [billings, composeMode, composeTarget, selectedIds])
-
-  const [monthFilter, setMonthFilter] = useState<string>('all')
+  // 'all' | 'year:2026' | 'month:2026::3'
+  const [periodFilter, setPeriodFilter] = useState<string>('all')
   const [payuDialogOpen, setPayuDialogOpen] = useState(false)
   const [sendingPayu, setSendingPayu] = useState(false)
   const [payuPreviewLoading, setPayuPreviewLoading] = useState(false)
@@ -180,6 +236,7 @@ export function BillingFromReportsTable({
       toPhone: string | null
       month: number
       year: number
+      periodLabel?: string
       amount: number
       paymentUrl: string
       email?: { subject: string; html: string }
@@ -187,34 +244,43 @@ export function BillingFromReportsTable({
     }>
   >([])
 
-  // Gather unique month/year combinations from billings
-  const availableMonths = useMemo(() => {
-    const set = new Map<string, { month: number; year: number; label: string }>()
+  const periodOptions = useMemo(() => {
+    const years = new Set<number>()
+    const months = new Map<string, { month: number; year: number; label: string }>()
+
     for (const b of billings) {
-      const key = `${b.billing_periods.year}::${b.billing_periods.month}`
-      if (!set.has(key)) {
-        set.set(key, {
-          month: b.billing_periods.month,
-          year: b.billing_periods.year,
-          label: `${monthNames[b.billing_periods.month]} ${b.billing_periods.year}`,
+      const { month, year } = b.billing_periods
+      years.add(year)
+      const key = `${year}::${month}`
+      if (!months.has(key)) {
+        months.set(key, {
+          month,
+          year,
+          label: `${monthNames[month]} ${year}`,
         })
       }
     }
-    return Array.from(set.entries())
-      .sort((a, b) => {
-        if (b[1].year !== a[1].year) return b[1].year - a[1].year
-        return b[1].month - a[1].month
-      })
-      .map(([key, value]) => ({ key, ...value }))
+
+    return {
+      years: Array.from(years).sort((a, b) => b - a),
+      months: Array.from(months.entries())
+        .sort((a, b) => {
+          if (b[1].year !== a[1].year) return b[1].year - a[1].year
+          return b[1].month - a[1].month
+        })
+        .map(([key, value]) => ({ key, ...value })),
+    }
   }, [billings])
 
   // Filtrowanie
   const filteredBillings = useMemo(() => {
     let result = billings
 
-    // Filter by month
-    if (monthFilter !== 'all') {
-      const [filterYear, filterMonth] = monthFilter.split('::').map(Number)
+    if (periodFilter.startsWith('year:')) {
+      const year = Number(periodFilter.slice(5))
+      result = result.filter((b) => b.billing_periods.year === year)
+    } else if (periodFilter.startsWith('month:')) {
+      const [filterYear, filterMonth] = periodFilter.slice(6).split('::').map(Number)
       result = result.filter(
         (b) => b.billing_periods.month === filterMonth && b.billing_periods.year === filterYear
       )
@@ -257,11 +323,48 @@ export function BillingFromReportsTable({
     }
 
     return result
-  }, [billings, search, monthFilter])
+  }, [billings, search, periodFilter])
+
+  const isYearView = periodFilter.startsWith('year:')
+
+  // Przy widoku roku: jeden wiersz na ucznia z sumą godzin i kwot ze wszystkich miesięcy
+  const { displayBillings, yearSourceIds } = useMemo(() => {
+    if (!isYearView) {
+      return {
+        displayBillings: filteredBillings,
+        yearSourceIds: new Map<string, string[]>(),
+      }
+    }
+
+    const year = Number(periodFilter.slice(5))
+    const groups = new Map<string, StudentBillingWithParent[]>()
+
+    for (const billing of filteredBillings) {
+      const key = getStudentNameKey(billing)
+      const group = groups.get(key)
+      if (group) {
+        group.push(billing)
+      } else {
+        groups.set(key, [billing])
+      }
+    }
+
+    const sourceIds = new Map<string, string[]>()
+    const aggregated = Array.from(groups.values()).map((items) => {
+      const merged = mergeYearBillings(items, year)
+      sourceIds.set(
+        merged.id,
+        items.map((item) => item.id)
+      )
+      return merged
+    })
+
+    return { displayBillings: aggregated, yearSourceIds: sourceIds }
+  }, [filteredBillings, isYearView, periodFilter])
 
   // Sortowanie
   const sortedBillings = useMemo(() => {
-    return [...filteredBillings].sort((a, b) => {
+    return [...displayBillings].sort((a, b) => {
       let cmp = 0
       switch (sortField) {
         case 'month': {
@@ -311,7 +414,7 @@ export function BillingFromReportsTable({
       }
       return sortDirection === 'asc' ? cmp : -cmp
     })
-  }, [filteredBillings, sortField, sortDirection])
+  }, [displayBillings, sortField, sortDirection])
 
   // Pagination
   const totalPages = Math.ceil(sortedBillings.length / ITEMS_PER_PAGE)
@@ -324,7 +427,34 @@ export function BillingFromReportsTable({
   // Reset page on filter/sort change
   useEffect(() => {
     setCurrentPage(1)
-  }, [sortField, sortDirection, search, monthFilter])
+  }, [sortField, sortDirection, search, periodFilter])
+
+  const resolveSelectedMonthlyIds = () => {
+    if (!isYearView) return Array.from(selectedIds)
+
+    const monthlyIds: string[] = []
+    for (const id of selectedIds) {
+      const sources = yearSourceIds.get(id)
+      if (sources) {
+        monthlyIds.push(...sources)
+      }
+    }
+    return monthlyIds
+  }
+
+  const selectedMonthlyBillings = useMemo(() => {
+    if (!isYearView) {
+      return displayBillings.filter((b) => selectedIds.has(b.id))
+    }
+
+    const monthlyIdSet = new Set<string>()
+    for (const id of selectedIds) {
+      for (const sourceId of yearSourceIds.get(id) || []) {
+        monthlyIdSet.add(sourceId)
+      }
+    }
+    return filteredBillings.filter((b) => monthlyIdSet.has(b.id))
+  }, [isYearView, displayBillings, selectedIds, yearSourceIds, filteredBillings])
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -407,10 +537,12 @@ export function BillingFromReportsTable({
 
   const handleMarkAsPaid = async () => {
     if (selectedIds.size === 0) return
+    const monthlyIds = resolveSelectedMonthlyIds()
+    if (monthlyIds.length === 0) return
 
     try {
-      await markBillingsAsPaidAction(Array.from(selectedIds))
-      toast.success(`Oznaczono ${selectedIds.size} ${selectedIds.size === 1 ? 'rozliczenie' : 'rozliczeń'} jako opłacone`)
+      await markBillingsAsPaidAction(monthlyIds)
+      toast.success(`Oznaczono ${monthlyIds.length} ${monthlyIds.length === 1 ? 'rozliczenie' : 'rozliczeń'} jako opłacone`)
       setSelectedIds(new Set())
       router.refresh()
     } catch (error) {
@@ -430,13 +562,82 @@ export function BillingFromReportsTable({
     setComposeOpen(true)
   }
 
-  const selectedBillings = useMemo(() => {
-    return filteredBillings.filter((b) => selectedIds.has(b.id))
-  }, [filteredBillings, selectedIds])
+  const selectedBillings = selectedMonthlyBillings
+
+  const composeStats = useMemo(() => {
+    if (composeMode === 'single' && composeTarget) {
+      const b = billings.find(
+        (x) => x.student_id === composeTarget.studentId && x.billing_period_id === composeTarget.billingPeriodId
+      )
+      const parents = b?.parents && b.parents.length > 0 ? b.parents : b?.parent ? [b.parent] : []
+      const hasEmail = parents.some((p) => !!(p.email && p.email.trim()))
+      const hasPhone = parents.some((p) => !!(p.phone && p.phone.trim()))
+      return {
+        totalRecipients: 1,
+        emailAvailable: hasEmail ? 1 : 0,
+        smsAvailable: hasPhone ? 1 : 0,
+        emailUnavailable: hasEmail ? 0 : 1,
+        smsUnavailable: hasPhone ? 0 : 1,
+      }
+    }
+
+    if (selectedBillings.length === 0) {
+      return { totalRecipients: 0, emailAvailable: 0, smsAvailable: 0, emailUnavailable: 0, smsUnavailable: 0 }
+    }
+
+    const total = selectedBillings.length
+    const emailAvailable = selectedBillings.filter((b) => {
+      const parents = b.parents && b.parents.length > 0 ? b.parents : b.parent ? [b.parent] : []
+      return parents.some((p) => !!(p.email && p.email.trim()))
+    }).length
+    const smsAvailable = selectedBillings.filter((b) => {
+      const parents = b.parents && b.parents.length > 0 ? b.parents : b.parent ? [b.parent] : []
+      return parents.some((p) => !!(p.phone && p.phone.trim()))
+    }).length
+
+    return {
+      totalRecipients: total,
+      emailAvailable,
+      smsAvailable,
+      emailUnavailable: total - emailAvailable,
+      smsUnavailable: total - smsAvailable,
+    }
+  }, [billings, composeMode, composeTarget, selectedBillings])
 
   const selectedTotal = useMemo(() => {
     return selectedBillings.reduce((sum, b) => sum + (b.balance || 0), 0)
   }, [selectedBillings])
+
+  const buildAnnualPayUTargets = () => {
+    const year = Number(periodFilter.slice(5))
+    const byStudent = new Map<
+      string,
+      Array<{ month: number; billingPeriodId: string; amount: number }>
+    >()
+
+    for (const billing of selectedBillings) {
+      const amount =
+        billing.balance && billing.balance > 0
+          ? billing.balance
+          : 0
+      if (amount <= 0) continue
+      if (!billing.billing_period_id) continue
+
+      const list = byStudent.get(billing.student_id) || []
+      list.push({
+        month: billing.billing_periods.month,
+        billingPeriodId: billing.billing_period_id,
+        amount: Math.round(amount * 100) / 100,
+      })
+      byStudent.set(billing.student_id, list)
+    }
+
+    return Array.from(byStudent.entries()).map(([studentId, periods]) => ({
+      studentId,
+      year,
+      periods,
+    }))
+  }
 
   const handleOpenPayuDialog = async () => {
     if (selectedIds.size === 0) {
@@ -444,29 +645,77 @@ export function BillingFromReportsTable({
       return
     }
 
-    const uniquePeriods = new Set(
-      selectedBillings.map((b) => `${b.billing_periods.month}-${b.billing_periods.year}`)
-    )
-    if (uniquePeriods.size > 1) {
-      toast.error('Wybierz rozliczenia z tego samego okresu, aby wysłać płatności PayU')
+    if (selectedBillings.length === 0) {
+      toast.error('Brak rozliczeń do wysłania')
       return
     }
-
-    const first = selectedBillings[0]
-    const payMonth = first.billing_periods.month
-    const payYear = first.billing_periods.year
-    const studentIdsToSend = selectedBillings.map((b) => b.student_id)
 
     setPayuDialogOpen(true)
     setPayuPreviewLoading(true)
     setPayuPreviewError(null)
     setPayuPreviews([])
+
     try {
-      const result = await previewPayUPaymentsFromReportsAction(studentIdsToSend, payMonth, payYear, payuChannel)
-      if (!result.success && result.errors?.length) {
-        setPayuPreviewError(result.errors.map((e: any) => `${e.studentId}: ${e.error}`).join('\n'))
+      if (isYearView) {
+        const targets = buildAnnualPayUTargets()
+        if (targets.length === 0) {
+          setPayuPreviewError('Brak salda do zapłaty w wybranych rozliczeniach')
+          return
+        }
+
+        const result = await previewPayUAnnualPaymentsFromReportsAction(targets, payuChannel)
+        if (result.errors?.length) {
+          setPayuPreviewError(
+            result.errors.map((e) => `${e.studentId}: ${e.error}`).join('\n')
+          )
+        }
+        setPayuPreviews(result.previews || [])
+        return
       }
-      setPayuPreviews(result.previews || [])
+
+      // Grupuj po okresie miesięcznym
+      const byPeriod = new Map<string, { month: number; year: number; studentIds: string[] }>()
+      for (const billing of selectedBillings) {
+        const { month, year } = billing.billing_periods
+        if (!month || !year) continue
+        const key = `${year}::${month}`
+        const existing = byPeriod.get(key)
+        if (existing) {
+          if (!existing.studentIds.includes(billing.student_id)) {
+            existing.studentIds.push(billing.student_id)
+          }
+        } else {
+          byPeriod.set(key, { month, year, studentIds: [billing.student_id] })
+        }
+      }
+
+      if (byPeriod.size === 0) {
+        setPayuPreviewError('Brak rozliczeń miesięcznych do wysłania')
+        return
+      }
+
+      const allPreviews: typeof payuPreviews = []
+      const allErrors: string[] = []
+
+      for (const period of byPeriod.values()) {
+        const result = await previewPayUPaymentsFromReportsAction(
+          period.studentIds,
+          period.month,
+          period.year,
+          payuChannel
+        )
+        if (result.previews?.length) {
+          allPreviews.push(...result.previews)
+        }
+        if (result.errors?.length) {
+          for (const e of result.errors) {
+            allErrors.push(`${e.studentId} (${period.month}/${period.year}): ${e.error}`)
+          }
+        }
+      }
+
+      setPayuPreviewError(allErrors.length > 0 ? allErrors.join('\n') : null)
+      setPayuPreviews(allPreviews)
     } catch (error) {
       setPayuPreviewError(error instanceof Error ? error.message : 'Nie udało się wygenerować podglądu')
     } finally {
@@ -475,28 +724,77 @@ export function BillingFromReportsTable({
   }
 
   const handleSendPayu = async () => {
-    if (selectedIds.size === 0) return
-    const uniquePeriods = new Set(
-      selectedBillings.map((b) => `${b.billing_periods.month}-${b.billing_periods.year}`)
-    )
-    if (uniquePeriods.size > 1) {
-      toast.error('Wybierz rozliczenia z tego samego okresu, aby wysłać płatności PayU')
-      return
-    }
-
-    const first = selectedBillings[0]
-    const payMonth = first.billing_periods.month
-    const payYear = first.billing_periods.year
-    const studentIdsToSend = selectedBillings.map((b) => b.student_id)
+    if (selectedIds.size === 0 || selectedBillings.length === 0) return
 
     setSendingPayu(true)
     try {
-      const result = await sendPayUPaymentsFromReportsAction(studentIdsToSend, payMonth, payYear, payuChannel)
-      if (result.success) {
-        toast.success(`Wysłano płatności PayU dla ${result.sent} ${result.sent === 1 ? 'ucznia' : 'uczniów'}`)
-        if (result.failed > 0) {
+      if (isYearView) {
+        const targets = buildAnnualPayUTargets()
+        if (targets.length === 0) {
+          toast.error('Brak salda do zapłaty w wybranych rozliczeniach')
+          return
+        }
+
+        const result = await sendPayUAnnualPaymentsFromReportsAction(targets, payuChannel)
+        if ((result.sent || 0) > 0) {
+          toast.success(
+            `Wysłano ${result.sent} ${result.sent === 1 ? 'płatność PayU' : 'płatności PayU'} (suma za rok)`
+          )
+          if (result.failed > 0) {
+            toast.warning(
+              `Nie udało się wysłać ${result.failed} ${result.failed === 1 ? 'płatności' : 'płatności'}`
+            )
+          }
+          setSelectedIds(new Set())
+          setPayuDialogOpen(false)
+          router.refresh()
+        } else {
+          toast.error('Nie udało się wysłać płatności')
+        }
+        return
+      }
+
+      const byPeriod = new Map<string, { month: number; year: number; studentIds: string[] }>()
+      for (const billing of selectedBillings) {
+        const { month, year } = billing.billing_periods
+        if (!month || !year) continue
+        const key = `${year}::${month}`
+        const existing = byPeriod.get(key)
+        if (existing) {
+          if (!existing.studentIds.includes(billing.student_id)) {
+            existing.studentIds.push(billing.student_id)
+          }
+        } else {
+          byPeriod.set(key, { month, year, studentIds: [billing.student_id] })
+        }
+      }
+
+      if (byPeriod.size === 0) {
+        toast.error('Brak rozliczeń miesięcznych do wysłania')
+        return
+      }
+
+      let sent = 0
+      let failed = 0
+
+      for (const period of byPeriod.values()) {
+        const result = await sendPayUPaymentsFromReportsAction(
+          period.studentIds,
+          period.month,
+          period.year,
+          payuChannel
+        )
+        sent += result.sent || 0
+        failed += result.failed || 0
+      }
+
+      if (sent > 0) {
+        toast.success(
+          `Wysłano ${sent} ${sent === 1 ? 'płatność PayU' : 'płatności PayU'}`
+        )
+        if (failed > 0) {
           toast.warning(
-            `Nie udało się wysłać płatności dla ${result.failed} ${result.failed === 1 ? 'ucznia' : 'uczniów'}`
+            `Nie udało się wysłać ${failed} ${failed === 1 ? 'płatności' : 'płatności'}`
           )
         }
         setSelectedIds(new Set())
@@ -517,7 +815,7 @@ export function BillingFromReportsTable({
     <div className="space-y-4">
       {/* Filters and Actions */}
       <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-4 flex-1">
+        <div className="flex items-center gap-4 flex-1 flex-wrap">
           <Input
             placeholder="Szukaj po uczniu, rodzicu, przedmiocie lub tutorze..."
             value={search}
@@ -525,19 +823,34 @@ export function BillingFromReportsTable({
             className="max-w-sm"
           />
           <Select
-            value={monthFilter}
-            onValueChange={setMonthFilter}
+            value={periodFilter}
+            onValueChange={setPeriodFilter}
           >
-            <SelectTrigger className="w-[220px]">
-              <SelectValue placeholder="Wszystkie miesiące" />
+            <SelectTrigger className="w-[240px]">
+              <SelectValue placeholder="Okres" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Wszystkie miesiące</SelectItem>
-              {availableMonths.map((m) => (
-                <SelectItem key={m.key} value={m.key}>
-                  {m.label}
-                </SelectItem>
-              ))}
+              <SelectItem value="all">Wszystkie okresy</SelectItem>
+              {periodOptions.years.length > 0 && (
+                <SelectGroup>
+                  <SelectLabel>Lata</SelectLabel>
+                  {periodOptions.years.map((year) => (
+                    <SelectItem key={`year:${year}`} value={`year:${year}`}>
+                      Cały rok {year}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              )}
+              {periodOptions.months.length > 0 && (
+                <SelectGroup>
+                  <SelectLabel>Miesiące</SelectLabel>
+                  {periodOptions.months.map((m) => (
+                    <SelectItem key={`month:${m.key}`} value={`month:${m.key}`}>
+                      {m.label}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              )}
             </SelectContent>
           </Select>
           <Button
@@ -640,7 +953,7 @@ export function BillingFromReportsTable({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredBillings.length === 0 ? (
+            {displayBillings.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={11} className="text-center text-muted-foreground">
                   {billings.length === 0 
@@ -652,6 +965,7 @@ export function BillingFromReportsTable({
               paginatedBillings.map((billing) => {
                 const hasTutorHours = !!(billing.tutor_hours && billing.tutor_hours.length > 0)
                 const tutorHoursExpanded = expandedTutorHoursIds.has(billing.id)
+                const isYearAggregate = billing.billing_periods.month === 0
 
                 return (
                   <React.Fragment key={billing.id}>
@@ -664,7 +978,9 @@ export function BillingFromReportsTable({
                       </TableCell>
                       <TableCell>
                         <span className="whitespace-nowrap text-sm">
-                          {monthNames[billing.billing_periods.month]} {billing.billing_periods.year}
+                          {isYearAggregate
+                            ? `Cały rok ${billing.billing_periods.year}`
+                            : `${monthNames[billing.billing_periods.month]} ${billing.billing_periods.year}`}
                         </span>
                       </TableCell>
                       <TableCell className="font-medium">
@@ -798,7 +1114,7 @@ export function BillingFromReportsTable({
       </div>
 
       {/* Pagination */}
-      {filteredBillings.length > ITEMS_PER_PAGE && (
+      {displayBillings.length > ITEMS_PER_PAGE && (
         <div className="flex items-center justify-between">
           <div className="text-sm text-muted-foreground">
             Wyświetlanie {(currentPage - 1) * ITEMS_PER_PAGE + 1}-
@@ -901,61 +1217,82 @@ export function BillingFromReportsTable({
 
           <div className="space-y-3">
             <div className="text-sm text-muted-foreground">
-              Wybrano <strong>{selectedIds.size}</strong> {selectedIds.size === 1 ? 'rozliczenie' : 'rozliczeń'} •
-              Łączna kwota: <strong>{selectedTotal.toFixed(2)} zł</strong>
+              Wybrano <strong>{isYearView ? selectedIds.size : selectedBillings.length}</strong>{' '}
+              {isYearView
+                ? selectedIds.size === 1
+                  ? 'ucznia'
+                  : 'uczniów'
+                : selectedBillings.length === 1
+                  ? 'rozliczenie'
+                  : 'rozliczeń'}
+              {isYearView ? ' • jedna płatność z sumą za rok' : ''} • Łączna kwota:{' '}
+              <strong>
+                {(isYearView
+                  ? payuPreviews.reduce((s, p) => s + p.amount, 0) || selectedTotal
+                  : selectedTotal
+                ).toFixed(2)}{' '}
+                zł
+              </strong>
             </div>
 
             {payuPreviewLoading ? (
               <div className="text-sm text-muted-foreground">Generowanie podglądu...</div>
-            ) : payuPreviewError ? (
-              <div className="p-3 border border-destructive/50 bg-destructive/10 rounded-md">
-                <pre className="text-xs whitespace-pre-wrap text-destructive">{payuPreviewError}</pre>
-              </div>
-            ) : payuPreviews.length === 0 ? (
-              <div className="text-sm text-muted-foreground">Brak podglądu do wyświetlenia.</div>
             ) : (
-              <div className="space-y-3 max-h-[420px] overflow-auto pr-2">
-                {payuPreviews.map((p) => (
-                  <div key={p.studentId} className="rounded-md border p-3 space-y-2">
-                    <div className="text-sm">
-                      <div className="font-medium">{p.studentName}</div>
-                      <div className="text-xs text-muted-foreground">
-                        Opiekun: {p.parentName}
-                        {p.toEmail ? ` • ${p.toEmail}` : ''}
-                        {p.toPhone ? ` • ${p.toPhone}` : ''}
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        Kwota: {p.amount.toFixed(2)} zł • Okres: {p.month}/{p.year}
-                      </div>
-                    </div>
-
-                    {p.email && (
-                      <div className="space-y-2">
-                        <div className="text-xs font-medium">Email</div>
-                        <div className="text-xs text-muted-foreground">
-                          Temat: <span className="font-mono">{p.email.subject}</span>
-                        </div>
-                        <div className="rounded-md border overflow-hidden">
-                          <iframe
-                            title={`email-preview-${p.studentId}`}
-                            srcDoc={p.email.html}
-                            className="w-full h-[260px] bg-white"
-                          />
-                        </div>
-                      </div>
-                    )}
-
-                    {p.sms && (
-                      <div className="space-y-2">
-                        <div className="text-xs font-medium">SMS</div>
-                        <pre className="text-xs whitespace-pre-wrap rounded-md border p-2 bg-muted">
-                          {p.sms.body}
-                        </pre>
-                      </div>
-                    )}
+              <>
+                {payuPreviewError && (
+                  <div className="p-3 border border-destructive/50 bg-destructive/10 rounded-md">
+                    <pre className="text-xs whitespace-pre-wrap text-destructive">{payuPreviewError}</pre>
                   </div>
-                ))}
-              </div>
+                )}
+                {payuPreviews.length === 0 && !payuPreviewError ? (
+                  <div className="text-sm text-muted-foreground">Brak podglądu do wyświetlenia.</div>
+                ) : payuPreviews.length > 0 ? (
+                  <div className="space-y-3 max-h-[420px] overflow-auto pr-2">
+                    {payuPreviews.map((p) => (
+                      <div key={`${p.studentId}-${p.month}-${p.year}-${p.periodLabel || ''}`} className="rounded-md border p-3 space-y-2">
+                        <div className="text-sm">
+                          <div className="font-medium">{p.studentName}</div>
+                          <div className="text-xs text-muted-foreground">
+                            Opiekun: {p.parentName}
+                            {p.toEmail ? ` • ${p.toEmail}` : ''}
+                            {p.toPhone ? ` • ${p.toPhone}` : ''}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            Kwota: {p.amount.toFixed(2)} zł • Okres:{' '}
+                            {p.periodLabel ||
+                              `${monthNames[p.month] || p.month} ${p.year}`}
+                          </div>
+                        </div>
+
+                        {p.email && (
+                          <div className="space-y-2">
+                            <div className="text-xs font-medium">Email</div>
+                            <div className="text-xs text-muted-foreground">
+                              Temat: <span className="font-mono">{p.email.subject}</span>
+                            </div>
+                            <div className="rounded-md border overflow-hidden">
+                              <iframe
+                                title={`email-preview-${p.studentId}-${p.month}-${p.year}`}
+                                srcDoc={p.email.html}
+                                className="w-full h-[260px] bg-white"
+                              />
+                            </div>
+                          </div>
+                        )}
+
+                        {p.sms && (
+                          <div className="space-y-2">
+                            <div className="text-xs font-medium">SMS</div>
+                            <pre className="text-xs whitespace-pre-wrap rounded-md border p-2 bg-muted">
+                              {p.sms.body}
+                            </pre>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </>
             )}
           </div>
 
@@ -963,7 +1300,7 @@ export function BillingFromReportsTable({
             <Button variant="outline" onClick={() => setPayuDialogOpen(false)} disabled={sendingPayu}>
               Anuluj
             </Button>
-            <Button onClick={handleSendPayu} disabled={sendingPayu}>
+            <Button onClick={handleSendPayu} disabled={sendingPayu || payuPreviews.length === 0}>
               {sendingPayu ? 'Wysyłanie...' : 'Wyślij płatności'}
             </Button>
           </DialogFooter>
@@ -1005,7 +1342,9 @@ export function BillingFromReportsTable({
           }
 
           if (selectedIds.size === 0) return
-          const result = await sendGroupRemindersAction(Array.from(selectedIds), channel, message)
+          const monthlyIds = resolveSelectedMonthlyIds()
+          if (monthlyIds.length === 0) return
+          const result = await sendGroupRemindersAction(monthlyIds, channel, message)
           if (result.success) {
             toast.success(`Wysłano ${result.sent} przypomnień`)
           } else {

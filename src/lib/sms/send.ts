@@ -3,10 +3,23 @@ import { smsCompletedLessonsReminder, smsNextMonthPlanReminder } from '@/lib/lab
 import type { SendNotificationResult } from '@/lib/types/notifications'
 
 const MAX_SMS_LENGTH = 320
+/** Limit pojedynczego SMS GSM-7 (bez polskich znaków diakrytycznych). */
+const MAX_GSM_SMS_LENGTH = 160
 
-function truncate(body: string): string {
-  if (body.length <= MAX_SMS_LENGTH) return body
-  return `${body.slice(0, MAX_SMS_LENGTH - 3)}...`
+function truncate(body: string, maxLength = MAX_SMS_LENGTH): string {
+  if (body.length <= maxLength) return body
+  return `${body.slice(0, maxLength - 3)}...`
+}
+
+/**
+ * Krótka treść SMS zaproszenia — ASCII (GSM-7), z linkiem skracanym przez SerwerSMS (#URL:...#).
+ * Pełny URL w emailu; w SMS wystarczy krótki link rejestracyjny.
+ */
+export function buildInvitationSmsBody(invitationLink: string): string {
+  return truncate(
+    `Akademia Wiedzy: zarejestruj sie jako tutor: #URL:${invitationLink}#`,
+    MAX_GSM_SMS_LENGTH
+  )
 }
 
 const ANNOUNCEMENT_HEADER = 'AKADEMIA WIEDZY OGŁOSZENIE'
@@ -26,11 +39,9 @@ export async function sendInvitationSms({
   invitationLink,
 }: SendInvitationSmsParams): Promise<SendNotificationResult> {
   const client = getSmsClient()
-  const body = truncate(
-    `Akademia Wiedzy: zaproszenie do panelu tutora. Zarejestruj się przez link: ${invitationLink}`
-  )
+  const body = buildInvitationSmsBody(invitationLink)
 
-  const result = await client.sendSms({ to: toPhone, body })
+  const result = await client.sendSms({ to: toPhone, body, utf: false })
   return result.success
     ? { success: true }
     : { success: false, error: result.error, details: { sms: result.error } }

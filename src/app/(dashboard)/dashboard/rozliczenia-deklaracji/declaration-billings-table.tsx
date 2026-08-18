@@ -296,7 +296,7 @@ export function DeclarationBillingsTable({
     }
 
     // Group selected billings by month/year to send payments per period
-    const selectedBillingsList = filteredBillings.filter(b => selectedIds.has(getBillingKey(b)))
+    const selectedBillingsList = billings.filter(b => selectedIds.has(getBillingKey(b)))
     
     // For now, we need a single month/year for PayU payments
     // Check if all selected are from the same month
@@ -352,7 +352,7 @@ export function DeclarationBillingsTable({
       return
     }
 
-    const selectedBillingsList = filteredBillings.filter((b) => selectedIds.has(getBillingKey(b)))
+    const selectedBillingsList = billings.filter((b) => selectedIds.has(getBillingKey(b)))
     const uniquePeriods = new Set(
       selectedBillingsList.map((b) => `${b.billing_periods.month}-${b.billing_periods.year}`)
     )
@@ -384,8 +384,8 @@ export function DeclarationBillingsTable({
   }
 
   const selectedBillings = useMemo(() => {
-    return filteredBillings.filter(b => selectedIds.has(getBillingKey(b)))
-  }, [filteredBillings, selectedIds])
+    return billings.filter(b => selectedIds.has(getBillingKey(b)))
+  }, [billings, selectedIds])
 
   const selectedTotal = useMemo(() => {
     return selectedBillings.reduce((sum, b) => sum + (b.balance || 0), 0)

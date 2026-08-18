@@ -166,9 +166,13 @@ export function DeclarationsManagement({ declarations, tutors = [], adminId }: D
 
   const toggleSelectAll = (checked: boolean) => {
     if (checked) {
-      setSelectedTutorIds(new Set(filteredTutorsWithoutDeclarations.map(t => t.id)))
+      const newSelected = new Set(selectedTutorIds)
+      filteredTutorsWithoutDeclarations.forEach((t) => newSelected.add(t.id))
+      setSelectedTutorIds(newSelected)
     } else {
-      setSelectedTutorIds(new Set())
+      const newSelected = new Set(selectedTutorIds)
+      filteredTutorsWithoutDeclarations.forEach((t) => newSelected.delete(t.id))
+      setSelectedTutorIds(newSelected)
     }
   }
 
@@ -183,10 +187,10 @@ export function DeclarationsManagement({ declarations, tutors = [], adminId }: D
 
   const isAllSelected =
     filteredTutorsWithoutDeclarations.length > 0 &&
-    selectedTutorIds.size === filteredTutorsWithoutDeclarations.length
-  const isSomeSelected =
-    selectedTutorIds.size > 0 &&
-    selectedTutorIds.size < filteredTutorsWithoutDeclarations.length
+    filteredTutorsWithoutDeclarations.every((t) => selectedTutorIds.has(t.id))
+  const isSomeSelected = filteredTutorsWithoutDeclarations.some((t) =>
+    selectedTutorIds.has(t.id)
+  )
 
   const getDefaultReminderMessage = (month: number, year: number) => {
     const monthLabel = months[month - 1] || `${month}`
@@ -347,22 +351,7 @@ export function DeclarationsManagement({ declarations, tutors = [], adminId }: D
                   <Input
                     placeholder="Szukaj po nazwisku tutora..."
                     value={searchMissing}
-                    onChange={(e) => {
-                      const nextQuery = e.target.value
-                      setSearchMissing(nextQuery)
-
-                      // usuń zaznaczenia tutorów niewidocznych po zmianie wyszukiwania
-                      const nextVisibleIds = new Set(
-                        filterTutorsBySearch(tutorsWithoutDeclarationsForPeriod, nextQuery).map((t) => t.id)
-                      )
-                      setSelectedTutorIds((prev) => {
-                        const next = new Set<string>()
-                        prev.forEach((id) => {
-                          if (nextVisibleIds.has(id)) next.add(id)
-                        })
-                        return next
-                      })
-                    }}
+                    onChange={(e) => setSearchMissing(e.target.value)}
                     className="pl-8"
                   />
                 </div>
@@ -459,7 +448,7 @@ export function DeclarationsManagement({ declarations, tutors = [], adminId }: D
           const errors: string[] = []
           try {
             for (const tutorId of selectedTutorIds) {
-              const tutor = filteredTutorsWithoutDeclarations.find((t) => t.id === tutorId)
+              const tutor = tutorsWithoutDeclarationsForPeriod.find((t) => t.id === tutorId)
               if (!tutor) continue
               const result = await sendDeclarationReminderToTutor(tutorId, month, year, channel, message)
               if (result.success) {

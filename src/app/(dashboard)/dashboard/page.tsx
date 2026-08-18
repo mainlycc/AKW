@@ -415,9 +415,9 @@ export default async function DashboardPage() {
         <div className="grid gap-6 lg:grid-cols-12 lg:items-start">
           {/* 2. Najbliższa lekcja */}
           <section className="lg:col-span-5">
-            <div className="mb-2 flex items-center justify-between">
+            <div className="mb-2 flex min-h-8 items-center justify-between">
               <div className="text-sm font-semibold text-foreground">Najbliższa lekcja</div>
-              <Button asChild variant="link" className="h-auto p-0 text-xs font-semibold">
+              <Button asChild variant="link" className="h-8 p-0 text-xs font-semibold">
                 <Link href="/dashboard/kalendarz-lekcji">Zobacz kalendarz</Link>
               </Button>
             </div>
@@ -461,7 +461,7 @@ export default async function DashboardPage() {
 
           {/* 3. Aktywne przypisania */}
           <section className="lg:col-span-7">
-            <div className="mb-2 flex items-center justify-between">
+            <div className="mb-2 flex min-h-8 items-center justify-between">
               <div className="text-sm font-semibold text-foreground">Aktywne przypisania</div>
               <Button size="sm" variant="outline" className="h-8">
                 + Nowe przypisanie

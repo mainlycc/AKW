@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import {
   Table,
@@ -13,12 +13,12 @@ import {
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { GroupMessageDialog } from "./group-message-dialog"
 import { deleteTutor, setTutorsPublicBookingEnabled } from "./actions"
 import { Badge } from "@/components/ui/badge"
 import { IconTrash, IconMail, IconSearch, IconX, IconCheck } from "@tabler/icons-react"
 import { ConfirmDialog } from "@/components/confirm-dialog"
+import { TableSelectionBar } from "@/components/table-selection-bar"
 import { formatHours } from "@/lib/utils"
 
 interface TutorWithStats {
@@ -144,11 +144,30 @@ export function TutorsTable({ tutors, tutorSubjects, defaultTutorRate = null }: 
     setConfirmDialogOpen(true)
   }
 
+  const filteredTutorIds = useMemo(
+    () => new Set(filteredTutors.map((t) => t.id)),
+    [filteredTutors]
+  )
+
+  const selectedTutors = useMemo(
+    () => tutors.filter((t) => selectedIds.has(t.id)),
+    [tutors, selectedIds]
+  )
+
+  const allFilteredSelected =
+    filteredTutors.length > 0 &&
+    filteredTutors.every((t) => selectedIds.has(t.id))
+  const someFilteredSelected = filteredTutors.some((t) => selectedIds.has(t.id))
+
   const toggleSelectAll = () => {
-    if (selectedIds.size === filteredTutors.length) {
-      setSelectedIds(new Set())
+    if (allFilteredSelected) {
+      const newSelected = new Set(selectedIds)
+      filteredTutors.forEach((t) => newSelected.delete(t.id))
+      setSelectedIds(newSelected)
     } else {
-      setSelectedIds(new Set(filteredTutors.map(t => t.id)))
+      const newSelected = new Set(selectedIds)
+      filteredTutors.forEach((t) => newSelected.add(t.id))
+      setSelectedIds(newSelected)
     }
   }
 
@@ -162,47 +181,8 @@ export function TutorsTable({ tutors, tutorSubjects, defaultTutorRate = null }: 
     setSelectedIds(newSelected)
   }
 
-  const totalStats = {
-    totalTutors: tutors.length,
-    totalActiveAssignments: tutors.reduce((acc, t) => acc + t.activeAssignments, 0),
-    totalHours: tutors.reduce((acc, t) => acc + t.totalHours, 0),
-  }
-
   return (
     <div className="space-y-4">
-      {/* Statystyki */}
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Liczba tutorów</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{totalStats.totalTutors}</div>
-            <p className="text-xs text-muted-foreground">Wszyscy tutorzy w systemie</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Aktywne przypisania</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{totalStats.totalActiveAssignments}</div>
-            <p className="text-xs text-muted-foreground">Suma wszystkich przypisań</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Suma godzin</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{formatHours(totalStats.totalHours)}h</div>
-            <p className="text-xs text-muted-foreground">Wszystkie przeprowadzone sesje</p>
-          </CardContent>
-        </Card>
-      </div>
-
       {/* Wyszukiwarka i przyciski */}
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-2">
@@ -256,6 +236,17 @@ export function TutorsTable({ tutors, tutorSubjects, defaultTutorRate = null }: 
         </div>
       </div>
 
+      <TableSelectionBar
+        items={selectedTutors.map((t) => ({ id: t.id, label: t.full_name }))}
+        visibleIds={filteredTutorIds}
+        onRemove={(id) => {
+          const newSelected = new Set(selectedIds)
+          newSelected.delete(id)
+          setSelectedIds(newSelected)
+        }}
+        onClearAll={() => setSelectedIds(new Set())}
+      />
+
       {/* Tabela */}
       <div className="rounded-md border">
         <Table>
@@ -263,7 +254,13 @@ export function TutorsTable({ tutors, tutorSubjects, defaultTutorRate = null }: 
             <TableRow>
               <TableHead className="w-12">
                 <Checkbox
-                  checked={selectedIds.size === filteredTutors.length && filteredTutors.length > 0}
+                  checked={
+                    allFilteredSelected
+                      ? true
+                      : someFilteredSelected
+                        ? 'indeterminate'
+                        : false
+                  }
                   onCheckedChange={toggleSelectAll}
                 />
               </TableHead>
@@ -341,7 +338,7 @@ export function TutorsTable({ tutors, tutorSubjects, defaultTutorRate = null }: 
       <GroupMessageDialog
         open={groupMessageDialogOpen}
         onOpenChange={setGroupMessageDialogOpen}
-        selectedTutors={filteredTutors.filter(t => selectedIds.has(t.id))}
+        selectedTutors={selectedTutors}
       />
     </div>
   )

@@ -78,9 +78,9 @@ export function InvitationDialog({ open, onOpenChange }: InvitationDialogProps) 
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="w-[95vw] sm:max-w-[525px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Wyślij zaproszenie email</DialogTitle>
+          <DialogTitle>Wyślij zaproszenie</DialogTitle>
           <DialogDescription>
-            Wpisz adres email tutor. Wyślemy email z linkiem do rejestracji ważnym przez 7 dni.
+            Wpisz adres email tutora. Wyślemy zaproszenie z linkiem do rejestracji ważnym przez 7 dni.
           </DialogDescription>
         </DialogHeader>
 
@@ -145,7 +145,13 @@ export function InvitationDialog({ open, onOpenChange }: InvitationDialogProps) 
               Anuluj
             </Button>
             <Button type="submit" disabled={isLoading}>
-              {isLoading ? 'Wysyłanie emaila...' : 'Wyślij email'}
+              {isLoading
+                ? 'Wysyłanie...'
+                : channel === 'email'
+                  ? 'Wyślij email'
+                  : channel === 'sms'
+                    ? 'Wyślij SMS'
+                    : 'Wyślij email i SMS'}
             </Button>
           </DialogFooter>
         </form>

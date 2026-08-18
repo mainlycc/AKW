@@ -1,5 +1,12 @@
+export interface SendSmsParams {
+  to: string
+  body: string
+  /** Domyślnie true (SMS FULL z polskimi znakami, max 70 znaków na część). */
+  utf?: boolean
+}
+
 export interface SmsClient {
-  sendSms(params: { to: string; body: string }): Promise<{ success: boolean; error?: string }>
+  sendSms(params: SendSmsParams): Promise<{ success: boolean; error?: string }>
 }
 
 const SERWERSMS_API_URL = 'https://api2.serwersms.pl/messages/send_sms.json'
@@ -63,8 +70,8 @@ class SerwerSmsClient implements SmsClient {
     return !!this.apiToken
   }
 
-  async sendSms(params: { to: string; body: string }): Promise<{ success: boolean; error?: string }> {
-    const { body } = params
+  async sendSms(params: SendSmsParams): Promise<{ success: boolean; error?: string }> {
+    const { body, utf = true } = params
     const to = normalizePhoneNumber(params.to)
 
     if (!to) {
@@ -88,7 +95,7 @@ class SerwerSmsClient implements SmsClient {
       const formData = new URLSearchParams()
       formData.set('phone', to)
       formData.set('text', body)
-      formData.set('utf', 'true')
+      formData.set('utf', utf ? 'true' : 'false')
       formData.set('details', 'true')
 
       if (this.sender) {

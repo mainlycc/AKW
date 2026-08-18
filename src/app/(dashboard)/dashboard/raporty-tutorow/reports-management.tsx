@@ -228,9 +228,13 @@ export function ReportsManagement({ reports, tutors = [], adminId }: ReportsMana
   // Funkcje do zarządzania zaznaczeniami
   const toggleSelectAll = (checked: boolean) => {
     if (checked) {
-      setSelectedTutorIds(new Set(filteredTutorsWithoutReports.map(t => t.id)))
+      const newSelected = new Set(selectedTutorIds)
+      filteredTutorsWithoutReports.forEach((t) => newSelected.add(t.id))
+      setSelectedTutorIds(newSelected)
     } else {
-      setSelectedTutorIds(new Set())
+      const newSelected = new Set(selectedTutorIds)
+      filteredTutorsWithoutReports.forEach((t) => newSelected.delete(t.id))
+      setSelectedTutorIds(newSelected)
     }
   }
 
@@ -244,8 +248,10 @@ export function ReportsManagement({ reports, tutors = [], adminId }: ReportsMana
     setSelectedTutorIds(newSelected)
   }
 
-  const isAllSelected = filteredTutorsWithoutReports.length > 0 && selectedTutorIds.size === filteredTutorsWithoutReports.length
-  const isSomeSelected = selectedTutorIds.size > 0 && selectedTutorIds.size < filteredTutorsWithoutReports.length
+  const isAllSelected =
+    filteredTutorsWithoutReports.length > 0 &&
+    filteredTutorsWithoutReports.every((t) => selectedTutorIds.has(t.id))
+  const isSomeSelected = filteredTutorsWithoutReports.some((t) => selectedTutorIds.has(t.id))
 
   const getDefaultReminderMessage = (month: number, year: number) => {
     const monthLabel = months[month - 1] || `${month}`
@@ -410,22 +416,7 @@ export function ReportsManagement({ reports, tutors = [], adminId }: ReportsMana
               <Input
                 placeholder="Szukaj po nazwisku tutora..."
                 value={searchMissing}
-                onChange={(e) => {
-                  const nextQuery = e.target.value
-                  setSearchMissing(nextQuery)
-
-                  // usuń zaznaczenia tutorów niewidocznych po zmianie wyszukiwania
-                  const nextVisibleIds = new Set(
-                    filterTutorsBySearch(tutorsWithoutReports, nextQuery).map((t) => t.id)
-                  )
-                  setSelectedTutorIds((prev) => {
-                    const next = new Set<string>()
-                    prev.forEach((id) => {
-                      if (nextVisibleIds.has(id)) next.add(id)
-                    })
-                    return next
-                  })
-                }}
+                onChange={(e) => setSearchMissing(e.target.value)}
                 className="pl-8"
               />
             </div>
@@ -540,7 +531,7 @@ export function ReportsManagement({ reports, tutors = [], adminId }: ReportsMana
           const errors: string[] = []
           try {
             for (const tutorId of selectedTutorIds) {
-              const tutor = filteredTutorsWithoutReports.find((t) => t.id === tutorId)
+              const tutor = tutorsWithoutReports.find((t) => t.id === tutorId)
               if (!tutor) continue
               const result = await sendReportReminderToTutor(tutorId, reminderMonthNumber, reminderYear, channel, message)
               if (result.success) {

@@ -444,7 +444,7 @@ export function BillingFromReportsTable({
 
   const selectedMonthlyBillings = useMemo(() => {
     if (!isYearView) {
-      return displayBillings.filter((b) => selectedIds.has(b.id))
+      return billings.filter((b) => selectedIds.has(b.id))
     }
 
     const monthlyIdSet = new Set<string>()
@@ -453,8 +453,8 @@ export function BillingFromReportsTable({
         monthlyIdSet.add(sourceId)
       }
     }
-    return filteredBillings.filter((b) => monthlyIdSet.has(b.id))
-  }, [isYearView, displayBillings, selectedIds, yearSourceIds, filteredBillings])
+    return billings.filter((b) => monthlyIdSet.has(b.id))
+  }, [isYearView, selectedIds, yearSourceIds, billings])
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {

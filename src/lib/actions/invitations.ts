@@ -25,6 +25,18 @@ interface RegisterResult {
   error?: string
 }
 
+function buildInvitationLink(token: string): string {
+  let baseUrl = 'http://localhost:3000'
+
+  if (process.env.NEXT_PUBLIC_APP_URL) {
+    baseUrl = process.env.NEXT_PUBLIC_APP_URL
+  } else if (process.env.VERCEL_ENV === 'production' && process.env.VERCEL_URL) {
+    baseUrl = `https://${process.env.VERCEL_URL}`
+  }
+
+  return `${baseUrl.replace(/\/$/, '')}/register?token=${token}`
+}
+
 /**
  * Tworzy nowe zaproszenie dla tutora
  */
@@ -98,17 +110,7 @@ export async function createInvitation(
   // PRIORYTET 1: NEXT_PUBLIC_APP_URL (jeśli ustawiony, zawsze używamy go)
   // PRIORYTET 2: VERCEL_URL tylko dla production
   // PRIORYTET 3: localhost w development
-  let baseUrl = 'http://localhost:3000'
-  
-  if (process.env.NEXT_PUBLIC_APP_URL) {
-    // Zawsze używamy NEXT_PUBLIC_APP_URL jeśli jest ustawiony
-    baseUrl = process.env.NEXT_PUBLIC_APP_URL
-  } else if (process.env.VERCEL_ENV === 'production' && process.env.VERCEL_URL) {
-    // Tylko jeśli NEXT_PUBLIC_APP_URL nie jest ustawiony, używamy VERCEL_URL
-    baseUrl = `https://${process.env.VERCEL_URL}`
-  }
-  
-  const invitationLink = `${baseUrl}/register?token=${invitation.token}`
+  const invitationLink = buildInvitationLink(invitation.token)
 
   // Wysyłka według wybranego kanału – zachowujemy dotychczasowe zachowanie:
   // nie przerywamy procesu tworzenia zaproszenia, nawet jeśli wysyłka się nie powiedzie.
@@ -138,6 +140,33 @@ export async function createInvitation(
         error: result.error,
         details: result.details,
       })
+
+      const smsFailed = !!result.details?.sms
+      const emailFailed = !!result.details?.email
+
+      if (channel === 'sms' && smsFailed) {
+        return {
+          success: false,
+          error: result.details?.sms || result.error || 'Nie udało się wysłać SMS z zaproszeniem',
+          invitation: invitation as TutorInvitation,
+        }
+      }
+
+      if (channel === 'email' && emailFailed) {
+        return {
+          success: false,
+          error: result.details?.email || result.error || 'Nie udało się wysłać emaila z zaproszeniem',
+          invitation: invitation as TutorInvitation,
+        }
+      }
+
+      if (channel === 'both' && smsFailed && emailFailed) {
+        return {
+          success: false,
+          error: result.error || 'Nie udało się wysłać zaproszenia',
+          invitation: invitation as TutorInvitation,
+        }
+      }
     } else {
       console.log('Invitation notification sent successfully:', {
         email,
@@ -217,18 +246,10 @@ export async function resendInvitations(
 
   const failed: string[] = []
 
-  // Ustal bazowy URL tak jak przy tworzeniu
-  let baseUrl = 'http://localhost:3000'
-  if (process.env.NEXT_PUBLIC_APP_URL) {
-    baseUrl = process.env.NEXT_PUBLIC_APP_URL
-  } else if (process.env.VERCEL_ENV === 'production' && process.env.VERCEL_URL) {
-    baseUrl = `https://${process.env.VERCEL_URL}`
-  }
-
   // Wyślij tylko dla statusów pending/expired
   for (const inv of (invitations || [])) {
     if (!inv || (inv.status !== 'pending' && inv.status !== 'expired')) continue
-    const invitationLink = `${baseUrl}/register?token=${inv.token}`
+    const invitationLink = buildInvitationLink(inv.token)
     const result = await sendInvitationEmail({
       to: inv.email,
       invitationLink,

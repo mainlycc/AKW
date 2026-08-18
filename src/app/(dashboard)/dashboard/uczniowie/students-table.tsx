@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import {
   Table,
   TableBody,
@@ -21,6 +21,7 @@ import { deleteStudent, mergeStudentsAction } from "./actions"
 import { IconPlus, IconTrash, IconMail, IconArrowUp, IconArrowDown, IconArrowsSort } from "@tabler/icons-react"
 import { Input } from "@/components/ui/input"
 import { ConfirmDialog } from "@/components/confirm-dialog"
+import { TableSelectionBar } from "@/components/table-selection-bar"
 import {
   Pagination,
   PaginationContent,
@@ -135,6 +136,16 @@ export function StudentsTable({
     (student) =>
       student.first_name.toLowerCase().includes(search.toLowerCase()) ||
       student.last_name.toLowerCase().includes(search.toLowerCase())
+  )
+
+  const filteredStudentIds = useMemo(
+    () => new Set(filteredStudents.map((s) => s.id)),
+    [filteredStudents]
+  )
+
+  const selectedStudents = useMemo(
+    () => students.filter((s) => selectedIds.has(s.id)),
+    [students, selectedIds]
   )
 
   // Sortowanie po przedmiotach lub tutorach
@@ -429,6 +440,22 @@ export function StudentsTable({
         <div className="text-xs text-muted-foreground">
           <span className="font-semibold">*</span> oznacza indywidualną stawkę (nadpisaną ręcznie), niezależną od domyślnej stawki z poziomu.
         </div>
+      )}
+
+      {!isTutor && (
+        <TableSelectionBar
+          items={selectedStudents.map((s) => ({
+            id: s.id,
+            label: `${s.first_name} ${s.last_name}`,
+          }))}
+          visibleIds={filteredStudentIds}
+          onRemove={(id) => {
+            const newSelected = new Set(selectedIds)
+            newSelected.delete(id)
+            setSelectedIds(newSelected)
+          }}
+          onClearAll={() => setSelectedIds(new Set())}
+        />
       )}
 
       <div className="rounded-md border">
@@ -807,7 +834,7 @@ export function StudentsTable({
         <GroupMessageDialog
           open={groupMessageDialogOpen}
           onOpenChange={setGroupMessageDialogOpen}
-          selectedStudents={filteredStudents.filter(s => selectedIds.has(s.id))}
+          selectedStudents={selectedStudents}
         />
       )}
     </div>

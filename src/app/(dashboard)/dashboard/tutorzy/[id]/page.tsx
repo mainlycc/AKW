@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server"
 import { getUserProfile } from "@/lib/actions/auth"
 import { getTutorAvailability } from "@/lib/actions/availability"
-import { listBookedSlots } from "@/lib/actions/booked-slots"
+import { listTutorCalendarOccupancy } from "@/lib/actions/booked-slots"
 import { getTutorSubjectLevels } from "@/lib/actions/tutor"
 import { getDefaultTutorRate } from "../../stawki/actions"
 import { redirect } from "next/navigation"
@@ -17,6 +17,7 @@ interface StudentWithRelations {
   last_name: string
   parent_email: string
   parent_phone: string | null
+  hourly_rate?: number | null
   student_parents?: Array<{
     id: string
     is_primary: boolean
@@ -68,8 +69,7 @@ export default async function TutorDetailsPage({ params }: PageProps) {
   // Pobierz dostępność tutora
   const availability = await getTutorAvailability(id)
 
-  // Pobierz rezerwacje slotów
-  const bookedSlots = await listBookedSlots({ scope: 'admin', tutorId: id })
+  const bookedSlots = await listTutorCalendarOccupancy(id)
 
   // Pobierz przedmioty tutora i zmapuj dane
   const tutorSubjectsData = await getTutorSubjectLevels(id)
@@ -119,6 +119,7 @@ export default async function TutorDetailsPage({ params }: PageProps) {
         last_name,
         parent_email,
         parent_phone,
+        hourly_rate,
         student_parents (
           id,
           is_primary,

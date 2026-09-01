@@ -50,13 +50,22 @@ const formatLabel = (slot: SubjectLevelSlot) => {
   return `${labelDate} · ${slot.startTime}-${slot.endTime} · ${tutorLabel}`
 }
 
+const getTodayDate = () => format(new Date(), 'yyyy-MM-dd')
+
+const getMinBookingDate = () => format(addDays(new Date(), 1), 'yyyy-MM-dd')
+
+const isSlotBookable = (date: string) => date > getTodayDate()
+
+const TODAY_BOOKING_BLOCKED_MESSAGE =
+  'Na dzisiaj nie możesz rezerwować już lekcji. Dostępne są wyłącznie terminy od jutra.'
+
 export function PublicBookingPage({ subjects }: PublicBookingPageProps) {
   const router = useRouter()
   const [selectedSubjectId, setSelectedSubjectId] = useState<string>(subjects[0]?.id ?? '')
   const [selectedLevelId, setSelectedLevelId] = useState<string>(
     subjects[0]?.levels?.[0]?.id ?? ''
   )
-  const [rangeStart, setRangeStart] = useState(() => format(new Date(), 'yyyy-MM-dd'))
+  const [rangeStart, setRangeStart] = useState(() => getMinBookingDate())
   const [slots, setSlots] = useState<SubjectLevelSlot[]>([])
   const [loadingSlots, startSlotsTransition] = useTransition()
   const [booking, setBooking] = useState<PendingBooking | null>(null)
@@ -73,6 +82,7 @@ export function PublicBookingPage({ subjects }: PublicBookingPageProps) {
     contactPhone: '',
     notes: '',
   })
+  const [isRecurring, setIsRecurring] = useState(false)
 
   const rangeEnd = useMemo(() => {
     const start = parseISO(rangeStart)
@@ -134,6 +144,11 @@ export function PublicBookingPage({ subjects }: PublicBookingPageProps) {
   }
 
   const handleRangeChange = (date: string) => {
+    const minDate = getMinBookingDate()
+    if (date < minDate) {
+      toast.error(TODAY_BOOKING_BLOCKED_MESSAGE)
+      return
+    }
     setRangeStart(date)
     if (selectedLevelId) {
       fetchSlots(selectedLevelId, date)
@@ -143,6 +158,10 @@ export function PublicBookingPage({ subjects }: PublicBookingPageProps) {
   const openBooking = (slot: SubjectLevelSlot) => {
     if (!selectedSubjectId || !selectedLevelId) {
       toast.error('Wybierz najpierw przedmiot i poziom.')
+      return
+    }
+    if (!isSlotBookable(slot.date)) {
+      toast.error(TODAY_BOOKING_BLOCKED_MESSAGE)
       return
     }
     if (!slot.isAvailable) {
@@ -162,6 +181,10 @@ export function PublicBookingPage({ subjects }: PublicBookingPageProps) {
       toast.error('Wybierz przedmiot i poziom.')
       return
     }
+    if (!isSlotBookable(booking.slot.date)) {
+      toast.error(TODAY_BOOKING_BLOCKED_MESSAGE)
+      return
+    }
     const payload: PublicBookingPayload = {
       tutorId: booking.tutorId,
       subjectId: selectedSubjectId,
@@ -173,6 +196,7 @@ export function PublicBookingPage({ subjects }: PublicBookingPageProps) {
       contactEmail: formData.contactEmail.trim(),
       contactPhone: formData.contactPhone.trim() || undefined,
       notes: formData.notes.trim() || undefined,
+      isRecurring,
     }
 
     startBookingTransition(async () => {
@@ -211,7 +235,7 @@ export function PublicBookingPage({ subjects }: PublicBookingPageProps) {
   const slotMap = useMemo(() => {
     const map = new Map<string, SubjectLevelSlot[]>()
     for (const slot of slots) {
-      if (!slot.isAvailable) continue
+      if (!slot.isAvailable || !isSlotBookable(slot.date)) continue
       const key = `${slot.date}-${slot.startTime.substring(0, 5)}`
       if (!map.has(key)) {
         map.set(key, [])
@@ -342,7 +366,12 @@ export function PublicBookingPage({ subjects }: PublicBookingPageProps) {
                       className="h-9 w-9"
                       onClick={() => {
                         const prev = subDays(parseISO(rangeStart), 7)
+                        const minDate = getMinBookingDate()
                         const value = format(prev, 'yyyy-MM-dd')
+                        if (value < minDate) {
+                          toast.error(TODAY_BOOKING_BLOCKED_MESSAGE)
+                          return
+                        }
                         setRangeStart(value)
                         if (selectedLevelId) {
                           fetchSlots(selectedLevelId, value)
@@ -355,7 +384,7 @@ export function PublicBookingPage({ subjects }: PublicBookingPageProps) {
                       type="date"
                       value={rangeStart}
                       onChange={(event) => handleRangeChange(event.target.value)}
-                      min={format(new Date(), 'yyyy-MM-dd')}
+                      min={getMinBookingDate()}
                       className="h-9"
                     />
                     <Button
@@ -561,7 +590,12 @@ export function PublicBookingPage({ subjects }: PublicBookingPageProps) {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={!!booking} onOpenChange={(open) => !open && setBooking(null)}>
+      <Dialog open={!!booking} onOpenChange={(open) => {
+        if (!open) {
+          setBooking(null)
+          setIsRecurring(false)
+        }
+      }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="text-lg">Potwierdź rezerwację</DialogTitle>
@@ -579,6 +613,55 @@ export function PublicBookingPage({ subjects }: PublicBookingPageProps) {
                 Przedmiot: <strong>{selectedSubject?.name ?? '—'}</strong>{' '}
                 {selectedLevelName && <>· Poziom: <strong>{selectedLevelName}</strong></>}
               </p>
+              <div className="space-y-2 px-1">
+                <Label>Typ lekcji</Label>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <label
+                    className={cn(
+                      'flex cursor-pointer flex-col gap-1 rounded-lg border-2 p-3 transition-colors',
+                      !isRecurring
+                        ? 'border-primary bg-primary/5'
+                        : 'border-border hover:border-primary/50'
+                    )}
+                  >
+                    <span className="flex items-center gap-2 text-sm font-semibold">
+                      <input
+                        type="radio"
+                        name="lessonType"
+                        checked={!isRecurring}
+                        onChange={() => setIsRecurring(false)}
+                        className="h-4 w-4"
+                      />
+                      Jednorazowa
+                    </span>
+                    <span className="text-xs text-muted-foreground pl-6">
+                      Tylko wybrany termin — bez powtarzania w kolejnych tygodniach.
+                    </span>
+                  </label>
+                  <label
+                    className={cn(
+                      'flex cursor-pointer flex-col gap-1 rounded-lg border-2 p-3 transition-colors',
+                      isRecurring
+                        ? 'border-primary bg-primary/5'
+                        : 'border-border hover:border-primary/50'
+                    )}
+                  >
+                    <span className="flex items-center gap-2 text-sm font-semibold">
+                      <input
+                        type="radio"
+                        name="lessonType"
+                        checked={isRecurring}
+                        onChange={() => setIsRecurring(true)}
+                        className="h-4 w-4"
+                      />
+                      Cykliczna
+                    </span>
+                    <span className="text-xs text-muted-foreground pl-6">
+                      Lekcja co tydzień o tej samej porze — termin zostaje zarezerwowany na stałe.
+                    </span>
+                  </label>
+                </div>
+              </div>
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label htmlFor="studentFirstName">Imię ucznia</Label>
@@ -724,14 +807,22 @@ function PublicSlotGrid({ rangeStart, slotMap, onSelect, onMultipleSlots }: Publ
               </div>
 
               {daysToDisplay.map((day) => {
+                const today = getTodayDate()
+                const isPastOrToday = day.isoDate <= today
+
                 // Ukryj interakcję poza dozwolonymi godzinami dla danego dnia
                 const withinHours = isWithinPublicBookingHours(day.weekday, timeSlot.start)
-                if (!withinHours) {
+                if (!withinHours || isPastOrToday) {
+                  const title = isPastOrToday
+                    ? day.isoDate === today
+                      ? 'Na dzisiaj nie możesz rezerwować już lekcji'
+                      : 'Termin w przeszłości'
+                    : 'Poza godzinami pracy'
                   return (
                     <div
                       key={`${day.isoDate}-${timeSlot.start}`}
                       className="h-6 rounded border-2 border-border bg-muted cursor-not-allowed"
-                      title="Poza godzinami pracy"
+                      title={title}
                     />
                   )
                 }

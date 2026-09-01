@@ -1,6 +1,11 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import {
+  getCompletedBookingPayuPaymentsForPeriod,
+  isBillingPeriodAllowed,
+} from '@/lib/billing/public-booking-payment'
 import type { NotificationChannel, SendNotificationResult } from '@/lib/types/notifications'
 import { sendWithChannel } from '@/lib/notifications/send-with-channel'
 
@@ -727,6 +732,10 @@ export async function getStudentBillingsFromReports(
     throw new Error(`Invalid year: ${year}. Year must be between 2000 and 2100.`)
   }
 
+  if (!isBillingPeriodAllowed(month, year)) {
+    return []
+  }
+
   // Get or create billing period
   const { data: period, error: periodFetchError } = await supabase
     .from('billing_periods')
@@ -1122,20 +1131,47 @@ export async function getStudentBillingsFromReports(
     })),
   })
 
-  // Get payments for the period
+  // Get payments for the period (exclude public-booking prepayments — those are counted below when lesson is completed)
+  const admin = createAdminClient()
   const { data: payments } = await supabase
     .from('payments')
-    .select('student_id, amount')
+    .select('student_id, amount, payu_order_id')
     .eq('billing_period_id', periodId)
     .in('student_id', studentIds)
+
+  const { data: bookingPayuRows } = await admin
+    .from('payu_payments')
+    .select('order_id')
+    .in('student_id', studentIds)
+    .not('booking_request_id', 'is', null)
+
+  const bookingPayuOrderIds = new Set(
+    (bookingPayuRows || []).map((row) => row.order_id).filter(Boolean) as string[]
+  )
 
   // Group payments by student_id
   const paymentsMap = new Map<string, number>()
   if (payments) {
     for (const payment of payments) {
+      if (payment.payu_order_id && bookingPayuOrderIds.has(payment.payu_order_id)) {
+        continue
+      }
       const current = paymentsMap.get(payment.student_id) || 0
       paymentsMap.set(payment.student_id, current + parseFloat(payment.amount.toString()))
     }
+  }
+
+  // Count prepaid public bookings only after the lesson is marked completed (lesson month)
+  const completedBookingPayments = await getCompletedBookingPayuPaymentsForPeriod(
+    admin,
+    studentIds,
+    month,
+    year
+  )
+
+  for (const bookingPayment of completedBookingPayments) {
+    const current = paymentsMap.get(bookingPayment.student_id) || 0
+    paymentsMap.set(bookingPayment.student_id, current + bookingPayment.amount)
   }
 
   // Get active assignments to get categories (subjects)
@@ -2541,10 +2577,12 @@ export async function getAllStudentBillingsFromReports(): Promise<StudentBilling
     periodsSet.add(`${r.month}::${r.year}`)
   }
 
-  const periods = Array.from(periodsSet).map(p => {
-    const [m, y] = p.split('::').map(Number)
-    return { month: m, year: y }
-  })
+  const periods = Array.from(periodsSet)
+    .map(p => {
+      const [m, y] = p.split('::').map(Number)
+      return { month: m, year: y }
+    })
+    .filter(({ month, year }) => isBillingPeriodAllowed(month, year))
 
   // Sort periods desc (newest first)
   periods.sort((a, b) => {

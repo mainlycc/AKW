@@ -40,10 +40,20 @@ interface LessonsCalendarProps {
   isAdmin?: boolean
 }
 
+type StatusFilter = SessionStatus | 'all'
+
+const STATUS_FILTERS: { value: StatusFilter; label: string; status?: SessionStatus }[] = [
+  { value: 'all', label: 'Wszystkie' },
+  { value: 'scheduled', label: 'Zaplanowane', status: 'scheduled' },
+  { value: 'completed', label: 'Odbyte', status: 'completed' },
+  { value: 'cancelled', label: 'Anulowane', status: 'cancelled' },
+]
+
 export function LessonsCalendar({ sessions, isAdmin = false }: LessonsCalendarProps) {
   const [currentMonth, setCurrentMonth] = useState(new Date())
   const [selectedDate, setSelectedDate] = useState<Date | null>(null)
   const [selectedSessions, setSelectedSessions] = useState<Session[]>([])
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [isPending, startTransition] = useTransition()
   const [updatingSessions, setUpdatingSessions] = useState<Set<string>>(new Set())
   const router = useRouter()
@@ -51,13 +61,18 @@ export function LessonsCalendar({ sessions, isAdmin = false }: LessonsCalendarPr
   // Tylko dla tutora (nie admina)
   const isTutor = !isAdmin
 
+  const filteredSessions = useMemo(() => {
+    if (statusFilter === 'all') return sessions
+    return sessions.filter((session) => session.status === statusFilter)
+  }, [sessions, statusFilter])
+
   const monthStart = startOfMonth(currentMonth)
   const monthEnd = endOfMonth(currentMonth)
   const daysInMonth = eachDayOfInterval({ start: monthStart, end: monthEnd })
 
   // Oblicz statystyki dla aktualnego miesiąca
   const monthStats = useMemo(() => {
-    const monthSessions = sessions.filter(session => {
+    const monthSessions = filteredSessions.filter(session => {
       const sessionDate = new Date(session.session_date)
       return isSameMonth(sessionDate, currentMonth)
     })
@@ -73,15 +88,15 @@ export function LessonsCalendar({ sessions, isAdmin = false }: LessonsCalendarPr
       scheduled: scheduledSessions,
       cancelled: cancelledSessions,
     }
-  }, [sessions, currentMonth])
+  }, [filteredSessions, currentMonth])
 
-  // Oblicz statystyki ogólne (wszystkie sesje)
+  // Oblicz statystyki ogólne (filtrowane sesje)
   const overallStats = useMemo(() => {
-    const totalSessions = sessions.length
-    const completedSessions = sessions.filter(s => s.status === 'completed').length
-    const scheduledSessions = sessions.filter(s => s.status === 'scheduled').length
-    const cancelledSessions = sessions.filter(s => s.status === 'cancelled').length
-    const totalHours = sessions.reduce((acc, s) => acc + (s.duration_minutes || 0), 0) / 60
+    const totalSessions = filteredSessions.length
+    const completedSessions = filteredSessions.filter(s => s.status === 'completed').length
+    const scheduledSessions = filteredSessions.filter(s => s.status === 'scheduled').length
+    const cancelledSessions = filteredSessions.filter(s => s.status === 'cancelled').length
+    const totalHours = filteredSessions.reduce((acc, s) => acc + (s.duration_minutes || 0), 0) / 60
 
     return {
       total: totalSessions,
@@ -90,12 +105,12 @@ export function LessonsCalendar({ sessions, isAdmin = false }: LessonsCalendarPr
       cancelled: cancelledSessions,
       totalHours: totalHours.toFixed(1),
     }
-  }, [sessions])
+  }, [filteredSessions])
 
   // Grupuj sesje według daty
   const sessionsByDate = useMemo(() => {
     const grouped: Record<string, Session[]> = {}
-    sessions.forEach(session => {
+    filteredSessions.forEach(session => {
       const dateKey = format(new Date(session.session_date), 'yyyy-MM-dd')
       if (!grouped[dateKey]) {
         grouped[dateKey] = []
@@ -103,7 +118,18 @@ export function LessonsCalendar({ sessions, isAdmin = false }: LessonsCalendarPr
       grouped[dateKey].push(session)
     })
     return grouped
-  }, [sessions])
+  }, [filteredSessions])
+
+  // Zamknij podgląd dnia, jeśli po filtrze brak sesji w wybranym dniu
+  useEffect(() => {
+    if (!selectedDate) return
+    const dateKey = format(selectedDate, 'yyyy-MM-dd')
+    const daySessions = sessionsByDate[dateKey] || []
+    setSelectedSessions(daySessions)
+    if (daySessions.length === 0) {
+      setSelectedDate(null)
+    }
+  }, [sessionsByDate, selectedDate])
 
   // Filtruj przeszłe lekcje ze statusem 'scheduled' (tylko dla tutora)
   const pastScheduledSessions = useMemo(() => {
@@ -319,6 +345,35 @@ export function LessonsCalendar({ sessions, isAdmin = false }: LessonsCalendarPr
           </div>
         </CardHeader>
         <CardContent>
+          {/* Filtr statusów */}
+          <div className="mb-4 pb-4 border-b flex flex-wrap items-center gap-3 text-sm">
+            <span className="text-muted-foreground font-medium">Filtruj po:</span>
+            {STATUS_FILTERS.map((filter) => {
+              const isActive = statusFilter === filter.value
+              const badgeClass =
+                filter.status
+                  ? getStatusColor(filter.status)
+                  : 'bg-muted text-muted-foreground border-border'
+
+              return (
+                <button
+                  key={filter.value}
+                  type="button"
+                  onClick={() => setStatusFilter(filter.value)}
+                  className={cn(
+                    'rounded-md transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+                    isActive && 'ring-2 ring-primary ring-offset-2'
+                  )}
+                  aria-pressed={isActive}
+                >
+                  <Badge variant="outline" className={cn(badgeClass, 'cursor-pointer px-3 py-1')}>
+                    {filter.label}
+                  </Badge>
+                </button>
+              )
+            })}
+          </div>
+
           <div className="space-y-2">
             {/* Nagłówki dni tygodnia */}
             <div className="grid grid-cols-7 gap-1">
@@ -399,31 +454,18 @@ export function LessonsCalendar({ sessions, isAdmin = false }: LessonsCalendarPr
               })}
             </div>
           </div>
-
-          {/* Legenda */}
-          <div className="mt-4 pt-4 border-t flex flex-wrap gap-4 text-sm">
-            <div className="flex items-center gap-2">
-              <Badge variant="outline" className={getStatusColor('completed')}>
-                Odbyta
-              </Badge>
-            </div>
-            <div className="flex items-center gap-2">
-              <Badge variant="outline" className={getStatusColor('scheduled')}>
-                Zaplanowana
-              </Badge>
-            </div>
-            <div className="flex items-center gap-2">
-              <Badge variant="outline" className={getStatusColor('cancelled')}>
-                Anulowana
-              </Badge>
-            </div>
-          </div>
         </CardContent>
       </Card>
 
-      {/* Baner ze statystykami ogólnymi */}
+      {/* Baner ze statystykami (wg aktywnego filtra) */}
       <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950 dark:to-indigo-950 border-blue-200 dark:border-blue-800">
         <CardContent className="p-6">
+          {statusFilter !== 'all' && (
+            <p className="text-xs text-muted-foreground mb-3">
+              Statystyki dla filtra:{' '}
+              {STATUS_FILTERS.find((o) => o.value === statusFilter)?.label}
+            </p>
+          )}
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             <div className="space-y-1">
               <div className="text-sm text-muted-foreground font-medium">Wszystkie lekcje</div>

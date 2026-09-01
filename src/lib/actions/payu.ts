@@ -11,6 +11,10 @@ import type { NotificationChannel } from '@/lib/types/notifications'
 import { sendPaymentLinkSms } from '@/lib/sms/send'
 import { sendWithChannel } from '@/lib/notifications/send-with-channel'
 import { createNotification } from '@/lib/actions/notifications'
+import { createConfirmedBookingResources } from '@/lib/actions/public-booking'
+import {
+  ensurePublicBookingPaymentHistory,
+} from '@/lib/billing/public-booking-payment'
 import { format, parseISO } from 'date-fns'
 import { pl } from 'date-fns/locale'
 import { SLOT_DURATION_MINUTES } from '@/lib/types/availability.types'
@@ -660,6 +664,136 @@ export async function createPayUOrderForBooking(
     }
   } catch (error) {
     console.error('Error creating PayU order for booking:', error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Nieznany błąd',
+    }
+  }
+}
+
+export type CreatePayUOrderForAdminReservationInput = {
+  studentId: string
+  amount: number
+  lessonCount: number
+  parentEmail: string
+  parentName: string
+  studentName: string
+  subjectName: string
+  levelName: string
+  tutorName: string
+  bookedSlotId?: string
+  tutoringSessionId?: string
+  isRecurring: boolean
+  formattedDate: string
+  timeRange: string
+}
+
+/**
+ * Create PayU order for an admin-created reservation (booked_slot or tutoring_session)
+ */
+export async function createPayUOrderForAdminReservation(
+  input: CreatePayUOrderForAdminReservationInput
+): Promise<CreatePayUOrderResult> {
+  try {
+    const profile = await getUserProfile()
+    if (!profile || profile.role !== 'admin') {
+      return { success: false, error: 'Brak uprawnień' }
+    }
+
+    if (input.amount <= 0) {
+      return { success: false, error: 'Nieprawidłowa kwota płatności' }
+    }
+
+    if (!input.bookedSlotId && !input.tutoringSessionId) {
+      return { success: false, error: 'Brak powiązania z rezerwacją' }
+    }
+
+    const admin = createAdminClient()
+    const extOrderId = `admin-res-${input.bookedSlotId ?? input.tutoringSessionId}-${Date.now()}-${Math.random()
+      .toString(36)
+      .slice(2, 8)}`
+
+    const baseUrlRaw = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+    const baseUrl = baseUrlRaw.replace(/\/+$/, '')
+    const notifyUrl = `${baseUrl}/api/payu/webhook`
+
+    const lessonLabel =
+      input.lessonCount === 1
+        ? '1 lekcja'
+        : `${input.lessonCount} lekcje`
+    const typeLabel = input.isRecurring ? 'cykliczna' : 'jednorazowa'
+    const description = `Płatność za ${lessonLabel} (${typeLabel}) - ${input.subjectName} (${input.levelName}) - ${input.formattedDate} ${input.timeRange.split('-')[0]}`
+
+    const nameParts = input.parentName.split(' ')
+    const firstName = nameParts[0] || input.parentName
+    const lastName = nameParts.slice(1).join(' ') || ''
+    const totalAmount = Math.round(input.amount * 100).toString()
+    const continueUrl = `${baseUrl}/public/rezerwacje/platnosc/sukces?adminExtOrderId=${encodeURIComponent(extOrderId)}`
+
+    const payuClient = createPayUClient()
+    const orderResponse = await payuClient.createOrder({
+      customerIp: '185.68.12.34',
+      description,
+      currencyCode: 'PLN',
+      totalAmount,
+      extOrderId,
+      buyer: {
+        email: input.parentEmail,
+        firstName,
+        lastName,
+        language: 'pl',
+      },
+      products: [
+        {
+          name: `Lekcje - ${input.studentName} - ${input.tutorName} - ${lessonLabel}`,
+          unitPrice: totalAmount,
+          quantity: '1',
+        },
+      ],
+      continueUrl,
+      notifyUrl,
+    })
+
+    const { data: payuPayment, error: dbError } = await admin
+      .from('payu_payments')
+      .insert({
+        order_id: orderResponse.paymentId,
+        ext_order_id: extOrderId,
+        student_id: input.studentId,
+        billing_period_id: null,
+        booking_request_id: null,
+        booked_slot_id: input.bookedSlotId ?? null,
+        tutoring_session_id: input.tutoringSessionId ?? null,
+        lesson_count: input.lessonCount,
+        status: 'PENDING',
+        amount: input.amount,
+        currency: 'PLN',
+        redirect_url: orderResponse.redirectUrl,
+        notify_url: notifyUrl,
+        continue_url: continueUrl,
+        description,
+        buyer_email: input.parentEmail,
+        buyer_first_name: firstName,
+        buyer_last_name: lastName,
+      })
+      .select('id, order_id, redirect_url')
+      .single()
+
+    if (dbError) {
+      console.error('Error saving admin reservation PayU order:', dbError)
+      return {
+        success: false,
+        error: `Nie udało się zapisać zamówienia w bazie: ${dbError.message}`,
+      }
+    }
+
+    return {
+      success: true,
+      orderId: payuPayment.order_id,
+      redirectUrl: payuPayment.redirect_url || orderResponse.redirectUrl || undefined,
+    }
+  } catch (error) {
+    console.error('Error creating PayU order for admin reservation:', error)
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Nieznany błąd',
@@ -1325,6 +1459,214 @@ export async function sendPayUAnnualPaymentsFromReports(
   }
 }
 
+type AdminReservationPayuPayment = {
+  id: string
+  student_id: string
+  amount: number
+  booked_slot_id: string | null
+  tutoring_session_id: string | null
+  lesson_count: number | null
+  description: string | null
+}
+
+/**
+ * Record payment history for admin reservation PayU completion (reservation already exists)
+ */
+export async function ensureAdminReservationPaymentHistory(
+  payuPayment: AdminReservationPayuPayment,
+  orderId: string,
+  paidAmount: number,
+  paymentMethodType?: string
+): Promise<boolean> {
+  try {
+    const admin = createAdminClient()
+
+    const { data: existingPayments } = await admin
+      .from('payments')
+      .select('id')
+      .eq('payu_order_id', orderId)
+      .limit(1)
+
+    if (existingPayments && existingPayments.length > 0) {
+      return false
+    }
+
+    const { getOrCreateBillingPeriodAdmin, billingPeriodFromDateString } = await import(
+      '@/lib/billing/public-booking-payment'
+    )
+
+    const paymentDate = new Date().toISOString().split('T')[0]
+    const paymentPeriod = billingPeriodFromDateString(paymentDate)
+    if (!paymentPeriod) return false
+
+    const billingPeriodId = await getOrCreateBillingPeriodAdmin(
+      admin,
+      paymentPeriod.month,
+      paymentPeriod.year
+    )
+    if (!billingPeriodId) return false
+
+    const { data: adminProfile } = await admin
+      .from('profiles')
+      .select('id')
+      .eq('role', 'admin')
+      .limit(1)
+      .maybeSingle()
+
+    const createdBy = adminProfile?.id ?? payuPayment.student_id
+    const lessonCount = payuPayment.lesson_count ?? 1
+    const methodLabel = paymentMethodType || 'unknown'
+
+    const { error: paymentError } = await admin.from('payments').insert({
+      student_id: payuPayment.student_id,
+      billing_period_id: billingPeriodId,
+      amount: paidAmount,
+      payment_method: 'online',
+      payment_date: paymentDate,
+      payu_order_id: orderId,
+      notes: `Płatność online PayU za rezerwację admina (${lessonCount} lekcji) - ${methodLabel}`,
+      created_by: createdBy,
+    })
+
+    if (paymentError) {
+      console.error('[ensureAdminReservationPaymentHistory] Failed to insert payment:', paymentError)
+      return false
+    }
+
+    revalidatePath('/dashboard/payments')
+    return true
+  } catch (error) {
+    console.error('[ensureAdminReservationPaymentHistory] Error:', error)
+    return false
+  }
+}
+
+async function handleAdminReservationPaymentCompletion(
+  payuPayment: AdminReservationPayuPayment,
+  orderId: string,
+  paidAmount: number,
+  paymentMethodType?: string
+): Promise<void> {
+  await ensureAdminReservationPaymentHistory(
+    payuPayment,
+    orderId,
+    paidAmount,
+    paymentMethodType
+  )
+}
+
+type AdminReservationPayuRow = AdminReservationPayuPayment & {
+  order_id: string | null
+  ext_order_id: string
+  status: string
+}
+
+async function pollPayUOrderForAdminReservation(
+  payuPayment: AdminReservationPayuRow
+): Promise<void> {
+  const payuClient = createPayUClient()
+  const candidateIds = [payuPayment.order_id, payuPayment.ext_order_id].filter(
+    (id, index, arr): id is string => !!id && arr.indexOf(id) === index
+  )
+
+  for (const candidateId of candidateIds) {
+    try {
+      const statusResponse = await payuClient.getOrderStatus(candidateId)
+      const order = statusResponse.orders?.[0]
+      if (!order) continue
+
+      await processPayUWebhook({
+        orderId: order.orderId,
+        extOrderId: order.extOrderId,
+        status: order.status,
+        totalAmount: order.totalAmount,
+        currencyCode: order.currencyCode,
+        payMethod: order.payMethod,
+        buyer: order.buyer,
+      })
+      return
+    } catch (error) {
+      console.warn('[pollPayUOrderForAdminReservation] getOrderStatus failed:', candidateId, error)
+    }
+  }
+}
+
+/**
+ * Sync admin reservation PayU after redirect (fallback when webhook is unreachable, e.g. localhost).
+ */
+export async function syncAdminReservationPaymentAfterRedirect(
+  adminExtOrderId: string
+): Promise<void> {
+  const admin = createAdminClient()
+
+  const { data: payuPayment } = await admin
+    .from('payu_payments')
+    .select(
+      'id, student_id, amount, booked_slot_id, tutoring_session_id, lesson_count, description, order_id, ext_order_id, status'
+    )
+    .eq('ext_order_id', adminExtOrderId)
+    .maybeSingle()
+
+  if (!payuPayment || (!payuPayment.booked_slot_id && !payuPayment.tutoring_session_id)) {
+    return
+  }
+
+  if (payuPayment.status === 'COMPLETED' && payuPayment.order_id) {
+    const recorded = await ensureAdminReservationPaymentHistory(
+      payuPayment,
+      payuPayment.order_id,
+      payuPayment.amount,
+    )
+    if (recorded) {
+      revalidatePath('/dashboard/payments')
+    }
+    return
+  }
+
+  await pollPayUOrderForAdminReservation(payuPayment)
+}
+
+/**
+ * Backfill payments table for completed/pending admin reservation PayU orders.
+ */
+export async function backfillAdminReservationPayuPayments(): Promise<void> {
+  const admin = createAdminClient()
+
+  const { data: rows } = await admin
+    .from('payu_payments')
+    .select(
+      'id, student_id, amount, booked_slot_id, tutoring_session_id, lesson_count, description, order_id, ext_order_id, status'
+    )
+    .is('booking_request_id', null)
+    .is('billing_period_id', null)
+    .or('booked_slot_id.not.is.null,tutoring_session_id.not.is.null')
+    .order('created_at', { ascending: false })
+    .limit(20)
+
+  for (const row of rows || []) {
+    if (row.order_id) {
+      const { data: existing } = await admin
+        .from('payments')
+        .select('id')
+        .eq('payu_order_id', row.order_id)
+        .limit(1)
+
+      if (existing && existing.length > 0) {
+        continue
+      }
+    }
+
+    if (row.status === 'COMPLETED' && row.order_id) {
+      await ensureAdminReservationPaymentHistory(row, row.order_id, row.amount)
+      continue
+    }
+
+    if (row.status === 'PENDING') {
+      await pollPayUOrderForAdminReservation(row)
+    }
+  }
+}
+
 /**
  * Handle booking payment completion - confirm booking and send email
  */
@@ -1336,7 +1678,7 @@ async function handleBookingPaymentCompletion(bookingRequestId: string): Promise
     const { data: booking, error: fetchError } = await admin
       .from('public_booking_requests')
       .select(
-        'id, assignment_id, booked_slot_id, tutor_id, request_date, weekday, start_time, end_time, student_first_name, student_last_name, contact_email, subject_id, subject_level_id, status'
+        'id, assignment_id, booked_slot_id, session_id, tutor_id, student_id, request_date, weekday, start_time, end_time, student_first_name, student_last_name, contact_email, subject_id, subject_level_id, status, is_recurring'
       )
       .eq('id', bookingRequestId)
       .single()
@@ -1346,8 +1688,32 @@ async function handleBookingPaymentCompletion(bookingRequestId: string): Promise
       return
     }
 
-    // Check if already confirmed
+    // Already confirmed — still ensure calendar session and payment history exist
     if (booking.status === 'confirmed') {
+      await ensurePublicBookingPaymentHistory(admin, bookingRequestId)
+
+      if (
+        !booking.is_recurring &&
+        !booking.session_id &&
+        booking.assignment_id &&
+        booking.student_id
+      ) {
+        await createConfirmedBookingResources(admin, {
+          id: bookingRequestId,
+          assignment_id: booking.assignment_id,
+          booked_slot_id: booking.booked_slot_id,
+          session_id: booking.session_id,
+          tutor_id: booking.tutor_id,
+          student_id: booking.student_id,
+          request_date: booking.request_date,
+          weekday: booking.weekday,
+          start_time: booking.start_time,
+          end_time: booking.end_time,
+          is_recurring: booking.is_recurring ?? false,
+        })
+        revalidatePath('/dashboard/kalendarz-lekcji')
+      }
+
       console.log('Booking already confirmed:', bookingRequestId)
       return
     }
@@ -1375,60 +1741,27 @@ async function handleBookingPaymentCompletion(bookingRequestId: string): Promise
       }
     }
 
-    // Create booked_slot if it doesn't exist
-    if (!booking.booked_slot_id && booking.assignment_id) {
-      // Check if slot already exists
-      const { data: existingSlot } = await admin
-        .from('booked_slots')
-        .select('id, status')
-        .eq('tutor_id', booking.tutor_id)
-        .eq('student_assignment_id', booking.assignment_id)
-        .eq('weekday', booking.weekday)
-        .eq('start_time', booking.start_time)
-        .eq('end_time', booking.end_time)
-        .maybeSingle()
+    await createConfirmedBookingResources(admin, {
+      id: bookingRequestId,
+      assignment_id: booking.assignment_id,
+      booked_slot_id: booking.booked_slot_id,
+      session_id: booking.session_id,
+      tutor_id: booking.tutor_id,
+      student_id: booking.student_id,
+      request_date: booking.request_date,
+      weekday: booking.weekday,
+      start_time: booking.start_time,
+      end_time: booking.end_time,
+      is_recurring: booking.is_recurring ?? false,
+    })
 
-      if (existingSlot) {
-        // Update existing slot to booked
-        if (existingSlot.status !== 'booked') {
-          await admin
-            .from('booked_slots')
-            .update({ status: 'booked' })
-            .eq('id', existingSlot.id)
-        }
-
-        // Update booking request with booked_slot_id
-        await admin
-          .from('public_booking_requests')
-          .update({ booked_slot_id: existingSlot.id })
-          .eq('id', bookingRequestId)
-      } else {
-        // Create new booked_slot
-        const { data: newSlot, error: slotInsertError } = await admin
-          .from('booked_slots')
-          .insert({
-            tutor_id: booking.tutor_id,
-            student_assignment_id: booking.assignment_id,
-            weekday: booking.weekday,
-            start_time: booking.start_time,
-            end_time: booking.end_time,
-            status: 'booked',
-            created_by: booking.tutor_id,
-          })
-          .select('id')
-          .single()
-
-        if (!slotInsertError && newSlot) {
-          // Update booking request with booked_slot_id
-          await admin
-            .from('public_booking_requests')
-            .update({ booked_slot_id: newSlot.id })
-            .eq('id', bookingRequestId)
-        } else {
-          console.error('Error creating booked_slot:', slotInsertError)
-        }
-      }
+    const historyRecorded = await ensurePublicBookingPaymentHistory(admin, bookingRequestId)
+    if (historyRecorded) {
+      revalidatePath('/dashboard/payments')
     }
+
+    revalidatePath('/dashboard/kalendarz-lekcji')
+    revalidatePath('/dashboard/rezerwacje-publiczne')
 
     // Get data for email and notification
     const [tutorData, subjectData, levelData] = await Promise.all([
@@ -1535,6 +1868,89 @@ async function handleBookingPaymentCompletion(bookingRequestId: string): Promise
 }
 
 /**
+ * Sync booking confirmation after PayU redirect (fallback when webhook is delayed or unreachable, e.g. localhost).
+ */
+export async function syncPublicBookingPaymentAfterRedirect(
+  bookingRequestId: string
+): Promise<void> {
+  const admin = createAdminClient()
+
+  const { data: booking } = await admin
+    .from('public_booking_requests')
+    .select('status')
+    .eq('id', bookingRequestId)
+    .maybeSingle()
+
+  if (!booking) {
+    return
+  }
+
+  if (booking.status === 'confirmed') {
+    const recorded = await ensurePublicBookingPaymentHistory(admin, bookingRequestId)
+    if (recorded) {
+      revalidatePath('/dashboard/payments')
+    }
+    return
+  }
+
+  const { data: payuPayment } = await admin
+    .from('payu_payments')
+    .select('order_id, ext_order_id, status, student_id, amount')
+    .eq('booking_request_id', bookingRequestId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (!payuPayment) {
+    return
+  }
+
+  if (payuPayment.status === 'COMPLETED') {
+    await handleBookingPaymentCompletion(bookingRequestId)
+    return
+  }
+
+  const payuClient = createPayUClient()
+  const candidateIds = [payuPayment.order_id, payuPayment.ext_order_id].filter(
+    (id, index, arr): id is string => !!id && arr.indexOf(id) === index
+  )
+
+  let order: {
+    orderId: string
+    extOrderId: string
+    status: string
+    totalAmount: string
+    currencyCode: string
+    payMethod?: { type: string; value?: string }
+    buyer?: { email: string; firstName?: string; lastName?: string }
+  } | null = null
+
+  for (const candidateId of candidateIds) {
+    try {
+      const statusResponse = await payuClient.getOrderStatus(candidateId)
+      order = statusResponse.orders?.[0] ?? null
+      if (order) break
+    } catch (error) {
+      console.warn('[syncPublicBookingPaymentAfterRedirect] getOrderStatus failed:', candidateId, error)
+    }
+  }
+
+  if (!order) {
+    return
+  }
+
+  await processPayUWebhook({
+    orderId: order.orderId,
+    extOrderId: order.extOrderId,
+    status: order.status,
+    totalAmount: order.totalAmount,
+    currencyCode: order.currencyCode,
+    payMethod: order.payMethod,
+    buyer: order.buyer,
+  })
+}
+
+/**
  * Process PayU webhook notification
  */
 export async function processPayUWebhook(
@@ -1556,22 +1972,63 @@ export async function processPayUWebhook(
   }
 ): Promise<void> {
   try {
-    const supabase = await createClient()
+    const admin = createAdminClient()
 
-    // Update payu_payments table
-    const { data: payuPayment, error: updateError } = await supabase
+    const paymentUpdatePayload = {
+      status: notification.status,
+      payment_method: notification.payMethod?.type || null,
+      buyer_email: notification.buyer?.email || null,
+      buyer_first_name: notification.buyer?.firstName || null,
+      buyer_last_name: notification.buyer?.lastName || null,
+      updated_at: new Date().toISOString(),
+      order_id: notification.orderId,
+    }
+
+    // Update payu_payments table (admin client — webhook has no authenticated session)
+    let payuPayment:
+      | {
+          id: string
+          student_id: string
+          billing_period_id: string | null
+          booking_request_id: string | null
+          booked_slot_id: string | null
+          tutoring_session_id: string | null
+          lesson_count: number | null
+          amount: number
+          ext_order_id: string
+          description: string | null
+        }
+      | null = null
+    let updateError: Error | null = null
+
+    const { data: paymentByOrderId, error: orderIdError } = await admin
       .from('payu_payments')
-      .update({
-        status: notification.status,
-        payment_method: notification.payMethod?.type || null,
-        buyer_email: notification.buyer?.email || null,
-        buyer_first_name: notification.buyer?.firstName || null,
-        buyer_last_name: notification.buyer?.lastName || null,
-        updated_at: new Date().toISOString(),
-      })
+      .update(paymentUpdatePayload)
       .eq('order_id', notification.orderId)
-      .select('id, student_id, billing_period_id, booking_request_id, amount, ext_order_id')
-      .single()
+      .select('id, student_id, billing_period_id, booking_request_id, booked_slot_id, tutoring_session_id, lesson_count, amount, ext_order_id, description')
+      .maybeSingle()
+
+    if (paymentByOrderId) {
+      payuPayment = paymentByOrderId
+    } else if (orderIdError) {
+      updateError = new Error(orderIdError.message)
+    }
+
+    if (!payuPayment && notification.extOrderId) {
+      const { data: paymentByExtOrderId, error: extOrderIdError } = await admin
+        .from('payu_payments')
+        .update(paymentUpdatePayload)
+        .eq('ext_order_id', notification.extOrderId)
+        .select('id, student_id, billing_period_id, booking_request_id, booked_slot_id, tutoring_session_id, lesson_count, amount, ext_order_id, description')
+        .maybeSingle()
+
+      if (paymentByExtOrderId) {
+        payuPayment = paymentByExtOrderId
+        console.log('PayU payment matched by extOrderId:', notification.extOrderId)
+      } else if (extOrderIdError && !updateError) {
+        updateError = new Error(extOrderIdError.message)
+      }
+    }
 
     if (updateError) {
       console.error('Error updating payu_payments:', updateError)
@@ -1579,7 +2036,10 @@ export async function processPayUWebhook(
     }
 
     if (!payuPayment) {
-      console.warn('PayU payment not found for orderId:', notification.orderId)
+      console.warn('PayU payment not found for orderId/extOrderId:', {
+        orderId: notification.orderId,
+        extOrderId: notification.extOrderId,
+      })
       return
     }
 
@@ -1590,15 +2050,31 @@ export async function processPayUWebhook(
       bookingRequestId: payuPayment.booking_request_id,
     })
 
-    // Handle booking payment completion
+    // Handle booking payment completion + payment history
     if (notification.status === 'COMPLETED' && payuPayment.booking_request_id) {
       await handleBookingPaymentCompletion(payuPayment.booking_request_id)
+    }
+
+    // Handle admin reservation payment completion (reservation already exists)
+    if (
+      notification.status === 'COMPLETED' &&
+      !payuPayment.booking_request_id &&
+      !payuPayment.billing_period_id &&
+      (payuPayment.booked_slot_id || payuPayment.tutoring_session_id)
+    ) {
+      const paidAmount = parseFloat(notification.totalAmount) / 100
+      await handleAdminReservationPaymentCompletion(
+        payuPayment,
+        notification.orderId,
+        paidAmount,
+        notification.payMethod?.type
+      )
     }
 
     // If payment completed, create or update payment record (for billing payments)
     if (notification.status === 'COMPLETED' && payuPayment.billing_period_id) {
       // Check if payment record already exists
-      const { data: existingPayments } = await supabase
+      const { data: existingPayments } = await admin
         .from('payments')
         .select('id')
         .eq('payu_order_id', notification.orderId)
@@ -1609,7 +2085,7 @@ export async function processPayUWebhook(
         const paidAmount = parseFloat(notification.totalAmount) / 100 // Convert grosze to PLN
 
         // Year allocation encoded in description: YEAR_ALLOC:[{billingPeriodId,amount},...]
-        const { data: payuFull } = await supabase
+        const { data: payuFull } = await admin
           .from('payu_payments')
           .select('description')
           .eq('id', payuPayment.id)
@@ -1648,7 +2124,7 @@ export async function processPayUWebhook(
               Math.round((rows[rows.length - 1].amount + diff) * 100) / 100
           }
 
-          const { error: paymentError } = await supabase.from('payments').insert(rows)
+          const { error: paymentError } = await admin.from('payments').insert(rows)
           if (paymentError) {
             console.error('Error creating year-allocated payment records:', paymentError)
           } else {
@@ -1664,7 +2140,7 @@ export async function processPayUWebhook(
           }
         } else {
           // Create new payment record (single period)
-          const { error: paymentError } = await supabase
+          const { error: paymentError } = await admin
             .from('payments')
             .insert({
               student_id: payuPayment.student_id,

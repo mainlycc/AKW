@@ -1,6 +1,9 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { ensurePublicBookingPaymentHistory } from '@/lib/billing/public-booking-payment'
+import { backfillAdminReservationPayuPayments } from '@/lib/actions/payu'
 import { revalidatePath } from 'next/cache'
 
 export type PaymentMethod = 'transfer' | 'cash' | 'online'
@@ -185,6 +188,30 @@ export async function getPayments(
   filters?: PaymentFilters
 ): Promise<PaymentWithParent[]> {
   const supabase = await createClient()
+
+  // Backfill payment history for completed public-booking PayU orders
+  try {
+    const admin = createAdminClient()
+    const { data: completedBookingPayu } = await admin
+      .from('payu_payments')
+      .select('booking_request_id')
+      .eq('status', 'COMPLETED')
+      .not('booking_request_id', 'is', null)
+
+    for (const row of completedBookingPayu || []) {
+      if (row.booking_request_id) {
+        await ensurePublicBookingPaymentHistory(admin, row.booking_request_id)
+      }
+    }
+  } catch (error) {
+    console.error('[getPayments] Public booking payment backfill failed:', error)
+  }
+
+  try {
+    await backfillAdminReservationPayuPayments()
+  } catch (error) {
+    console.error('[getPayments] Admin reservation payment backfill failed:', error)
+  }
 
   let query = supabase
     .from('payments')

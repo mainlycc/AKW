@@ -29,6 +29,7 @@ interface PublicBookingRow {
   student_id: string | null
   assignment_id: string | null
   booked_slot_id: string | null
+  is_recurring: boolean
   status: BookingStatus
   request_date: string
   start_time: string
@@ -114,20 +115,50 @@ export function PublicBookingsTable({ bookings }: PublicBookingsTableProps) {
     }
   )
 
-  const handleUpdateStatus = (id: string, status: BookingStatus) => {
+  const selectedBookings = filteredBookings.filter((booking) => selectedIds.has(booking.id))
+  const selectedPending = selectedBookings.filter((booking) => booking.status === 'pending')
+  const selectedCancellable = selectedBookings.filter(
+    (booking) => booking.status === 'pending' || booking.status === 'confirmed'
+  )
+
+  const handleConfirmSelected = () => {
+    if (selectedPending.length === 0) return
+
     startTransition(async () => {
       try {
-        await updateBookingStatus(id, status)
+        for (const booking of selectedPending) {
+          await updateBookingStatus(booking.id, 'confirmed')
+        }
+        setSelectedIds(new Set())
         toast.success(
-          status === 'confirmed'
+          selectedPending.length === 1
             ? 'Rezerwacja została potwierdzona.'
-            : status === 'cancelled'
-              ? 'Rezerwacja została anulowana.'
-              : 'Zmieniono status rezerwacji.'
+            : `Potwierdzono ${selectedPending.length} rezerwacji.`
         )
       } catch (error) {
         console.error(error)
-        toast.error('Nie udało się zaktualizować rezerwacji.')
+        toast.error('Nie udało się potwierdzić rezerwacji.')
+      }
+    })
+  }
+
+  const handleCancelSelected = () => {
+    if (selectedCancellable.length === 0) return
+
+    startTransition(async () => {
+      try {
+        for (const booking of selectedCancellable) {
+          await updateBookingStatus(booking.id, 'cancelled')
+        }
+        setSelectedIds(new Set())
+        toast.success(
+          selectedCancellable.length === 1
+            ? 'Rezerwacja została anulowana.'
+            : `Anulowano ${selectedCancellable.length} rezerwacji.`
+        )
+      } catch (error) {
+        console.error(error)
+        toast.error('Nie udało się anulować rezerwacji.')
       }
     })
   }
@@ -182,29 +213,42 @@ export function PublicBookingsTable({ bookings }: PublicBookingsTableProps) {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-2">
-          <Input
-            placeholder="Szukaj rezerwacji..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="max-w-sm"
-          />
-          {selectedIds.size > 0 && (
-            <Button 
-              variant="destructive" 
-              size="sm"
-              onClick={handleDeleteSelected}
-            >
-              <IconTrash className="mr-2 h-4 w-4" />
-              Usuń zaznaczone ({selectedIds.size})
-            </Button>
-          )}
-        </div>
+    <div className="min-w-0 space-y-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <Input
+          placeholder="Szukaj rezerwacji..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="max-w-sm"
+        />
+        <Button
+          size="sm"
+          disabled={isPending || selectedPending.length === 0}
+          onClick={handleConfirmSelected}
+        >
+          Potwierdź{selectedPending.length > 0 ? ` (${selectedPending.length})` : ''}
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={isPending || selectedCancellable.length === 0}
+          onClick={handleCancelSelected}
+        >
+          Anuluj{selectedCancellable.length > 0 ? ` (${selectedCancellable.length})` : ''}
+        </Button>
+        {selectedIds.size > 0 && (
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={handleDeleteSelected}
+          >
+            <IconTrash className="mr-2 h-4 w-4" />
+            Usuń zaznaczone ({selectedIds.size})
+          </Button>
+        )}
       </div>
 
-      <div className="rounded-md border">
+      <div className="min-w-0 rounded-md border">
         <Table>
           <TableHeader>
             <TableRow>
@@ -219,10 +263,10 @@ export function PublicBookingsTable({ bookings }: PublicBookingsTableProps) {
               <TableHead>Tutor</TableHead>
               <TableHead>Uczeń</TableHead>
               <TableHead>Termin</TableHead>
+              <TableHead>Typ</TableHead>
               <TableHead>Kontakt</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead>Notatki</TableHead>
-              <TableHead className="text-right">Akcje</TableHead>
+              <TableHead className="max-w-[160px]">Notatki</TableHead>
             </TableRow>
           </TableHeader>
         <TableBody>
@@ -261,6 +305,9 @@ export function PublicBookingsTable({ bookings }: PublicBookingsTableProps) {
                 <TableCell>
                   {formatDateTime(booking.request_date, booking.start_time)} &ndash; {formatTime(booking.end_time)}
                 </TableCell>
+                <TableCell>
+                  <Badge variant="outline">{booking.is_recurring ? 'Cykliczna' : 'Jednorazowa'}</Badge>
+                </TableCell>
                 <TableCell className="text-sm">
                   <div>{booking.contact_email}</div>
                   {booking.contact_phone && (
@@ -270,41 +317,8 @@ export function PublicBookingsTable({ bookings }: PublicBookingsTableProps) {
                 <TableCell>
                   <Badge variant={statusMeta.variant}>{statusMeta.label}</Badge>
                 </TableCell>
-                <TableCell className="text-sm text-muted-foreground max-w-xs truncate">
+                <TableCell className="max-w-[160px] truncate text-sm text-muted-foreground">
                   {booking.notes || '—'}
-                </TableCell>
-                <TableCell className="text-right">
-                  <div className="flex justify-end gap-2">
-                    {booking.status === 'pending' && (
-                      <>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          disabled={isPending}
-                          onClick={() => handleUpdateStatus(booking.id, 'cancelled')}
-                        >
-                          Anuluj
-                        </Button>
-                        <Button
-                          size="sm"
-                          disabled={isPending}
-                          onClick={() => handleUpdateStatus(booking.id, 'confirmed')}
-                        >
-                          Potwierdź
-                        </Button>
-                      </>
-                    )}
-                    {booking.status === 'confirmed' && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={isPending}
-                        onClick={() => handleUpdateStatus(booking.id, 'cancelled')}
-                      >
-                        Anuluj
-                      </Button>
-                    )}
-                  </div>
                 </TableCell>
               </TableRow>
               )

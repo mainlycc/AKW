@@ -1,10 +1,10 @@
 'use server'
 
 import { updateAvailabilityTemplate } from '@/lib/actions/availability'
-import { createBookedSlot as createBookedSlotLib, listBookedSlots as listBookedSlotsLib, cancelBookedSlot as cancelBookedSlotLib } from '@/lib/actions/booked-slots'
+import { createBookedSlot as createBookedSlotLib, listBookedSlots as listBookedSlotsLib, cancelBookedSlot as cancelBookedSlotLib, syncBookedSlotsFromScheduledSessions } from '@/lib/actions/booked-slots'
 import { createClient } from '@/lib/supabase/server'
 import type { TimeSlot, TutorAvailabilityData } from '@/lib/types/availability.types'
-import type { BookedSlot } from '@/lib/actions/booked-slots'
+import type { BookedSlot } from '@/lib/types/booked-slots.types'
 import type { MonitoringMeta } from '@/lib/monitoring/correlation'
 
 export async function saveAvailability(
@@ -16,6 +16,7 @@ export async function saveAvailability(
 }
 
 export async function listTutorBookedSlots(tutorId: string): Promise<BookedSlot[]> {
+  await syncBookedSlotsFromScheduledSessions(tutorId)
   return listBookedSlotsLib({ scope: 'tutor', tutorId })
 }
 

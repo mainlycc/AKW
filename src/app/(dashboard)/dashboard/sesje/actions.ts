@@ -4,7 +4,10 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { getUserProfile } from '@/lib/actions/auth'
 import { getSuggestedTimeSlots } from '@/lib/actions/availability'
+import { createBookedSlot, assertTutorWeeklySlotAvailable } from '@/lib/actions/booked-slots'
+import { extractWeeklySlotFromSession } from '@/lib/utils/availability-helpers'
 import type { SuggestedTimeSlot } from '@/lib/types/availability.types'
+import type { DayOfWeek } from '@/lib/types/availability.types'
 
 export async function createSession(data: {
   assignment_id: string
@@ -26,6 +29,13 @@ export async function createSession(data: {
     throw new Error('Assignment not found')
   }
 
+  const { weekday, start_time, end_time } = extractWeeklySlotFromSession(
+    data.session_date,
+    data.duration_minutes
+  )
+
+  await assertTutorWeeklySlotAvailable(assignment.tutor_id, weekday, start_time)
+
   const { error } = await supabase.from('tutoring_sessions').insert({
     assignment_id: data.assignment_id,
     tutor_id: assignment.tutor_id,
@@ -41,7 +51,21 @@ export async function createSession(data: {
     throw error
   }
 
+  // Utwórz booked_slot, aby lekcja pojawiła się na wykresie dostępności
+  try {
+    await createBookedSlot(data.created_by, {
+      student_assignment_id: data.assignment_id,
+      weekday: weekday as DayOfWeek,
+      start_time,
+      end_time,
+    })
+  } catch (bookedSlotError) {
+    console.warn('[createSession] booked_slot already exists or could not be created:', bookedSlotError)
+  }
+
   revalidatePath('/dashboard/sesje')
+  revalidatePath('/dashboard/kalendarz')
+  revalidatePath('/dashboard/kalendarz-lekcji')
 }
 
 export async function deleteSession(id: string) {

@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createNotification } from '@/lib/actions/notifications'
+import { createConfirmedBookingResources, cancelConfirmedBookingResources } from '@/lib/actions/public-booking'
 import { sendFinalBookingConfirmationEmail } from '@/lib/email/send'
 import { format, parseISO } from 'date-fns'
 import { pl } from 'date-fns/locale'
@@ -18,7 +19,7 @@ export async function updateBookingStatus(bookingId: string, status: BookingStat
   const { data: booking, error: fetchError } = await supabase
     .from('public_booking_requests')
     .select(
-      'assignment_id, booked_slot_id, tutor_id, request_date, weekday, start_time, end_time, student_first_name, student_last_name, contact_email, subject_id, subject_level_id'
+      'assignment_id, booked_slot_id, session_id, tutor_id, student_id, request_date, weekday, start_time, end_time, student_first_name, student_last_name, contact_email, subject_id, subject_level_id, is_recurring'
     )
     .eq('id', bookingId)
     .maybeSingle()
@@ -60,86 +61,26 @@ export async function updateBookingStatus(bookingId: string, status: BookingStat
     }
   }
 
-  // Handle booked_slot: create when confirmed, cancel/delete when cancelled
+  // Handle booked_slot or one-time session when confirming/cancelling
   if (status === 'confirmed') {
-    // Create booked_slot if it doesn't exist
-    if (!booking.booked_slot_id) {
-      // Check if slot already exists (might have been created manually)
-      const { data: existingSlot } = await admin
-        .from('booked_slots')
-        .select('id, status')
-        .eq('tutor_id', booking.tutor_id)
-        .eq('student_assignment_id', booking.assignment_id)
-        .eq('weekday', booking.weekday)
-        .eq('start_time', booking.start_time)
-        .eq('end_time', booking.end_time)
-        .maybeSingle()
-
-      if (existingSlot) {
-        // Update existing slot to booked
-        if (existingSlot.status !== 'booked') {
-          const { error: slotUpdateError } = await admin
-            .from('booked_slots')
-            .update({ status: 'booked' })
-            .eq('id', existingSlot.id)
-
-          if (slotUpdateError) {
-            throw slotUpdateError
-          }
-        }
-
-        // Update booking request with booked_slot_id
-        await admin
-          .from('public_booking_requests')
-          .update({ booked_slot_id: existingSlot.id })
-          .eq('id', bookingId)
-      } else {
-        // Create new booked_slot
-        const { data: newSlot, error: slotInsertError } = await admin
-          .from('booked_slots')
-          .insert({
-            tutor_id: booking.tutor_id,
-            student_assignment_id: booking.assignment_id!,
-            weekday: booking.weekday,
-            start_time: booking.start_time,
-            end_time: booking.end_time,
-            status: 'booked',
-            created_by: booking.tutor_id,
-          })
-          .select('id')
-          .single()
-
-        if (slotInsertError || !newSlot) {
-          throw slotInsertError ?? new Error('Nie udało się utworzyć rezerwacji slotu.')
-        }
-
-        // Update booking request with booked_slot_id
-        await admin
-          .from('public_booking_requests')
-          .update({ booked_slot_id: newSlot.id })
-          .eq('id', bookingId)
-      }
-    } else {
-      // Update existing booked_slot to booked status
-      const { error: slotUpdateError } = await admin
-        .from('booked_slots')
-        .update({ status: 'booked' })
-        .eq('id', booking.booked_slot_id)
-
-      if (slotUpdateError) {
-        throw slotUpdateError
-      }
-    }
-  } else if (status === 'cancelled' && booking.booked_slot_id) {
-    // Cancel booked_slot if it exists
-    const { error: slotCancelError } = await admin
-      .from('booked_slots')
-      .update({ status: 'cancelled' })
-      .eq('id', booking.booked_slot_id)
-
-    if (slotCancelError) {
-      throw slotCancelError
-    }
+    await createConfirmedBookingResources(admin, {
+      id: bookingId,
+      assignment_id: booking.assignment_id,
+      booked_slot_id: booking.booked_slot_id,
+      session_id: booking.session_id,
+      tutor_id: booking.tutor_id,
+      student_id: booking.student_id,
+      request_date: booking.request_date,
+      weekday: booking.weekday,
+      start_time: booking.start_time,
+      end_time: booking.end_time,
+      is_recurring: booking.is_recurring ?? false,
+    })
+  } else if (status === 'cancelled') {
+    await cancelConfirmedBookingResources(admin, {
+      booked_slot_id: booking.booked_slot_id,
+      session_id: booking.session_id,
+    })
   }
 
   // Powiadomienie dla tutora i email dla osoby rezerwującej o zmianie statusu rezerwacji
@@ -259,6 +200,7 @@ export async function updateBookingStatus(bookingId: string, status: BookingStat
   }
 
   revalidatePath('/dashboard/rezerwacje-publiczne')
+  revalidatePath('/dashboard/kalendarz-lekcji')
   revalidatePath('/public/rezerwacje')
   revalidatePath('/dashboard')
 }
@@ -269,16 +211,22 @@ export async function deleteBooking(id: string) {
   // Pobierz rezerwację, aby sprawdzić czy ma booked_slot_id
   const { data: booking } = await admin
     .from('public_booking_requests')
-    .select('booked_slot_id, assignment_id')
+    .select('booked_slot_id, session_id, assignment_id')
     .eq('id', id)
     .maybeSingle()
 
-  // Usuń booked_slot jeśli istnieje
   if (booking?.booked_slot_id) {
     await admin
       .from('booked_slots')
       .delete()
       .eq('id', booking.booked_slot_id)
+  }
+
+  if (booking?.session_id) {
+    await admin
+      .from('tutoring_sessions')
+      .delete()
+      .eq('id', booking.session_id)
   }
 
   // Usuń przypisanie jeśli istnieje (opcjonalnie, można zostawić)

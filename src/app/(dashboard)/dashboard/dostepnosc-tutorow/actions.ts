@@ -2,6 +2,8 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
+import { listBookedSlots, syncBookedSlotsFromScheduledSessions } from '@/lib/actions/booked-slots'
+import type { BookedSlot } from '@/lib/types/booked-slots.types'
 
 export async function clearTutorsAvailability(tutorIds: string[]) {
   if (!tutorIds.length) return
@@ -20,6 +22,11 @@ export async function clearTutorsAvailability(tutorIds: string[]) {
 
   revalidatePath('/dashboard/dostepnosc-tutorow')
   revalidatePath('/dashboard/kalendarz')
+}
+
+export async function getTutorBookedSlotsSynced(tutorId: string): Promise<BookedSlot[]> {
+  await syncBookedSlotsFromScheduledSessions(tutorId)
+  return listBookedSlots({ scope: 'admin', tutorId })
 }
 
 

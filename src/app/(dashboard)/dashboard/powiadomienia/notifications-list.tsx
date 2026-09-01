@@ -10,6 +10,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { LABELS } from '@/lib/labels/reports-declarations'
+import { AVAILABILITY_LABELS } from '@/lib/labels/availability'
 import {
   Pagination,
   PaginationContent,
@@ -140,6 +141,8 @@ export function NotificationsList({
         return '/dashboard/raporty-tutorow'
       case 'declaration_reminder':
         return '/dashboard/moje-deklaracje'
+      case 'availability_reminder':
+        return '/dashboard/kalendarz'
       case 'report_approved':
       case 'report_paid':
         return '/dashboard/moje-raporty'
@@ -165,6 +168,7 @@ export function NotificationsList({
       report_paid: LABELS.notificationMonthlyReport,
       report_reminder: LABELS.notificationTutorReport,
       declaration_reminder: LABELS.notificationMonthlyPlan,
+      availability_reminder: AVAILABILITY_LABELS.notificationAvailability,
       session_created: 'Sesja',
       session_confirmation_required: 'Sesja',
       support_incident: 'Problem',

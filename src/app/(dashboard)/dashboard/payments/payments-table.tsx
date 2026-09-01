@@ -257,7 +257,7 @@ export function PaymentsTable({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" data-tour="payments-history">
       {/* Filters */}
       <div className="flex items-center gap-4 flex-wrap">
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4 flex-1">

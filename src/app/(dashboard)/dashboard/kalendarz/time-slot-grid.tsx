@@ -2,8 +2,9 @@
 
 import { DayColumn } from './day-column'
 import type { TimeSlot, DayOfWeek } from '@/lib/types/availability.types'
-import type { BookedSlot } from '@/lib/actions/booked-slots'
+import type { BookedSlot } from '@/lib/types/booked-slots.types'
 import { DAY_NAMES_SHORT } from '@/lib/types/availability.types'
+import { slotMatchesWeekdayTime } from '@/lib/utils/availability-helpers'
 
 interface TimeSlotGridProps {
   slots: TimeSlot[]
@@ -52,7 +53,7 @@ export function TimeSlotGrid({ slots, isEditing = true, onSlotToggle, bookedSlot
         </div>
 
         {/* Siatka slotów */}
-        <div className="space-y-px w-full">
+        <div className="space-y-0.5 w-full py-1">
           {/* godziny 8:00–21:00 jako wiersze siatki */}
           {Array.from({ length: 13 }, (_, idx) => 8 + idx).map((hour) => {
             const rowStart = `${hour.toString().padStart(2, '0')}:00`
@@ -93,10 +94,11 @@ export function TimeSlotGrid({ slots, isEditing = true, onSlotToggle, bookedSlot
 
                   const isAvailable = existingSlot?.isAvailable ?? false
 
-                  const matched = bookedSlots.find(
-                    (b) => b.weekday === day && b.start_time.substring(0,5) === currentSlot.start && b.end_time.substring(0,5) === currentSlot.end && b.status === 'booked'
+                  const bookedAtSlot = bookedSlots.filter(
+                    (b) => slotMatchesWeekdayTime(b, day, currentSlot.start)
                   )
-                  const isBooked = !!matched
+                  const isBooked = bookedAtSlot.length > 0
+                  const matched = bookedAtSlot[0]
                   type BookedSlotWithAssignment = BookedSlot & {
                     student_assignments?: {
                       students?: { id: string; first_name: string; last_name: string } | null

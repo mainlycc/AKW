@@ -102,3 +102,26 @@ export async function resetOnboardingForRestart(): Promise<void> {
 
   revalidatePath('/dashboard', 'layout')
 }
+
+/** Pierwszy tutor w systemie — do demonstracji w poradniku zapisu ucznia. */
+export async function getTourDemoTutorPath(): Promise<string | null> {
+  const profile = await getUserProfile()
+  if (!profile || profile.role !== 'admin') return null
+
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id')
+    .eq('role', 'tutor')
+    .order('full_name')
+    .limit(1)
+    .maybeSingle()
+
+  if (error) {
+    console.error('[getTourDemoTutorPath]', error)
+    return null
+  }
+
+  if (!data?.id) return null
+  return `/dashboard/tutorzy/${data.id}`
+}

@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from "react"
+import { useMemo, useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -12,14 +12,16 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { TimeSlotGrid } from "../../kalendarz/time-slot-grid"
-import type { TutorAvailabilityData } from "@/lib/types/availability.types"
-import type { BookedSlot } from "@/lib/actions/booked-slots"
-import { SLOT_DURATION_MINUTES } from "@/lib/types/availability.types"
+import type { TutorAvailabilityData, DayOfWeek } from "@/lib/types/availability.types"
+import type { BookedSlot } from "@/lib/types/booked-slots.types"
+import { SLOT_DURATION_MINUTES, DAY_NAMES } from "@/lib/types/availability.types"
+import { slotMatchesWeekdayTime } from "@/lib/utils/availability-helpers"
 import { LABELS } from "@/lib/labels/reports-declarations"
 import { Button } from "@/components/ui/button"
 import {
   IconArrowLeft,
   IconDotsVertical,
+  IconMail,
   IconPencil,
 } from "@tabler/icons-react"
 import { useRouter } from "next/navigation"
@@ -32,6 +34,15 @@ import {
 import { TutorDetailDialog } from "../tutor-detail-dialog"
 import { StudentNameLink } from "@/components/student-name-link"
 import { SubjectBadge } from "@/components/subject-badge"
+import { SlotReservationDialog } from "./slot-reservation-dialog"
+import { ReservationNotificationsDialog } from "./reservation-notifications-dialog"
+import type { ReservationNotificationContext } from "./notification-actions"
+import { cancelTutorBookedSlot } from "./actions"
+import { ConfirmDialog } from "@/components/confirm-dialog"
+import { ComposeSendDialog } from "@/components/messaging/compose-send-dialog"
+import { AVAILABILITY_LABELS, availabilityReminderMessage } from "@/lib/labels/availability"
+import { sendAvailabilityReminderToTutor } from "./availability-reminder-actions"
+import { toast } from "sonner"
 
 interface Tutor {
   id: string
@@ -52,6 +63,7 @@ interface StudentWithRelations {
   last_name: string
   parent_email: string
   parent_phone: string | null
+  hourly_rate?: number | null
   student_parents?: Array<{
     id: string
     is_primary: boolean
@@ -108,12 +120,33 @@ export function TutorDetailsView({
   tutor,
   defaultTutorRate,
   availability,
-  bookedSlots,
+  bookedSlots: initialBookedSlots,
   students,
   tutorSubjects,
 }: TutorDetailsViewProps) {
   const router = useRouter()
   const [editDialogOpen, setEditDialogOpen] = useState(false)
+  const [bookedSlots, setBookedSlots] = useState<BookedSlot[]>(initialBookedSlots)
+  const [reservationOpen, setReservationOpen] = useState(false)
+  const [selectedSlot, setSelectedSlot] = useState<{
+    day: DayOfWeek
+    start: string
+    end: string
+  } | null>(null)
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false)
+  const [slotToCancel, setSlotToCancel] = useState<BookedSlot | null>(null)
+  const [isCancelling, setIsCancelling] = useState(false)
+  const [notificationContext, setNotificationContext] = useState<ReservationNotificationContext | null>(null)
+  const [notificationsOpen, setNotificationsOpen] = useState(false)
+  const [availabilityReminderOpen, setAvailabilityReminderOpen] = useState(false)
+
+  useEffect(() => {
+    setBookedSlots((prev) => {
+      const serverIds = new Set(initialBookedSlots.map((s) => s.id))
+      const pendingLocal = prev.filter((s) => !serverIds.has(s.id))
+      return [...initialBookedSlots, ...pendingLocal]
+    })
+  }, [initialBookedSlots])
 
   // Pobierz podstawowe informacje o rodzicach (pierwszy główny rodzic)
   const getPrimaryParentInfo = (student: StudentWithRelations) => {
@@ -217,6 +250,153 @@ export function TutorDetailsView({
     }))
   }, [tutorSubjects])
 
+  const buildSubjectGroupsFromAssignments = (
+    assignments: StudentWithRelations['student_assignments']
+  ): { subject: { id: string; name: string }; levels: { id: string; level_name: string }[] }[] => {
+    const map = new Map<
+      string,
+      { subject: { id: string; name: string }; levels: { id: string; level_name: string }[] }
+    >()
+
+    for (const a of assignments ?? []) {
+      if (a.status !== 'active') continue
+      const subject = a.subjects
+      const level = a.subject_levels
+      if (!subject?.id || !level?.id) continue
+
+      const existing = map.get(subject.id)
+      if (!existing) {
+        map.set(subject.id, {
+          subject: { id: subject.id, name: subject.name },
+          levels: [{ id: level.id, level_name: level.level_name }],
+        })
+      } else if (!existing.levels.some((l) => l.id === level.id)) {
+        existing.levels.push({ id: level.id, level_name: level.level_name })
+      }
+    }
+
+    return Array.from(map.values()).map((entry) => ({
+      ...entry,
+      levels: entry.levels.sort((a, b) => a.level_name.localeCompare(b.level_name, 'pl')),
+    }))
+  }
+
+  const assignedStudents = useMemo(
+    () =>
+      students.map((s) => ({
+        id: s.id,
+        first_name: s.first_name,
+        last_name: s.last_name,
+        hourly_rate:
+          s.hourly_rate != null && !Number.isNaN(Number(s.hourly_rate))
+            ? Number(s.hourly_rate)
+            : null,
+        subjects: buildSubjectGroupsFromAssignments(s.student_assignments),
+      })),
+    [students]
+  )
+
+  const tutorSubjectsForDialog = useMemo(() => {
+    const map = new Map<
+      string,
+      { subject: { id: string; name: string }; levels: { id: string; level_name: string }[] }
+    >()
+
+    for (const ts of tutorSubjects) {
+      const subject = Array.isArray(ts.subjects) ? ts.subjects[0] : ts.subjects
+      const level = Array.isArray(ts.subject_levels) ? ts.subject_levels[0] : ts.subject_levels
+      if (!subject?.id || !level?.id) continue
+
+      const existing = map.get(subject.id)
+      if (!existing) {
+        map.set(subject.id, {
+          subject: { id: subject.id, name: subject.name },
+          levels: [{ id: level.id, level_name: level.level_name }],
+        })
+      } else if (!existing.levels.some((l) => l.id === level.id)) {
+        existing.levels.push({ id: level.id, level_name: level.level_name })
+      }
+    }
+
+    return Array.from(map.values()).map((entry) => ({
+      ...entry,
+      levels: entry.levels.sort((a, b) => a.level_name.localeCompare(b.level_name, 'pl')),
+    }))
+  }, [tutorSubjects])
+
+  const getBookedSlotStudentName = (slot: BookedSlot): string => {
+    type BookedSlotWithAssignment = BookedSlot & {
+      student_assignments?: {
+        students?: { first_name: string; last_name: string } | null
+      } | null
+    }
+    const stud = (slot as BookedSlotWithAssignment).student_assignments?.students
+    if (stud?.first_name || stud?.last_name) {
+      return `${stud.first_name ?? ''} ${stud.last_name ?? ''}`.trim()
+    }
+    return 'uczeń'
+  }
+
+  const handleConfirmCancel = async () => {
+    if (!slotToCancel || isCancelling) return
+
+    const cancelled = slotToCancel
+    setCancelDialogOpen(false)
+    setSlotToCancel(null)
+    setBookedSlots((prev) => prev.filter((s) => s.id !== cancelled.id))
+
+    setIsCancelling(true)
+    try {
+      await cancelTutorBookedSlot(cancelled.id, tutor.id)
+      toast.success('Rezerwacja anulowana')
+    } catch {
+      setBookedSlots((prev) => [...prev, cancelled])
+      toast.error('Nie udało się anulować rezerwacji')
+    } finally {
+      setIsCancelling(false)
+    }
+  }
+
+  const handleSlotClick = (day: DayOfWeek, startTime: string, endTime: string) => {
+    const normalizeTime = (t: string) => t.substring(0, 5)
+    const isBooked = bookedSlots.some((b) => slotMatchesWeekdayTime(b, day, startTime))
+
+    if (isBooked) {
+      const slot = bookedSlots.find((b) => slotMatchesWeekdayTime(b, day, startTime))
+      if (slot) {
+        setSlotToCancel(slot)
+        setCancelDialogOpen(true)
+      }
+      return
+    }
+
+    const isAvailable = availability?.slots.some(
+      (s) =>
+        s.day_of_week === day &&
+        normalizeTime(s.start_time) === startTime &&
+        normalizeTime(s.end_time) === endTime &&
+        s.is_available
+    )
+
+    if (!isAvailable) return
+
+    if (tutorSubjectsForDialog.length === 0) {
+      toast.error('Tutor nie ma przypisanych przedmiotów — dodaj je w edycji profilu tutora.')
+      return
+    }
+
+    setSelectedSlot({ day, start: startTime, end: endTime })
+    setReservationOpen(true)
+  }
+
+  const handleReserved = (bookedSlot: BookedSlot) => {
+    setBookedSlots((prev) => {
+      if (prev.some((s) => s.id === bookedSlot.id)) return prev
+      return [...prev, bookedSlot]
+    })
+    router.refresh()
+  }
+
   const availableSlotsCount = availability?.slots.filter(s => s.is_available).length || 0
   const weeklyHours = (availableSlotsCount * SLOT_DURATION_MINUTES) / 60
 
@@ -278,7 +458,7 @@ export function TutorDetailsView({
       </div>
 
       {/* Informacje o tutorze */}
-      <Card>
+      <Card data-tour="tutor-detail-header">
         <CardHeader className="flex flex-row items-start justify-between">
           <CardTitle>Informacje o tutorze</CardTitle>
           <DropdownMenu>
@@ -364,9 +544,12 @@ export function TutorDetailsView({
       </Card>
 
       {/* Dostępność w tygodniu */}
-      <Card>
+      <Card data-tour="tutor-availability">
         <CardHeader>
           <CardTitle>Dostępność w tygodniu</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Kliknij zielony slot, aby zarezerwować lekcję. Kliknij fioletowy, aby anulować rezerwację.
+          </p>
         </CardHeader>
         <CardContent>
           {availability ? (
@@ -405,8 +588,7 @@ export function TutorDetailsView({
                 </div>
               </div>
 
-              {/* Kalendarz (read-only) */}
-              <div className="w-full overflow-x-auto">
+              <div className="w-full overflow-x-auto pb-1">
                 <TimeSlotGrid
                   slots={availability.slots.map((slot) => ({
                     day: slot.day_of_week,
@@ -414,17 +596,35 @@ export function TutorDetailsView({
                     endTime: slot.end_time,
                     isAvailable: slot.is_available,
                   }))}
-                  onSlotToggle={() => {}} // Read-only
+                  onSlotToggle={handleSlotClick}
                   isEditing={false}
                   bookedSlots={bookedSlots}
                 />
               </div>
             </div>
           ) : (
-            <div className="py-8 text-center text-muted-foreground">
-              Brak danych o dostępności dla tego tutora
+            <div className="flex flex-col items-center gap-4 py-8 text-center text-muted-foreground">
+              <p>Brak danych o dostępności dla tego tutora</p>
+              <Button
+                variant="outline"
+                onClick={() => setAvailabilityReminderOpen(true)}
+              >
+                <IconMail className="mr-2 h-4 w-4" />
+                {AVAILABILITY_LABELS.sendAvailabilityReminderButton}
+              </Button>
             </div>
           )}
+
+          <div
+            data-tour="tutor-reservation-guide"
+            className="mt-4 rounded-md border border-dashed bg-muted/30 p-4 text-sm text-muted-foreground space-y-1"
+          >
+            <p className="font-medium text-foreground">Jak zapisać ucznia na zajęcia</p>
+            <p>1. Kliknij <strong className="text-foreground">zielony slot</strong> w grafiku powyżej.</p>
+            <p>2. Wybierz ucznia (istniejący lub nowy) oraz przedmiot i poziom.</p>
+            <p>3. Ustaw rezerwację cykliczną lub jednorazową i kliknij <strong className="text-foreground">Zarezerwuj</strong>.</p>
+            <p>4. Wyślij rodzicowi link PayU — po opłaceniu wpłata pojawi się w <strong className="text-foreground">historii płatności</strong>.</p>
+          </div>
         </CardContent>
       </Card>
 
@@ -569,6 +769,78 @@ export function TutorDetailsView({
         onClose={() => setEditDialogOpen(false)}
         tutor={tutorWithStats}
         tutorSubjects={tutorSubjects}
+      />
+      {selectedSlot && (
+        <SlotReservationDialog
+          open={reservationOpen}
+          onClose={() => setReservationOpen(false)}
+          tutorId={tutor.id}
+          weekday={selectedSlot.day}
+          startTime={selectedSlot.start}
+          endTime={selectedSlot.end}
+          assignedStudents={assignedStudents}
+          tutorSubjects={tutorSubjectsForDialog}
+          onReserved={handleReserved}
+          onReservationCreated={({ notificationContext: ctx }) => {
+            setNotificationContext(ctx)
+            setNotificationsOpen(true)
+          }}
+        />
+      )}
+      <ReservationNotificationsDialog
+        open={notificationsOpen}
+        onClose={() => {
+          setNotificationsOpen(false)
+          setNotificationContext(null)
+        }}
+        context={notificationContext}
+      />
+      <ConfirmDialog
+        open={cancelDialogOpen}
+        onOpenChange={(open) => {
+          setCancelDialogOpen(open)
+          if (!open) setSlotToCancel(null)
+        }}
+        title="Anulować rezerwację?"
+        description={
+          slotToCancel
+            ? `Slot ${DAY_NAMES[slotToCancel.weekday as DayOfWeek]}, ${slotToCancel.start_time.substring(0, 5)}–${slotToCancel.end_time.substring(0, 5)} jest zarezerwowany dla ${getBookedSlotStudentName(slotToCancel)}. Czy na pewno chcesz anulować tę rezerwację?`
+            : 'Czy na pewno chcesz anulować tę rezerwację?'
+        }
+        confirmText="Anuluj rezerwację"
+        cancelText="Zostaw"
+        onConfirm={handleConfirmCancel}
+      />
+      <ComposeSendDialog
+        open={availabilityReminderOpen}
+        onOpenChange={setAvailabilityReminderOpen}
+        title={AVAILABILITY_LABELS.reminderAvailabilityDialog}
+        description={`Tutor: ${tutor.full_name}`}
+        defaultMessage={availabilityReminderMessage()}
+        messagePlaceholder="Wpisz treść przypomnienia..."
+        confirmLabel="Wyślij przypomnienie"
+        stats={{
+          totalRecipients: 1,
+          emailAvailable: tutor.email?.trim() ? 1 : 0,
+          smsAvailable: tutor.phone?.trim() ? 1 : 0,
+          emailUnavailable: tutor.email?.trim() ? 0 : 1,
+          smsUnavailable: tutor.phone?.trim() ? 0 : 1,
+        }}
+        onSend={async ({ message, channel }) => {
+          try {
+            const result = await sendAvailabilityReminderToTutor(tutor.id, channel, message)
+            if (result.success) {
+              toast.success('Wysłano przypomnienie o wypełnieniu grafiku')
+              setAvailabilityReminderOpen(false)
+            } else {
+              toast.error(result.error || 'Nie udało się wysłać przypomnienia')
+            }
+          } catch (error) {
+            toast.error(
+              error instanceof Error ? error.message : 'Nie udało się wysłać przypomnienia'
+            )
+          }
+        }}
       />
     </div>
   )

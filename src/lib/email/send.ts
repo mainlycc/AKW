@@ -9,6 +9,8 @@ import { generatePaymentReminderEmail, type PaymentReminderEmailData } from './t
 import { generatePaymentLinkEmail, type PaymentLinkEmailData } from './templates/payment-link-email'
 import { generateReportReminderEmail, type ReportReminderEmailData } from './templates/report-reminder-email'
 import { generateDeclarationReminderEmail, type DeclarationReminderEmailData } from './templates/declaration-reminder-email'
+import { generateAvailabilityReminderEmail, type AvailabilityReminderEmailData } from './templates/availability-reminder-email'
+import { AVAILABILITY_LABELS } from '@/lib/labels/availability'
 import { generateTutorBookingNotificationEmail, type TutorBookingNotificationEmailData } from './templates/tutor-booking-notification-email'
 import { generatePasswordResetEmail } from './templates/password-reset-email'
 import { LABELS } from '@/lib/labels/reports-declarations'
@@ -828,6 +830,92 @@ export async function sendDeclarationReminderEmail({
   }
 }
 
+export interface SendAvailabilityReminderEmailParams extends AvailabilityReminderEmailData {
+  to: string
+}
+
+export async function sendAvailabilityReminderEmail({
+  to,
+  tutorName,
+  customMessage,
+}: SendAvailabilityReminderEmailParams): Promise<SendEmailResult> {
+  try {
+    const resendApiKey = process.env.RESEND_API_KEY
+    if (!resendApiKey) {
+      const errorMsg = 'RESEND_API_KEY is not set in environment variables'
+      console.error('Availability reminder email sending failed:', {
+        error: errorMsg,
+        environment: process.env.NODE_ENV,
+        vercel: !!process.env.VERCEL,
+        vercelEnv: process.env.VERCEL_ENV,
+        hasFromEmail: !!FROM_EMAIL,
+      })
+      return { success: false, error: errorMsg }
+    }
+
+    if (!resendApiKey.startsWith('re_')) {
+      const errorMsg = 'RESEND_API_KEY appears to be invalid (should start with "re_")'
+      console.error('Availability reminder email sending failed:', {
+        error: errorMsg,
+        keyPrefix: resendApiKey.substring(0, 5),
+        keyLength: resendApiKey.length,
+      })
+      return { success: false, error: errorMsg }
+    }
+
+    const resend = new Resend(resendApiKey)
+
+    let appUrl = 'http://localhost:3000'
+    if (process.env.NEXT_PUBLIC_APP_URL) {
+      appUrl = process.env.NEXT_PUBLIC_APP_URL
+    } else if (process.env.VERCEL_URL) {
+      appUrl = `https://${process.env.VERCEL_URL}`
+    }
+
+    const html = generateAvailabilityReminderEmail({
+      tutorName,
+      appUrl,
+      customMessage,
+    })
+
+    const { data, error } = await resend.emails.send({
+      from: FROM_EMAIL,
+      to: [to],
+      subject: `${AVAILABILITY_LABELS.reminderAvailabilityTitle} - Akademia Wiedzy`,
+      html,
+    })
+
+    if (error) {
+      console.error('Resend API error (availability reminder):', {
+        message: error.message,
+        name: error.name,
+        email: to,
+        fromEmail: FROM_EMAIL,
+      })
+      return { success: false, error: error.message }
+    }
+
+    console.log('Availability reminder email sent successfully:', {
+      messageId: data?.id,
+      email: to,
+      tutorName,
+    })
+    return { success: true, messageId: data?.id }
+  } catch (error) {
+    console.error('Unexpected error sending availability reminder email:', {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      email: to,
+      environment: process.env.NODE_ENV,
+      vercel: !!process.env.VERCEL,
+    })
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Nieoczekiwany błąd podczas wysyłania emaila',
+    }
+  }
+}
+
 export interface SendTutorBookingNotificationEmailParams extends TutorBookingNotificationEmailData {
   to: string
 }
@@ -844,6 +932,7 @@ export async function sendTutorBookingNotificationEmail({
   contactEmail,
   contactPhone,
   notes,
+  source,
 }: SendTutorBookingNotificationEmailParams): Promise<SendEmailResult> {
   try {
     const resendApiKey = process.env.RESEND_API_KEY
@@ -881,6 +970,7 @@ export async function sendTutorBookingNotificationEmail({
       contactEmail,
       contactPhone,
       notes,
+      source,
     })
     
     const { data, error } = await resend.emails.send({

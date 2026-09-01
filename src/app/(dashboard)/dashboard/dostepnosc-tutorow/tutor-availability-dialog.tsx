@@ -10,6 +10,7 @@ import {
 } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
 import { getTutorAvailability, getAvailabilityHistory } from '@/lib/actions/availability'
+import { getTutorBookedSlotsSynced } from '../dostepnosc-tutorow/actions'
 import { TimeSlotGrid } from '../kalendarz/time-slot-grid'
 import type { TutorAvailabilityData, AvailabilityTemplate } from '@/lib/types/availability.types'
 import { SLOT_DURATION_MINUTES } from '@/lib/types/availability.types'
@@ -23,7 +24,7 @@ import {
 } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
 import { createClient } from '@/lib/supabase/client'
-import type { BookedSlot } from '@/lib/actions/booked-slots'
+import type { BookedSlot } from '@/lib/types/booked-slots.types'
 
 interface TutorAvailabilityDialogProps {
   open: boolean
@@ -55,26 +56,9 @@ export function TutorAvailabilityDialog({
         setSelectedVersion(availabilityData.template.version)
       }
 
-      // Pobierz rezerwacje slotów dla tutora
-      const supabase = createClient()
-      const { data: bookedData, error } = await supabase
-        .from('booked_slots')
-        .select(`
-          *,
-          student_assignments (
-            id,
-            students (id, first_name, last_name),
-            subjects (id, name),
-            subject_levels (id, level_name)
-          )
-        `)
-        .eq('tutor_id', tutorId)
-        .order('weekday', { ascending: true })
-        .order('start_time', { ascending: true })
-
-      if (!error && bookedData) {
-        setBooked(bookedData as unknown as BookedSlot[])
-      }
+      // Pobierz rezerwacje slotów (zsynchronizowane z kalendarzem lekcji)
+      const bookedData = await getTutorBookedSlotsSynced(tutorId)
+      setBooked(bookedData)
     } catch (error) {
       console.error('Error loading availability:', error)
     } finally {

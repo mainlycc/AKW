@@ -1,45 +1,65 @@
 import { Suspense } from 'react'
-import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
+import {
+  syncPublicBookingPaymentAfterRedirect,
+  syncAdminReservationPaymentAfterRedirect,
+} from '@/lib/actions/payu'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { CheckCircle2, Mail, ArrowLeft } from 'lucide-react'
 
-async function BookingSuccessContent({ bookingId }: { bookingId: string | null }) {
-  if (!bookingId) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Płatność zakończona pomyślnie</CardTitle>
-          <CardDescription>
-            Twoja płatność została przetworzona. Sprawdź swoją skrzynkę email - wysłaliśmy potwierdzenie.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
-            <CheckCircle2 className="h-5 w-5" />
-            <span className="font-medium">Płatność została zakończona pomyślnie</span>
-          </div>
-          <div className="flex items-center gap-2 text-muted-foreground">
-            <Mail className="h-4 w-4" />
-            <span>Email potwierdzający został wysłany na Twój adres email</span>
-          </div>
-          <div className="pt-4">
-            <Link href="/public/rezerwacje">
-              <Button>
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Powrót do rezerwacji
-              </Button>
-            </Link>
-          </div>
-        </CardContent>
-      </Card>
-    )
+function GenericSuccessCard() {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Płatność zakończona pomyślnie</CardTitle>
+        <CardDescription>
+          Twoja płatność została przetworzona. Sprawdź swoją skrzynkę email — wysłaliśmy potwierdzenie.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
+          <CheckCircle2 className="h-5 w-5" />
+          <span className="font-medium">Płatność została zakończona pomyślnie</span>
+        </div>
+        <div className="flex items-center gap-2 text-muted-foreground">
+          <Mail className="h-4 w-4" />
+          <span>Email potwierdzający został wysłany na Twój adres email</span>
+        </div>
+        <div className="pt-4">
+          <Link href="/public/rezerwacje">
+            <Button>
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Powrót do rezerwacji
+            </Button>
+          </Link>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+async function PaymentSuccessContent({
+  bookingId,
+  adminExtOrderId,
+}: {
+  bookingId: string | null
+  adminExtOrderId: string | null
+}) {
+  if (adminExtOrderId) {
+    await syncAdminReservationPaymentAfterRedirect(adminExtOrderId)
+    return <GenericSuccessCard />
   }
 
+  if (!bookingId) {
+    return <GenericSuccessCard />
+  }
+
+  await syncPublicBookingPaymentAfterRedirect(bookingId)
+
   const supabase = await createClient()
-  
+
   const { data: booking } = await supabase
     .from('public_booking_requests')
     .select('id, status, student_first_name, student_last_name, contact_email, request_date, start_time')
@@ -47,34 +67,7 @@ async function BookingSuccessContent({ bookingId }: { bookingId: string | null }
     .single()
 
   if (!booking) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Płatność zakończona pomyślnie</CardTitle>
-          <CardDescription>
-            Twoja płatność została przetworzona. Sprawdź swoją skrzynkę email - wysłaliśmy potwierdzenie.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
-            <CheckCircle2 className="h-5 w-5" />
-            <span className="font-medium">Płatność została zakończona pomyślnie</span>
-          </div>
-          <div className="flex items-center gap-2 text-muted-foreground">
-            <Mail className="h-4 w-4" />
-            <span>Email potwierdzający został wysłany na Twój adres email</span>
-          </div>
-          <div className="pt-4">
-            <Link href="/public/rezerwacje">
-              <Button>
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Powrót do rezerwacji
-              </Button>
-            </Link>
-          </div>
-        </CardContent>
-      </Card>
-    )
+    return <GenericSuccessCard />
   }
 
   const isConfirmed = booking.status === 'confirmed'
@@ -141,21 +134,24 @@ async function BookingSuccessContent({ bookingId }: { bookingId: string | null }
 export default async function PaymentSuccessPage({
   searchParams,
 }: {
-  searchParams: Promise<{ bookingId?: string }>
+  searchParams: Promise<{ bookingId?: string; adminExtOrderId?: string }>
 }) {
   const params = await searchParams
   const bookingId = params?.bookingId || null
+  const adminExtOrderId = params?.adminExtOrderId || null
 
   return (
     <div className="container mx-auto py-8 max-w-2xl">
-      <Suspense fallback={
-        <Card>
-          <CardContent className="py-8">
-            <div className="text-center">Ładowanie...</div>
-          </CardContent>
-        </Card>
-      }>
-        <BookingSuccessContent bookingId={bookingId} />
+      <Suspense
+        fallback={
+          <Card>
+            <CardContent className="py-8">
+              <div className="text-center">Ładowanie...</div>
+            </CardContent>
+          </Card>
+        }
+      >
+        <PaymentSuccessContent bookingId={bookingId} adminExtOrderId={adminExtOrderId} />
       </Suspense>
     </div>
   )

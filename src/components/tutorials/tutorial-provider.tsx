@@ -1,32 +1,39 @@
 'use client'
 
 import * as React from 'react'
-import { usePathname, useRouter } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import { driver, type Driver } from 'driver.js'
 import 'driver.js/dist/driver.css'
+import { toast } from 'sonner'
 
 import type { UserRole } from '@/lib/types/database.types'
 import {
   completeOnboarding,
   getOnboardingProgress,
+  getTourDemoTutorPath,
   resetOnboardingForRestart,
   saveOnboardingStep,
   skipOnboarding,
 } from '@/lib/actions/onboarding'
+import { ADMIN_GUIDED_TOURS, type AdminGuidedTourKey } from '@/lib/tutorials/admin-guided-tours'
+import { setupAdvanceGate } from '@/lib/tutorials/tutorial-advance-gate'
 import { DRIVER_BASE_CONFIG } from '@/lib/tutorials/driver-config'
+import { formatTutorialDescription } from '@/lib/tutorials/format-description'
 import { getOnboardingStepsForRole } from '@/lib/tutorials/get-steps-for-role'
 import {
   ONBOARDING_STORAGE_PREFIX,
   type OnboardingProgress,
+  type StartTourOptions,
   type TutorialContextValue,
   type TutorialStep,
 } from '@/lib/tutorials/types'
-import { canSkipRouteNavigation } from '@/lib/tutorials/tutorial-navigation'
+import { canSkipRouteNavigation, getNavigationTargetPath } from '@/lib/tutorials/tutorial-navigation'
+import { canAdvanceFromStep } from '@/lib/tutorials/tutorial-path'
 import {
   isLayoutTourSelector,
   revealNavTarget,
   waitForElement,
-  waitForPath,
+  waitForStepPath,
 } from '@/lib/tutorials/wait-for-element'
 
 const TutorialContext = React.createContext<TutorialContextValue | null>(null)
@@ -80,8 +87,7 @@ export function TutorialProvider({
   initialProgress: OnboardingProgress
 }) {
   const router = useRouter()
-  const pathname = usePathname()
-  const steps = React.useMemo(() => getOnboardingStepsForRole(role), [role])
+  const defaultSteps = React.useMemo(() => getOnboardingStepsForRole(role), [role])
 
   const [progress, setProgress] = React.useState(initialProgress)
   const [isRunning, setIsRunning] = React.useState(false)
@@ -89,13 +95,33 @@ export function TutorialProvider({
   const driverRef = React.useRef<Driver | null>(null)
   const stepIndexRef = React.useRef(0)
   const isTransitioningRef = React.useRef(false)
+  const standaloneTourRef = React.useRef(false)
+  const tourStepsRef = React.useRef<TutorialStep[]>(defaultSteps)
+  const demoTutorPathRef = React.useRef<string | null>(null)
+  const advanceGateCleanupRef = React.useRef<(() => void) | null>(null)
+  const suppressDestroyEndRef = React.useRef(false)
+
+  const clearAdvanceGate = React.useCallback(() => {
+    advanceGateCleanupRef.current?.()
+    advanceGateCleanupRef.current = null
+  }, [])
+
+  React.useEffect(() => {
+    if (!isRunning) {
+      tourStepsRef.current = defaultSteps
+      demoTutorPathRef.current = null
+    }
+  }, [defaultSteps, isRunning])
 
   const destroyDriver = React.useCallback(() => {
+    clearAdvanceGate()
+    suppressDestroyEndRef.current = true
     if (driverRef.current?.isActive()) {
       driverRef.current.destroy()
     }
     driverRef.current = null
-  }, [])
+    suppressDestroyEndRef.current = false
+  }, [clearAdvanceGate])
 
   const refreshProgress = React.useCallback(async () => {
     const next = await getOnboardingProgress()
@@ -111,40 +137,56 @@ export function TutorialProvider({
     [userId]
   )
 
+  const endStandaloneTour = React.useCallback(() => {
+    clearAdvanceGate()
+    setIsRunning(false)
+    isTransitioningRef.current = false
+    standaloneTourRef.current = false
+    demoTutorPathRef.current = null
+    tourStepsRef.current = defaultSteps
+  }, [clearAdvanceGate, defaultSteps])
+
   const prefetchStepRoute = React.useCallback(
-    (index: number) => {
+    (index: number, steps: TutorialStep[]) => {
       const next = steps[index]
       if (next?.path) router.prefetch(next.path)
     },
-    [router, steps]
+    [router]
   )
 
   const showStep = React.useCallback(
-    async (index: number) => {
+    async (index: number, options?: { continuing?: boolean }) => {
+      const steps = tourStepsRef.current
       if (index < 0 || index >= steps.length) return
-      if (isTransitioningRef.current) return
+      if (!options?.continuing && isTransitioningRef.current) return
 
       isTransitioningRef.current = true
       stepIndexRef.current = index
 
       const step: TutorialStep = steps[index]
-      prefetchStepRoute(index + 1)
+      prefetchStepRoute(index + 1, steps)
 
-      const skipNav = canSkipRouteNavigation(step, pathname)
-      if (!skipNav && pathname !== step.path) {
-        router.push(step.path)
-        await waitForPath(step.path)
+      const currentPath = window.location.pathname
+      const demoTutorPath = demoTutorPathRef.current
+      const skipNav = canSkipRouteNavigation(step, currentPath, demoTutorPath)
+      const navTarget = getNavigationTargetPath(step, currentPath, demoTutorPath)
+
+      if (!skipNav && navTarget) {
+        router.push(navTarget)
+        await waitForStepPath(step, demoTutorPath)
       }
 
       const element = await resolveElement(step.element)
+      clearAdvanceGate()
       destroyDriver()
 
+      const isStandalone = standaloneTourRef.current
       const isLast = index === steps.length - 1
       const isFirst = index === 0
+      const progressLabel = `${index + 1} z ${steps.length}`
 
       const goToStep = async (targetIndex: number) => {
-        isTransitioningRef.current = false
-        await showStep(targetIndex)
+        await showStep(targetIndex, { continuing: true })
       }
 
       const driverObj = driver({
@@ -156,46 +198,82 @@ export function TutorialProvider({
             element,
             popover: {
               title: step.title,
-              description: step.description,
+              description: formatTutorialDescription(step.description),
               side: step.side ?? 'bottom',
               showButtons: ['previous', 'next', 'close'],
-              progressText: `${index + 1} z ${steps.length}`,
+              progressText: progressLabel,
               showProgress: true,
               doneBtnText: isLast ? 'Zakończ' : 'Dalej',
               onNextClick: (_el, _s, { driver: d }) => {
+                if (!canAdvanceFromStep(step, window.location.pathname)) return
+
                 if (isLast) {
                   d.destroy()
                   void (async () => {
-                    await completeOnboarding(index)
-                    clearLocalStep(userId)
-                    setProgress({ completed: true, skipped: false, step: index })
-                    setIsRunning(false)
-                    isTransitioningRef.current = false
+                    if (!isStandalone) {
+                      await completeOnboarding(index)
+                      clearLocalStep(userId)
+                      setProgress({ completed: true, skipped: false, step: index })
+                    }
+                    endStandaloneTour()
                   })()
                   return
                 }
                 void (async () => {
-                  void persistStep(index)
-                  isTransitioningRef.current = false
-                  await showStep(index + 1)
+                  if (!isStandalone) {
+                    void persistStep(index)
+                  }
+                  await showStep(index + 1, { continuing: true })
                 })()
               },
               onPrevClick: (_el, _s, { driver: d }) => {
                 if (isFirst) return
                 void (async () => {
-                  isTransitioningRef.current = false
                   await goToStep(index - 1)
                 })()
               },
               onCloseClick: (_el, _s, { driver: d }) => {
                 d.destroy()
                 void (async () => {
-                  await persistStep(index)
-                  setIsRunning(false)
-                  isTransitioningRef.current = false
+                  if (!isStandalone) {
+                    await persistStep(index)
+                  }
+                  endStandaloneTour()
                 })()
               },
               onPopoverRender: (popover, { driver: d }) => {
+                const handleAdvanceAllowed = () => {
+                  if (!canAdvanceFromStep(step, window.location.pathname)) return
+                  if (isLast) return
+
+                  isTransitioningRef.current = true
+                  clearAdvanceGate()
+                  suppressDestroyEndRef.current = true
+                  d.destroy()
+                  suppressDestroyEndRef.current = false
+                  void (async () => {
+                    if (!isStandalone) {
+                      void persistStep(index)
+                    }
+                    await showStep(index + 1, { continuing: true })
+                  })()
+                }
+
+                advanceGateCleanupRef.current = setupAdvanceGate(
+                  popover,
+                  step,
+                  step.advanceRequires ? handleAdvanceAllowed : undefined
+                )
+
+                if (isStandalone) {
+                  if (steps.length === 1) {
+                    const prevBtn = popover.footerButtons.querySelector('.driver-popover-prev-btn')
+                    if (prevBtn instanceof HTMLElement) {
+                      prevBtn.style.display = 'none'
+                    }
+                  }
+                  return
+                }
                 if (popover.footerButtons.querySelector('[data-tour-skip]')) return
                 const skipBtn = document.createElement('button')
                 skipBtn.type = 'button'
@@ -209,8 +287,7 @@ export function TutorialProvider({
                     await skipOnboarding()
                     clearLocalStep(userId)
                     setProgress((prev) => ({ ...prev, skipped: true }))
-                    setIsRunning(false)
-                    isTransitioningRef.current = false
+                    endStandaloneTour()
                   })()
                 }
                 popover.footerButtons.prepend(skipBtn)
@@ -219,9 +296,8 @@ export function TutorialProvider({
           },
         ],
         onDestroyed: () => {
-          if (!isTransitioningRef.current) {
-            setIsRunning(false)
-          }
+          if (suppressDestroyEndRef.current || isTransitioningRef.current) return
+          endStandaloneTour()
         },
       })
 
@@ -229,23 +305,54 @@ export function TutorialProvider({
       driverObj.drive()
       isTransitioningRef.current = false
     },
-    [destroyDriver, pathname, persistStep, prefetchStepRoute, router, steps, userId]
+    [clearAdvanceGate, destroyDriver, endStandaloneTour, persistStep, prefetchStepRoute, router, userId]
   )
 
   const startTour = React.useCallback(
-    async (options?: { fromStep?: number; restart?: boolean }) => {
+    async (options?: StartTourOptions) => {
       if (role !== 'admin' && role !== 'tutor') return
 
-      if (options?.restart) {
+      const isGuidedTour = Boolean(options?.guidedTourKey)
+      const isSingleModule = options?.singleModule ?? false
+      const isStandalone = isSingleModule || isGuidedTour
+      standaloneTourRef.current = isStandalone
+
+      if (options?.guidedTourKey) {
+        const tourKey = options.guidedTourKey as AdminGuidedTourKey
+        const tour = ADMIN_GUIDED_TOURS[tourKey]
+        if (!tour) {
+          toast.error('Nie znaleziono poradnika')
+          standaloneTourRef.current = false
+          return
+        }
+
+        const demoPath = await getTourDemoTutorPath()
+        if (!demoPath) {
+          toast.error('Brak tutorów w systemie — dodaj tutora, aby uruchomić ten poradnik.')
+          standaloneTourRef.current = false
+          return
+        }
+
+        demoTutorPathRef.current = demoPath
+        tourStepsRef.current = tour.buildSteps(demoPath)
+      } else {
+        demoTutorPathRef.current = null
+        tourStepsRef.current = defaultSteps
+      }
+
+      if (options?.restart && !isStandalone) {
         await resetOnboardingForRestart()
         clearLocalStep(userId)
         setProgress({ completed: false, skipped: false, step: 0 })
       }
 
+      const steps = tourStepsRef.current
       const localStep = readLocalStep(userId)
       let startIndex = options?.fromStep ?? 0
 
-      if (options?.fromStep === undefined && !options?.restart) {
+      if (isStandalone && options?.fromStep !== undefined) {
+        startIndex = options.fromStep
+      } else if (options?.fromStep === undefined && !options?.restart && !isGuidedTour) {
         if (progress.completed || progress.skipped) {
           startIndex = 0
         } else {
@@ -257,7 +364,15 @@ export function TutorialProvider({
       setIsRunning(true)
       await showStep(startIndex)
     },
-    [progress.completed, progress.skipped, progress.step, role, showStep, steps.length, userId]
+    [
+      defaultSteps,
+      progress.completed,
+      progress.skipped,
+      progress.step,
+      role,
+      showStep,
+      userId,
+    ]
   )
 
   const skipTour = React.useCallback(async () => {
@@ -265,8 +380,8 @@ export function TutorialProvider({
     await skipOnboarding()
     clearLocalStep(userId)
     setProgress((prev) => ({ ...prev, skipped: true }))
-    setIsRunning(false)
-  }, [destroyDriver, userId])
+    endStandaloneTour()
+  }, [destroyDriver, endStandaloneTour, userId])
 
   React.useEffect(() => {
     return () => destroyDriver()

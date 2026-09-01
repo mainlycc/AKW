@@ -248,7 +248,7 @@ export function TutorsTable({ tutors, tutorSubjects, defaultTutorRate = null }: 
       />
 
       {/* Tabela */}
-      <div className="rounded-md border">
+      <div className="rounded-md border" data-tour="tutors-table">
         <Table>
           <TableHeader>
             <TableRow>

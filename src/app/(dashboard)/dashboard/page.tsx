@@ -6,6 +6,62 @@ import { format } from "date-fns"
 import { pl } from "date-fns/locale"
 import Link from "next/link"
 import { DashboardWelcomeCard } from "./dashboard-welcome-card"
+import type { SupabaseClient } from "@supabase/supabase-js"
+
+async function getScheduledHoursThisMonth(
+  supabase: SupabaseClient,
+  filters?: { tutorId?: string; studentId?: string }
+) {
+  const startOfMonth = new Date()
+  startOfMonth.setDate(1)
+  startOfMonth.setHours(0, 0, 0, 0)
+
+  const startOfNextMonth = new Date(startOfMonth)
+  startOfNextMonth.setMonth(startOfNextMonth.getMonth() + 1)
+
+  const PAGE_SIZE = 1000
+  let from = 0
+  let totalMinutes = 0
+  let sessionCount = 0
+  let hasMore = true
+
+  while (hasMore) {
+    let query = supabase
+      .from('tutoring_sessions')
+      .select('duration_minutes')
+      .eq('status', 'scheduled')
+      .gte('session_date', startOfMonth.toISOString())
+      .lt('session_date', startOfNextMonth.toISOString())
+      .range(from, from + PAGE_SIZE - 1)
+
+    if (filters?.tutorId) {
+      query = query.eq('tutor_id', filters.tutorId)
+    }
+
+    if (filters?.studentId) {
+      query = query.eq('student_id', filters.studentId)
+    }
+
+    const { data, error } = await query
+
+    if (error || !data?.length) {
+      break
+    }
+
+    for (const session of data) {
+      totalMinutes += session.duration_minutes
+      sessionCount++
+    }
+
+    hasMore = data.length === PAGE_SIZE
+    from += PAGE_SIZE
+  }
+
+  return {
+    hours: totalMinutes / 60,
+    sessionCount,
+  }
+}
 
 export default async function DashboardPage() {
   const profile = await getUserProfile()
@@ -60,21 +116,24 @@ export default async function DashboardPage() {
   const stats = {
     studentsCount: 0,
     tutorsCount: 0,
-    sessionsThisMonth: 0,
-    totalHoursThisMonth: 0,
+    plannedHoursThisMonth: 0,
+    plannedSessionsThisMonth: 0,
     activeAssignments: 0,
   }
 
   if (isAdmin) {
-    const [students, tutors, assignments] = await Promise.all([
+    const [students, tutors, assignments, planned] = await Promise.all([
       supabase.from('students').select('id', { count: 'exact', head: true }),
       supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'tutor'),
       supabase.from('student_assignments').select('id', { count: 'exact', head: true }).eq('status', 'active'),
+      getScheduledHoursThisMonth(supabase),
     ])
 
     stats.studentsCount = students.count || 0
     stats.tutorsCount = tutors.count || 0
     stats.activeAssignments = assignments.count || 0
+    stats.plannedHoursThisMonth = planned.hours
+    stats.plannedSessionsThisMonth = planned.sessionCount
   }
 
   if (isTutor) {
@@ -95,31 +154,6 @@ export default async function DashboardPage() {
       .eq('status', 'active')
 
     stats.activeAssignments = assignments.count || 0
-  }
-
-  // Pobierz sesje z tego miesiąca
-  const startOfMonth = new Date()
-  startOfMonth.setDate(1)
-  startOfMonth.setHours(0, 0, 0, 0)
-
-  const sessionsQuery = supabase
-    .from('tutoring_sessions')
-    .select('duration_minutes')
-    .gte('session_date', startOfMonth.toISOString())
-
-  if (isTutor) {
-    sessionsQuery.eq('tutor_id', profile.id)
-  }
-
-  if (isStudent && studentId) {
-    sessionsQuery.eq('student_id', studentId)
-  }
-
-  const { data: sessions } = await sessionsQuery
-
-  if (sessions) {
-    stats.sessionsThisMonth = sessions.length
-    stats.totalHoursThisMonth = sessions.reduce((acc, s) => acc + s.duration_minutes, 0) / 60
   }
 
   // Pobierz najbliższą lekcję dla tutora lub ucznia
@@ -579,13 +613,13 @@ export default async function DashboardPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
-              Sesje w tym miesiącu
+              Zaplanowane godziny
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.sessionsThisMonth}</div>
+            <div className="text-2xl font-bold">{stats.plannedHoursThisMonth.toFixed(1)}</div>
             <p className="text-xs text-muted-foreground">
-              {stats.totalHoursThisMonth.toFixed(1)} godzin
+              {stats.plannedSessionsThisMonth} lekcji w tym miesiącu
             </p>
           </CardContent>
         </Card>

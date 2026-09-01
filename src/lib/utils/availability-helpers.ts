@@ -1,8 +1,99 @@
 // Helper functions for availability calendar
 // These are not server actions, just utility functions
 
+import { format } from 'date-fns'
+import { pl } from 'date-fns/locale'
 import type { TimeSlot, DayOfWeek, CalendarSlot } from '@/lib/types/availability.types'
-import { DEFAULT_WORKING_HOURS, SLOT_DURATION_MINUTES } from '@/lib/types/availability.types'
+import { DEFAULT_WORKING_HOURS, SLOT_DURATION_MINUTES, DAY_NAMES } from '@/lib/types/availability.types'
+
+/** Normalizuje czas do formatu HH:MM. */
+export function normalizeSlotTime(time: string): string {
+  return time.substring(0, 5)
+}
+
+/** Porównuje booked slot z dniem tygodnia i godziną rozpoczęcia (odporne na string/number weekday). */
+export function slotMatchesWeekdayTime(
+  slot: { weekday: number | string; start_time: string; status?: string },
+  day: number,
+  startTime: string
+): boolean {
+  return (
+    Number(slot.weekday) === day &&
+    normalizeSlotTime(slot.start_time) === normalizeSlotTime(startTime) &&
+    (slot.status === undefined || slot.status === 'booked')
+  )
+}
+
+/** Wyciąga cykliczny slot tygodniowy z daty sesji (zgodny z siatką kalendarza i Postgres TIMESTAMPTZ). */
+export function extractWeeklySlotFromSession(
+  sessionDate: string,
+  durationMinutes: number = SLOT_DURATION_MINUTES
+): { weekday: DayOfWeek; start_time: string; end_time: string } {
+  const d = new Date(sessionDate)
+  // Sesje z bazy są zapisywane jako (data + godzina slotu)::timestamptz — używamy UTC,
+  // żeby godzina na siatce tygodniowej zgadzała się z booked_slots.start_time.
+  const utcDay = d.getUTCDay()
+  const weekday = (utcDay === 0 ? 7 : utcDay) as DayOfWeek
+  const start_time = `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`
+  const endDate = new Date(d.getTime() + durationMinutes * 60_000)
+  const end_time = `${String(endDate.getUTCHours()).padStart(2, '0')}:${String(endDate.getUTCMinutes()).padStart(2, '0')}`
+  return { weekday, start_time, end_time }
+}
+
+/** Buduje ISO daty sesji w UTC dla wall-clock time (zgodnie z generate_sessions_for_booked_slot). */
+export function buildSessionTimestampUtc(date: string, startTime: string): string {
+  const [hours, minutes] = startTime.split(':').map(Number)
+  return `${date}T${String(hours ?? 0).padStart(2, '0')}:${String(minutes ?? 0).padStart(2, '0')}:00.000Z`
+}
+
+function addUtcDays(base: Date, days: number): Date {
+  return new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth(), base.getUTCDate() + days))
+}
+
+function formatUtcDateString(date: Date): string {
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`
+}
+
+function formatUtcSessionDateLabel(sessionDateIso: string): string {
+  const d = new Date(sessionDateIso)
+  const weekday = DAY_NAMES[(((d.getUTCDay() + 6) % 7) + 1) as DayOfWeek]
+  const month = format(new Date(Date.UTC(2000, d.getUTCMonth(), 1)), 'MMMM', { locale: pl })
+  return `${weekday}, ${d.getUTCDate()} ${month} ${d.getUTCFullYear()}`
+}
+
+/** Najbliższa data dla danego dnia tygodnia i godziny rozpoczęcia (1=pon … 7=nd). */
+export function getNextOccurrenceForWeekday(
+  weekday: DayOfWeek,
+  startTime: string
+): { date: string; dateLabel: string; sessionDateIso: string; weekdayLabel: string } {
+  const now = new Date()
+  const todayWeekday = (((now.getUTCDay() + 6) % 7) + 1) as DayOfWeek
+
+  let daysToAdd = weekday - todayWeekday
+  if (daysToAdd < 0) daysToAdd += 7
+
+  const targetDate = addUtcDays(now, daysToAdd)
+  const date = formatUtcDateString(targetDate)
+  let sessionDateIso = buildSessionTimestampUtc(date, startTime)
+
+  if (daysToAdd === 0 && new Date(sessionDateIso) <= now) {
+    const nextDate = formatUtcDateString(addUtcDays(now, daysToAdd + 7))
+    sessionDateIso = buildSessionTimestampUtc(nextDate, startTime)
+    return {
+      date: nextDate,
+      dateLabel: formatUtcSessionDateLabel(sessionDateIso),
+      sessionDateIso,
+      weekdayLabel: DAY_NAMES[weekday],
+    }
+  }
+
+  return {
+    date,
+    dateLabel: formatUtcSessionDateLabel(sessionDateIso),
+    sessionDateIso,
+    weekdayLabel: DAY_NAMES[weekday],
+  }
+}
 
 // Generuj domyślny szablon dostępności
 export function getDefaultAvailabilitySlots(): TimeSlot[] {

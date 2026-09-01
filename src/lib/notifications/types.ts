@@ -9,6 +9,7 @@ export type NotificationType =
   | 'report_paid'
   | 'report_reminder'
   | 'declaration_reminder'
+  | 'availability_reminder'
   | 'session_created'
   | 'session_confirmation_required'
   | 'support_incident'

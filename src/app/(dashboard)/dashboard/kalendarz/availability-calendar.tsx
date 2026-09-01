@@ -6,8 +6,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { TimeSlotGrid } from './time-slot-grid'
 import { AssignDialog, type AssignmentOption } from './assign-dialog'
-import { saveAvailability, cancelBookedSlotAction } from './actions'
-import type { BookedSlot } from '@/lib/actions/booked-slots'
+import { saveAvailability, cancelBookedSlotAction, listTutorBookedSlots } from './actions'
+import type { BookedSlot } from '@/lib/types/booked-slots.types'
 import { getDefaultAvailabilitySlots, isWithinWorkingHours } from '@/lib/utils/availability-helpers'
 import type { TutorAvailabilityData, TimeSlot, DayOfWeek } from '@/lib/types/availability.types'
 import { SLOT_DURATION_MINUTES } from '@/lib/types/availability.types'
@@ -140,9 +140,9 @@ export function AvailabilityCalendar({ tutorId, initialAvailability, initialBook
     if (!isEditing) {
       // w trybie podglądu – jeśli zajęty: zaproponuj anulowanie; jeśli dostępny: przypisz
       const normalizeTime = (t: string) => t.substring(0,5)
-      const isBooked = bookedSlots.some(b => b.weekday === day && b.start_time.substring(0,5) === startTime && b.end_time.substring(0,5) === endTime && b.status === 'booked')
+      const isBooked = bookedSlots.some(b => b.weekday === day && b.start_time.substring(0,5) === startTime && b.status === 'booked')
       if (isBooked) {
-        const slot = bookedSlots.find(b => b.weekday === day && b.start_time.substring(0,5) === startTime && b.end_time.substring(0,5) === endTime && b.status === 'booked')
+        const slot = bookedSlots.find(b => b.weekday === day && b.start_time.substring(0,5) === startTime && b.status === 'booked')
         if (slot && window.confirm('Ten slot jest zarezerwowany. Czy chcesz anulować rezerwację?')) {
           cancelBookedSlotAction(slot.id, {
             correlationId: createCorrelationId(),
@@ -372,7 +372,10 @@ export function AvailabilityCalendar({ tutorId, initialAvailability, initialBook
           startTime={selectedSlot.start}
           endTime={selectedSlot.end}
           assignments={assignments}
-          onAssigned={() => { /* proste odświeżenie lokalnego stanu po success */ }}
+          onAssigned={async () => {
+            const updated = await listTutorBookedSlots(tutorId)
+            setBookedSlots(updated)
+          }}
         />
       )}
     </div>

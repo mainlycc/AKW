@@ -203,6 +203,11 @@
   color: var(--muted-foreground);
 }
 
+.aw-driver-popover .driver-popover-description strong {
+  font-weight: 600;
+  color: var(--popover-foreground);
+}
+
 .aw-driver-popover .driver-popover-progress-text {
   font-size: 0.75rem;
   color: var(--muted-foreground);

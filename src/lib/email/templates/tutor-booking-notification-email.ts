@@ -9,11 +9,14 @@ export interface TutorBookingNotificationEmailData {
   contactEmail: string
   contactPhone?: string | null
   notes?: string | null
+  /** Rezerwacja utworzona przez admina (bez sekcji oczekiwania na płatność) */
+  source?: 'public' | 'admin'
 }
 
 export function generateTutorBookingNotificationEmail(data: TutorBookingNotificationEmailData) {
-  const { tutorName, studentName, subject, level, date, time, duration, contactEmail, contactPhone, notes } = data
+  const { tutorName, studentName, subject, level, date, time, duration, contactEmail, contactPhone, notes, source = 'public' } = data
   const hours = duration / 60
+  const isAdmin = source === 'admin'
 
   const phoneRow = contactPhone
     ? `<tr>
@@ -28,6 +31,30 @@ export function generateTutorBookingNotificationEmail(data: TutorBookingNotifica
         <p style="margin: 10px 0 0 0; font-size: 14px;">${notes}</p>
       </div>`
     : ''
+
+  const introText = isAdmin
+    ? 'Administrator wpisał dla Ciebie nową rezerwację lekcji. Oto szczegóły:'
+    : 'Masz nową rezerwację lekcji! Ktoś właśnie zarezerwował z Tobą termin korepetycji. Oto szczegóły:'
+
+  const statusSection = isAdmin
+    ? `<div style="background: #e8f5e9; border-left: 4px solid #4caf50; padding: 15px; margin: 20px 0;">
+        <strong>✅ Status:</strong> <span style="color: #2e7d32;">Rezerwacja aktywna</span>
+        <p style="margin: 10px 0 0 0; font-size: 14px;">
+          Lekcja została wpisana w kalendarz. Szczegóły znajdziesz w swoim panelu.
+        </p>
+      </div>`
+    : `<div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0;">
+        <strong>⏳ Status:</strong> <span style="color: #856404;">Oczekuje na płatność</span>
+        <p style="margin: 10px 0 0 0; font-size: 14px;">
+          Rezerwacja została utworzona i oczekuje na płatność ze strony klienta. Po dokonaniu płatności rezerwacja zostanie automatycznie potwierdzona.
+        </p>
+      </div>`
+
+  const footerNote = isAdmin
+    ? ''
+    : `<p style="margin-top: 20px;">
+      Szczegóły rezerwacji znajdziesz również w swoim panelu w zakładce <strong>Rezerwacje publiczne</strong>.
+    </p>`
 
   return `
 <!DOCTYPE html>
@@ -47,7 +74,7 @@ export function generateTutorBookingNotificationEmail(data: TutorBookingNotifica
     
     <p>Cześć <strong>${tutorName}</strong>,</p>
     
-    <p>Masz nową rezerwację lekcji! Ktoś właśnie zarezerwował z Tobą termin korepetycji. Oto szczegóły:</p>
+    <p>${introText}</p>
     
     <div style="background: white; border: 2px solid #667eea; border-radius: 8px; padding: 20px; margin: 20px 0;">
       <table style="width: 100%; border-collapse: collapse;">
@@ -85,16 +112,9 @@ export function generateTutorBookingNotificationEmail(data: TutorBookingNotifica
 
     ${notesSection}
     
-    <div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0;">
-      <strong>⏳ Status:</strong> <span style="color: #856404;">Oczekuje na płatność</span>
-      <p style="margin: 10px 0 0 0; font-size: 14px;">
-        Rezerwacja została utworzona i oczekuje na płatność ze strony klienta. Po dokonaniu płatności rezerwacja zostanie automatycznie potwierdzona.
-      </p>
-    </div>
+    ${statusSection}
     
-    <p style="margin-top: 20px;">
-      Szczegóły rezerwacji znajdziesz również w swoim panelu w zakładce <strong>Rezerwacje publiczne</strong>.
-    </p>
+    ${footerNote}
     
     <p style="margin-top: 20px; color: #666; font-size: 14px;">
       Pozdrawiamy,<br>

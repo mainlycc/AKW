@@ -1,5 +1,7 @@
 import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { getUserProfile } from "@/lib/actions/auth"
+import { syncMissingSessionsForConfirmedPublicBookings } from "@/lib/actions/public-booking"
 import { redirect } from "next/navigation"
 import { LessonsCalendar } from "./lessons-calendar"
 import type { SessionStatus } from "@/lib/types/database.types"
@@ -44,6 +46,14 @@ export default async function LessonsCalendarPage() {
   }
 
   const supabase = await createClient()
+
+  // Uzupełnij brakujące lekcje z potwierdzonych rezerwacji publicznych
+  try {
+    const admin = createAdminClient()
+    await syncMissingSessionsForConfirmedPublicBookings(admin)
+  } catch (syncError) {
+    console.error('[kalendarz-lekcji] Sync public booking sessions failed:', syncError)
+  }
 
   // Automatycznie dogeneruj sesje na przyszłe miesiące z booked_slots
   // (trigger generuje sesje tylko na 3 miesiące od daty utworzenia slotu)

@@ -48,6 +48,10 @@ export async function updateSessionStatus(
     throw error
   }
 
+  if (status === 'completed') {
+    revalidatePath('/dashboard/billing-from-reports')
+  }
+
   revalidatePath('/dashboard/kalendarz-lekcji')
   revalidatePath('/dashboard', 'layout')
 }

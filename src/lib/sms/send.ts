@@ -1,5 +1,6 @@
 import { getSmsClient } from './client'
 import { smsCompletedLessonsReminder, smsNextMonthPlanReminder } from '@/lib/labels/reports-declarations'
+import { smsAvailabilityReminder } from '@/lib/labels/availability'
 import type { SendNotificationResult } from '@/lib/types/notifications'
 
 const MAX_SMS_LENGTH = 320
@@ -66,6 +67,28 @@ export async function sendBookingConfirmationSms(
   )
 
   const result = await client.sendSms({ to: params.toPhone, body })
+  return result.success
+    ? { success: true }
+    : { success: false, error: result.error, details: { sms: result.error } }
+}
+
+export interface TutorAdminBookingNotificationSmsParams {
+  toPhone: string
+  studentName: string
+  subject: string
+  date: string
+  time: string
+}
+
+export async function sendTutorAdminBookingNotificationSms(
+  params: TutorAdminBookingNotificationSmsParams
+): Promise<SendNotificationResult> {
+  const client = getSmsClient()
+  const body = truncate(
+    `Akademia Wiedzy: admin wpisal rezerwacje - ${params.studentName}, ${params.subject}, ${params.date} ${params.time}.`
+  )
+
+  const result = await client.sendSms({ to: params.toPhone, body, utf: false })
   return result.success
     ? { success: true }
     : { success: false, error: result.error, details: { sms: result.error } }
@@ -216,6 +239,32 @@ export async function sendDeclarationReminderSms(
       custom && custom.length > 0
         ? custom
         : smsNextMonthPlanReminder(params.month, params.year)
+    }`
+  )
+
+  const result = await client.sendSms({ to: params.toPhone, body })
+  return result.success
+    ? { success: true }
+    : { success: false, error: result.error, details: { sms: result.error } }
+}
+
+export interface AvailabilityReminderSmsParams {
+  toPhone: string
+  tutorName: string
+  customMessage?: string
+}
+
+export async function sendAvailabilityReminderSms(
+  params: AvailabilityReminderSmsParams
+): Promise<SendNotificationResult> {
+  const client = getSmsClient()
+
+  const custom = params.customMessage?.trim()
+  const body = truncate(
+    `Akademia Wiedzy: ${
+      custom && custom.length > 0
+        ? custom
+        : smsAvailabilityReminder()
     }`
   )
 

@@ -247,8 +247,8 @@ export class PayUClient {
       
       console.log('PayU: Redirect detected, redirectUrl:', redirectUrl)
       
-      // Próbujemy odczytać orderId z body (może być puste lub JSON)
-      let orderId = request.extOrderId
+      // orderId z URL redirectu (PayU) — extOrderId nie pasuje do webhooka
+      let orderId = extractOrderIdFromPayURedirect(redirectUrl) || request.extOrderId
       try {
         const text = await response.text()
         if (text && text.trim()) {
@@ -259,8 +259,16 @@ export class PayUClient {
           }
         }
       } catch {
-        // Body puste lub nie-JSON - używamy extOrderId
-        console.log('PayU: No orderId in body, using extOrderId:', orderId)
+        if (orderId === request.extOrderId) {
+          console.log('PayU: No orderId in body, using extOrderId fallback:', orderId)
+        }
+      }
+
+      if (orderId === request.extOrderId) {
+        console.warn(
+          'PayU: Could not resolve PayU orderId from redirect/body; webhook matching may rely on extOrderId:',
+          request.extOrderId
+        )
       }
       
       return {
@@ -377,6 +385,16 @@ export class PayUClient {
 /**
  * Create PayU client instance from environment variables
  */
+function extractOrderIdFromPayURedirect(redirectUrl: string): string | null {
+  try {
+    const url = new URL(redirectUrl)
+    return url.searchParams.get('orderId') || url.searchParams.get('orderid')
+  } catch {
+    const match = redirectUrl.match(/[?&]orderId=([^&]+)/i)
+    return match?.[1] ?? null
+  }
+}
+
 export function createPayUClient(): PayUClient {
   const posId = process.env.PAYU_POS_ID
   const clientId = process.env.PAYU_CLIENT_ID

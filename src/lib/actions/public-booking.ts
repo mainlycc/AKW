@@ -6,7 +6,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import type { CalendarSlot, DayOfWeek } from '@/lib/types/availability.types'
 import { SLOT_DURATION_MINUTES } from '@/lib/types/availability.types'
 import { generateCalendarSlots } from '@/lib/utils/availability-helpers'
-import { format, parseISO } from 'date-fns'
+import { addDays, format, parseISO } from 'date-fns'
 import { pl } from 'date-fns/locale'
 import { createNotification } from '@/lib/actions/notifications'
 import { getDefaultStudentRate } from '@/app/(dashboard)/dashboard/stawki/actions'
@@ -243,23 +243,25 @@ export async function getTutorOpenSlots({
     blockedWeekdaySet.add(key)
   }
 
-  // Only block pending requests by date (confirmed requests are handled by booked_slots)
-  const { data: pendingRequests, error: requestsError } = await supabase
+  // Block pending and confirmed one-time requests by specific date
+  const { data: dateBlockedRequests, error: requestsError } = await supabase
     .from('public_booking_requests')
-    .select('request_date, start_time, status')
+    .select('request_date, start_time, status, is_recurring')
     .eq('tutor_id', tutorId)
-    .eq('status', 'pending')
+    .in('status', ['pending', 'confirmed'])
 
   if (requestsError) {
-    console.error(`[getTutorOpenSlots] Error fetching pending requests for tutor ${tutorId}:`, requestsError)
+    console.error(`[getTutorOpenSlots] Error fetching booking requests for tutor ${tutorId}:`, requestsError)
     throw requestsError
   }
 
-  console.log(`[getTutorOpenSlots] Tutor ${tutorId}: Found ${pendingRequests?.length || 0} pending requests`)
+  console.log(`[getTutorOpenSlots] Tutor ${tutorId}: Found ${dateBlockedRequests?.length || 0} active booking requests`)
 
-  for (const request of pendingRequests || []) {
-    const key = `${request.request_date}-${request.start_time.slice(0, 5)}`
-    blockedDateSet.add(key)
+  for (const request of dateBlockedRequests || []) {
+    if (request.status === 'pending' || request.is_recurring === false) {
+      const key = `${request.request_date}-${request.start_time.slice(0, 5)}`
+      blockedDateSet.add(key)
+    }
   }
 
   const baseSlots = generateCalendarSlots({
@@ -406,9 +408,12 @@ export async function getSubjectLevelOpenSlots({
     }
   }
 
-  console.log(`[getSubjectLevelOpenSlots] Returning ${slots.length} total available slots`)
+  const minBookingDate = format(addDays(new Date(), 1), 'yyyy-MM-dd')
+  const bookableSlots = slots.filter((slot) => slot.date >= minBookingDate)
 
-  return slots.sort((a, b) => {
+  console.log(`[getSubjectLevelOpenSlots] Returning ${bookableSlots.length} total available slots`)
+
+  return bookableSlots.sort((a, b) => {
     if (a.date === b.date) {
       return a.startTime.localeCompare(b.startTime)
     }
@@ -427,11 +432,347 @@ export interface PublicBookingPayload {
   contactEmail: string
   contactPhone?: string
   notes?: string
+  isRecurring: boolean
+}
+
+export interface PublicBookingResource {
+  id: string
+  assignment_id: string | null
+  booked_slot_id: string | null
+  session_id: string | null
+  tutor_id: string
+  student_id: string | null
+  request_date: string
+  weekday: number
+  start_time: string
+  end_time: string
+  is_recurring: boolean
+}
+
+function combineBookingDateAndStartTime(requestDate: string, startTime: string): string {
+  const time = startTime?.substring(0, 5) || '00:00'
+  return `${requestDate}T${time}:00`
+}
+
+/**
+ * Create tutoring_sessions / booked_slots for confirmed public bookings that are missing them.
+ */
+export async function syncMissingSessionsForConfirmedPublicBookings(
+  admin: ReturnType<typeof createAdminClient>
+): Promise<number> {
+  const { data: bookings, error } = await admin
+    .from('public_booking_requests')
+    .select(
+      'id, assignment_id, booked_slot_id, session_id, tutor_id, student_id, request_date, weekday, start_time, end_time, is_recurring'
+    )
+    .eq('status', 'confirmed')
+    .or('session_id.is.null,booked_slot_id.is.null')
+
+  if (error || !bookings) {
+    console.error('[syncMissingSessionsForConfirmedPublicBookings] Query failed:', error)
+    return 0
+  }
+
+  let synced = 0
+
+  for (const booking of bookings) {
+    const needsOneTimeSession =
+      !booking.is_recurring && !booking.session_id && booking.assignment_id && booking.student_id
+    const needsRecurringSlot =
+      booking.is_recurring && !booking.booked_slot_id && booking.assignment_id
+
+    if (!needsOneTimeSession && !needsRecurringSlot) {
+      continue
+    }
+
+    try {
+      await createConfirmedBookingResources(admin, {
+        id: booking.id,
+        assignment_id: booking.assignment_id,
+        booked_slot_id: booking.booked_slot_id,
+        session_id: booking.session_id,
+        tutor_id: booking.tutor_id,
+        student_id: booking.student_id,
+        request_date: booking.request_date,
+        weekday: booking.weekday,
+        start_time: booking.start_time,
+        end_time: booking.end_time,
+        is_recurring: booking.is_recurring ?? false,
+      })
+      synced++
+    } catch (syncError) {
+      console.error(
+        '[syncMissingSessionsForConfirmedPublicBookings] Failed for booking:',
+        booking.id,
+        syncError
+      )
+    }
+  }
+
+  return synced
+}
+
+export async function createConfirmedBookingResources(
+  admin: ReturnType<typeof createAdminClient>,
+  booking: PublicBookingResource
+): Promise<void> {
+  if (booking.is_recurring) {
+    if (booking.booked_slot_id || !booking.assignment_id) {
+      return
+    }
+
+    const { data: existingSlot } = await admin
+      .from('booked_slots')
+      .select('id, status')
+      .eq('tutor_id', booking.tutor_id)
+      .eq('student_assignment_id', booking.assignment_id)
+      .eq('weekday', booking.weekday)
+      .eq('start_time', booking.start_time)
+      .eq('end_time', booking.end_time)
+      .maybeSingle()
+
+    if (existingSlot) {
+      if (existingSlot.status !== 'booked') {
+        const { error: slotUpdateError } = await admin
+          .from('booked_slots')
+          .update({ status: 'booked' })
+          .eq('id', existingSlot.id)
+
+        if (slotUpdateError) {
+          throw slotUpdateError
+        }
+      }
+
+      await admin
+        .from('public_booking_requests')
+        .update({ booked_slot_id: existingSlot.id })
+        .eq('id', booking.id)
+      return
+    }
+
+    const { data: occupiedByOther } = await admin
+      .from('booked_slots')
+      .select('id')
+      .eq('tutor_id', booking.tutor_id)
+      .eq('weekday', booking.weekday)
+      .eq('start_time', booking.start_time)
+      .eq('status', 'booked')
+      .maybeSingle()
+
+    if (occupiedByOther) {
+      throw new Error('Ten termin jest już zajęty przez innego ucznia.')
+    }
+
+    const { data: newSlot, error: slotInsertError } = await admin
+      .from('booked_slots')
+      .insert({
+        tutor_id: booking.tutor_id,
+        student_assignment_id: booking.assignment_id,
+        weekday: booking.weekday,
+        start_time: booking.start_time,
+        end_time: booking.end_time,
+        status: 'booked',
+        created_by: booking.tutor_id,
+      })
+      .select('id')
+      .single()
+
+    if (slotInsertError || !newSlot) {
+      throw slotInsertError ?? new Error('Nie udało się utworzyć cyklicznej rezerwacji slotu.')
+    }
+
+    await admin
+      .from('public_booking_requests')
+      .update({ booked_slot_id: newSlot.id })
+      .eq('id', booking.id)
+    return
+  }
+
+  if (booking.session_id || !booking.assignment_id || !booking.student_id) {
+    return
+  }
+
+  const { data: newSession, error: sessionInsertError } = await admin
+    .from('tutoring_sessions')
+    .insert({
+      assignment_id: booking.assignment_id,
+      tutor_id: booking.tutor_id,
+      student_id: booking.student_id,
+      session_date: combineBookingDateAndStartTime(booking.request_date, booking.start_time),
+      duration_minutes: SLOT_DURATION_MINUTES,
+      status: 'scheduled',
+      notes: 'Rezerwacja publiczna',
+      created_by: booking.tutor_id,
+    })
+    .select('id')
+    .single()
+
+  if (sessionInsertError || !newSession) {
+    throw sessionInsertError ?? new Error('Nie udało się utworzyć jednorazowej lekcji.')
+  }
+
+  await admin
+    .from('public_booking_requests')
+    .update({ session_id: newSession.id })
+    .eq('id', booking.id)
+}
+
+export async function cancelConfirmedBookingResources(
+  admin: ReturnType<typeof createAdminClient>,
+  booking: Pick<PublicBookingResource, 'booked_slot_id' | 'session_id'>
+): Promise<void> {
+  if (booking.booked_slot_id) {
+    const { error: slotCancelError } = await admin
+      .from('booked_slots')
+      .update({ status: 'cancelled' })
+      .eq('id', booking.booked_slot_id)
+
+    if (slotCancelError) {
+      throw slotCancelError
+    }
+  }
+
+  if (booking.session_id) {
+    const { error: sessionCancelError } = await admin
+      .from('tutoring_sessions')
+      .update({ status: 'cancelled' })
+      .eq('id', booking.session_id)
+
+    if (sessionCancelError) {
+      throw sessionCancelError
+    }
+  }
 }
 
 const normalizeTime = (time: string) => {
   const [h = '00', m = '00'] = time.split(':')
   return `${h.padStart(2, '0')}:${m.padStart(2, '0')}`
+}
+
+const capitalizeWord = (value: string) =>
+  value.charAt(0).toUpperCase() + value.slice(1).toLowerCase()
+
+const deriveParentNameFromContact = (contactEmail: string, studentLastName: string) => {
+  const localPart = contactEmail.split('@')[0] || 'rodzic'
+  const parts = localPart.replace(/[._+-]/g, ' ').split(/\s+/).filter(Boolean)
+
+  if (parts.length >= 2) {
+    return {
+      first_name: capitalizeWord(parts[0]),
+      last_name: parts.slice(1).map(capitalizeWord).join(' '),
+    }
+  }
+
+  return {
+    first_name: parts[0] ? capitalizeWord(parts[0]) : 'Rodzic',
+    last_name: studentLastName.trim(),
+  }
+}
+
+async function syncStudentContactFromBooking(
+  admin: ReturnType<typeof createAdminClient>,
+  studentId: string,
+  studentLastName: string,
+  contactEmail: string,
+  contactPhone: string | null
+) {
+  const email = contactEmail.trim().toLowerCase()
+  const phone = contactPhone?.trim() || null
+
+  const { error: studentUpdateError } = await admin
+    .from('students')
+    .update({
+      parent_email: email,
+      parent_phone: phone,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', studentId)
+
+  if (studentUpdateError) {
+    throw studentUpdateError
+  }
+
+  const { data: existingParent, error: fetchParentError } = await admin
+    .from('parents')
+    .select('id, phone')
+    .eq('email', email)
+    .maybeSingle()
+
+  if (fetchParentError) {
+    throw fetchParentError
+  }
+
+  let parentId: string
+
+  if (existingParent) {
+    parentId = existingParent.id
+
+    if (phone && phone !== existingParent.phone) {
+      const { error: parentUpdateError } = await admin
+        .from('parents')
+        .update({
+          phone,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', parentId)
+
+      if (parentUpdateError) {
+        throw parentUpdateError
+      }
+    }
+  } else {
+    const { first_name, last_name } = deriveParentNameFromContact(email, studentLastName)
+
+    const { data: newParent, error: parentInsertError } = await admin
+      .from('parents')
+      .insert({
+        first_name,
+        last_name,
+        email,
+        phone,
+        parent_type: 'other',
+      })
+      .select('id')
+      .single()
+
+    if (parentInsertError || !newParent) {
+      throw parentInsertError ?? new Error('Nie udało się utworzyć rekordu rodzica.')
+    }
+
+    parentId = newParent.id
+  }
+
+  const { data: existingLink, error: fetchLinkError } = await admin
+    .from('student_parents')
+    .select('id')
+    .eq('parent_id', parentId)
+    .eq('student_id', studentId)
+    .maybeSingle()
+
+  if (fetchLinkError) {
+    throw fetchLinkError
+  }
+
+  if (!existingLink) {
+    const { count, error: countError } = await admin
+      .from('student_parents')
+      .select('id', { count: 'exact', head: true })
+      .eq('student_id', studentId)
+
+    if (countError) {
+      throw countError
+    }
+
+    const { error: linkError } = await admin.from('student_parents').insert({
+      parent_id: parentId,
+      student_id: studentId,
+      is_primary: (count || 0) === 0,
+    })
+
+    if (linkError) {
+      throw linkError
+    }
+  }
 }
 
 /**
@@ -469,6 +810,11 @@ export async function calculateLessonPrice(studentId: string): Promise<number> {
 
 export async function bookPublicSlot(payload: PublicBookingPayload) {
   const admin = createAdminClient()
+
+  const today = format(new Date(), 'yyyy-MM-dd')
+  if (payload.date <= today) {
+    throw new Error('Na dzisiaj nie możesz rezerwować już lekcji. Wybierz termin od jutra.')
+  }
 
   const firstName = payload.studentFirstName.trim()
   const lastName = payload.studentLastName.trim()
@@ -572,6 +918,15 @@ export async function bookPublicSlot(payload: PublicBookingPayload) {
     studentId = newStudent.id
   }
 
+  try {
+    await syncStudentContactFromBooking(admin, studentId, lastName, email, phone)
+  } catch (contactSyncError) {
+    console.error('[bookPublicSlot] Failed to sync parent contact data:', contactSyncError)
+    throw contactSyncError instanceof Error
+      ? contactSyncError
+      : new Error('Nie udało się zapisać danych kontaktowych rodzica.')
+  }
+
   // Determine tutor subject/level to link assignment
   // Find or create assignment
   const { data: existingAssignment, error: fetchAssignmentError } = await admin
@@ -644,6 +999,7 @@ export async function bookPublicSlot(payload: PublicBookingPayload) {
       contact_phone: phone,
       notes,
       status: 'pending',
+      is_recurring: payload.isRecurring,
     })
     .select()
     .single()
@@ -812,6 +1168,7 @@ export async function bookPublicSlot(payload: PublicBookingPayload) {
 
   revalidatePath('/public/rezerwacje')
   revalidatePath('/dashboard/rezerwacje-publiczne')
+  revalidatePath('/dashboard/uczniowie')
 
   return bookingRequest
 }

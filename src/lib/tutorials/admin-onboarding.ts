@@ -7,7 +7,7 @@ export const ADMIN_ONBOARDING_STEPS: TutorialStep[] = [
     element: '[data-tour="nav-dashboard"]',
     title: 'Panel administratora',
     description:
-      'Stąd masz podgląd całego systemu: uczniowie, tutorzy, przypisania i sesje w miesiącu. W menu są dwie ścieżki rozliczeń: **z wyprzedzeniem** (plan tutora → należności od rodziców) oraz **wstecz** (raport godzin → wypłata tutora i rozliczenie ucznia). W kolejnych krokach przejdziesz przez obie.',
+      'Stąd masz podgląd całego systemu: uczniowie, tutorzy, przypisania i zaplanowane godziny w miesiącu. W menu są dwie ścieżki rozliczeń: **z wyprzedzeniem** (plan tutora → należności od rodziców) oraz **wstecz** (raport godzin → wypłata tutora i rozliczenie ucznia). W kolejnych krokach przejdziesz przez obie.',
     side: 'bottom',
   },
   {
@@ -55,7 +55,7 @@ export const ADMIN_ONBOARDING_STEPS: TutorialStep[] = [
     element: navTourSelector('/dashboard/rezerwacje-publiczne'),
     title: 'Zgłoszenia klientów',
     description:
-      'Wnioski z publicznego formularza rezerwacji. Potwierdź lub anuluj — po zatwierdzeniu system powiąże ucznia ze slotem. Po prawej stronie znajdziesz instrukcję procesu i wysyłanych e-maili.',
+      'Wnioski z publicznego formularza rezerwacji. Potwierdź lub anuluj — po zatwierdzeniu system powiąże ucznia ze slotem.',
     side: 'right',
   },
   {
@@ -111,7 +111,7 @@ export const ADMIN_ONBOARDING_STEPS: TutorialStep[] = [
     element: '[data-tour="notifications-bell"]',
     title: 'Powiadomienia',
     description:
-      'Dzwonek w nagłówku i ta zakładka zbierają alerty: zgłoszenia klientów, raporty i plany tutorów, przypomnienia. Kliknij powiadomienie, aby przejść do właściwego modułu. Tour zakończony — w razie potrzeby uruchom go ponownie przyciskiem „Pomoc”.',
+      'Dzwonek w nagłówku i ta zakładka zbierają alerty: zgłoszenia klientów, raporty i plany tutorów, przypomnienia. Kliknij powiadomienie, aby przejść do właściwego modułu. Tour zakończony — w razie potrzeby uruchom go ponownie przyciskiem „Samouczek”.',
     side: 'bottom',
   },
 ]

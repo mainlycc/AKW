@@ -6,9 +6,9 @@ import { createPayUClient } from '@/lib/payu/client'
 import { getUserProfile } from '@/lib/actions/auth'
 import { revalidatePath } from 'next/cache'
 import type { StudentBillingWithParent } from '@/lib/actions/billing'
-import { sendFinalBookingConfirmationEmail } from '@/lib/email/send'
+import { sendFinalBookingConfirmationEmail, sendTutorNewStudentBookingEmail } from '@/lib/email/send'
 import type { NotificationChannel } from '@/lib/types/notifications'
-import { sendPaymentLinkSms } from '@/lib/sms/send'
+import { sendBookingConfirmationSms, sendPaymentLinkSms } from '@/lib/sms/send'
 import { sendWithChannel } from '@/lib/notifications/send-with-channel'
 import { createNotification } from '@/lib/actions/notifications'
 import { createConfirmedBookingResources } from '@/lib/actions/public-booking'
@@ -17,7 +17,11 @@ import {
 } from '@/lib/billing/public-booking-payment'
 import { format, parseISO } from 'date-fns'
 import { pl } from 'date-fns/locale'
-import { SLOT_DURATION_MINUTES } from '@/lib/types/availability.types'
+import {
+  DAY_NAMES,
+  SLOT_DURATION_MINUTES,
+  type DayOfWeek,
+} from '@/lib/types/availability.types'
 
 export interface CreatePayUOrderResult {
   success: boolean
@@ -1469,6 +1473,210 @@ type AdminReservationPayuPayment = {
   description: string | null
 }
 
+async function resolveParentPhoneForStudent(
+  admin: ReturnType<typeof createAdminClient>,
+  studentId: string
+): Promise<string | null> {
+  const { data: student } = await admin
+    .from('students')
+    .select(`
+      parent_phone,
+      student_parents (
+        is_primary,
+        parents (
+          phone
+        )
+      )
+    `)
+    .eq('id', studentId)
+    .maybeSingle()
+
+  if (!student) return null
+
+  const parents = student.student_parents ?? []
+  const primary = parents.find((p: { is_primary?: boolean }) => p.is_primary) ?? parents[0]
+  const parent = primary?.parents
+  const parentObj = Array.isArray(parent) ? parent[0] : parent
+
+  return parentObj?.phone || student.parent_phone || null
+}
+
+/**
+ * Powiadomienia po udanej płatności PayU (rezerwacja z panelu admina):
+ * SMS do rodzica + mail do korepetytora.
+ * Wywoływać tylko gdy wpis w payments został właśnie utworzony (idempotencja).
+ */
+async function notifyAfterAdminReservationPayment(
+  payuPayment: AdminReservationPayuPayment
+): Promise<void> {
+  try {
+    const admin = createAdminClient()
+
+    const { data: student } = await admin
+      .from('students')
+      .select('first_name, last_name')
+      .eq('id', payuPayment.student_id)
+      .maybeSingle()
+
+    const studentName = student
+      ? `${student.first_name} ${student.last_name}`.trim()
+      : 'ucznia'
+
+    let tutorName = 'tutora'
+    let tutorEmail: string | null = null
+    let subjectName = 'zajęcia'
+    let levelName = ''
+    let dateLabel = ''
+    let timeLabel = ''
+
+    if (payuPayment.booked_slot_id) {
+      const { data: slot } = await admin
+        .from('booked_slots')
+        .select(
+          `
+          weekday,
+          start_time,
+          end_time,
+          tutor:profiles!booked_slots_tutor_id_fkey (full_name, email),
+          assignment:student_assignments!booked_slots_student_assignment_id_fkey (
+            subject:subjects!student_assignments_subject_id_fkey (name),
+            level:subject_levels!student_assignments_subject_level_id_fkey (level_name)
+          )
+        `
+        )
+        .eq('id', payuPayment.booked_slot_id)
+        .maybeSingle()
+
+      if (slot) {
+        const tutor = Array.isArray(slot.tutor) ? slot.tutor[0] : slot.tutor
+        const assignment = Array.isArray(slot.assignment) ? slot.assignment[0] : slot.assignment
+        const subject = assignment?.subject
+          ? Array.isArray(assignment.subject)
+            ? assignment.subject[0]
+            : assignment.subject
+          : null
+        const level = assignment?.level
+          ? Array.isArray(assignment.level)
+            ? assignment.level[0]
+            : assignment.level
+          : null
+
+        tutorName = tutor?.full_name || tutorName
+        tutorEmail = tutor?.email || null
+        subjectName = subject?.name || subjectName
+        levelName = level?.level_name || levelName
+        dateLabel = `co ${DAY_NAMES[slot.weekday as DayOfWeek] ?? slot.weekday}`
+        timeLabel = `${String(slot.start_time).substring(0, 5)}-${String(slot.end_time).substring(0, 5)}`
+      }
+    } else if (payuPayment.tutoring_session_id) {
+      const { data: session } = await admin
+        .from('tutoring_sessions')
+        .select(
+          `
+          session_date,
+          duration_minutes,
+          tutor:profiles!tutoring_sessions_tutor_id_fkey (full_name, email),
+          assignment:student_assignments!tutoring_sessions_assignment_id_fkey (
+            subject:subjects!student_assignments_subject_id_fkey (name),
+            level:subject_levels!student_assignments_subject_level_id_fkey (level_name)
+          )
+        `
+        )
+        .eq('id', payuPayment.tutoring_session_id)
+        .maybeSingle()
+
+      if (session?.session_date) {
+        const tutor = Array.isArray(session.tutor) ? session.tutor[0] : session.tutor
+        const assignment = Array.isArray(session.assignment)
+          ? session.assignment[0]
+          : session.assignment
+        const subject = assignment?.subject
+          ? Array.isArray(assignment.subject)
+            ? assignment.subject[0]
+            : assignment.subject
+          : null
+        const level = assignment?.level
+          ? Array.isArray(assignment.level)
+            ? assignment.level[0]
+            : assignment.level
+          : null
+
+        tutorName = tutor?.full_name || tutorName
+        tutorEmail = tutor?.email || null
+        subjectName = subject?.name || subjectName
+        levelName = level?.level_name || levelName
+
+        const sessionStart = parseISO(session.session_date)
+        const durationMinutes = session.duration_minutes || SLOT_DURATION_MINUTES
+        const sessionEnd = new Date(sessionStart.getTime() + durationMinutes * 60_000)
+        dateLabel = format(sessionStart, 'd MMMM yyyy', { locale: pl })
+        timeLabel = `${format(sessionStart, 'HH:mm')}-${format(sessionEnd, 'HH:mm')}`
+      }
+    }
+
+    const parentPhone = await resolveParentPhoneForStudent(admin, payuPayment.student_id)
+    if (parentPhone?.trim()) {
+      const smsResult = await sendBookingConfirmationSms({
+        toPhone: parentPhone.trim(),
+        studentName,
+        tutorName,
+        subject: subjectName,
+        level: levelName || '—',
+        date: dateLabel || 'termin',
+        time: timeLabel || '',
+      })
+
+      if (!smsResult.success) {
+        console.error('[notifyAfterAdminReservationPayment] SMS failed:', {
+          error: smsResult.error,
+          studentId: payuPayment.student_id,
+        })
+      } else {
+        console.log('[notifyAfterAdminReservationPayment] SMS sent:', {
+          studentId: payuPayment.student_id,
+        })
+      }
+    } else {
+      console.log(
+        '[notifyAfterAdminReservationPayment] Brak telefonu rodzica — pomijam SMS:',
+        payuPayment.student_id
+      )
+    }
+
+    if (tutorEmail?.trim()) {
+      const emailResult = await sendTutorNewStudentBookingEmail({
+        to: tutorEmail.trim(),
+        tutorName,
+        studentName,
+        subject: subjectName,
+        level: levelName || '—',
+        date: dateLabel || 'termin',
+        time: timeLabel || '',
+      })
+
+      if (!emailResult.success) {
+        console.error('[notifyAfterAdminReservationPayment] Tutor email failed:', {
+          error: emailResult.error,
+          email: tutorEmail,
+          studentId: payuPayment.student_id,
+        })
+      } else {
+        console.log('[notifyAfterAdminReservationPayment] Tutor email sent:', {
+          email: tutorEmail,
+          studentId: payuPayment.student_id,
+        })
+      }
+    } else {
+      console.log(
+        '[notifyAfterAdminReservationPayment] Brak emaila tutora — pomijam mail:',
+        payuPayment.student_id
+      )
+    }
+  } catch (error) {
+    console.error('[notifyAfterAdminReservationPayment] Error:', error)
+  }
+}
+
 /**
  * Record payment history for admin reservation PayU completion (reservation already exists)
  */
@@ -1547,12 +1755,16 @@ async function handleAdminReservationPaymentCompletion(
   paidAmount: number,
   paymentMethodType?: string
 ): Promise<void> {
-  await ensureAdminReservationPaymentHistory(
+  const recorded = await ensureAdminReservationPaymentHistory(
     payuPayment,
     orderId,
     paidAmount,
     paymentMethodType
   )
+
+  if (recorded) {
+    await notifyAfterAdminReservationPayment(payuPayment)
+  }
 }
 
 type AdminReservationPayuRow = AdminReservationPayuPayment & {
@@ -1619,6 +1831,7 @@ export async function syncAdminReservationPaymentAfterRedirect(
     )
     if (recorded) {
       revalidatePath('/dashboard/payments')
+      await notifyAfterAdminReservationPayment(payuPayment)
     }
     return
   }
@@ -1678,7 +1891,7 @@ async function handleBookingPaymentCompletion(bookingRequestId: string): Promise
     const { data: booking, error: fetchError } = await admin
       .from('public_booking_requests')
       .select(
-        'id, assignment_id, booked_slot_id, session_id, tutor_id, student_id, request_date, weekday, start_time, end_time, student_first_name, student_last_name, contact_email, subject_id, subject_level_id, status, is_recurring'
+        'id, assignment_id, booked_slot_id, session_id, tutor_id, student_id, request_date, weekday, start_time, end_time, student_first_name, student_last_name, contact_email, contact_phone, subject_id, subject_level_id, status, is_recurring'
       )
       .eq('id', bookingRequestId)
       .single()
@@ -1767,7 +1980,7 @@ async function handleBookingPaymentCompletion(bookingRequestId: string): Promise
     const [tutorData, subjectData, levelData] = await Promise.all([
       admin
         .from('profiles')
-        .select('full_name')
+        .select('full_name, email')
         .eq('id', booking.tutor_id)
         .single(),
       booking.subject_id
@@ -1814,6 +2027,48 @@ async function handleBookingPaymentCompletion(bookingRequestId: string): Promise
       }
     }
 
+    // Mail do korepetytora — nowy uczeń zarezerwował lekcję
+    if (
+      tutorData.data?.email &&
+      subjectData.data &&
+      levelData.data
+    ) {
+      try {
+        const tutorEmailResult = await sendTutorNewStudentBookingEmail({
+          to: tutorData.data.email,
+          tutorName: tutorData.data.full_name,
+          studentName,
+          subject: subjectData.data.name,
+          level: levelData.data.level_name,
+          date: formattedDate,
+          time: timeRange,
+        })
+
+        if (!tutorEmailResult.success) {
+          console.error('Tutor new student booking email failed:', {
+            error: tutorEmailResult.error,
+            email: tutorData.data.email,
+            bookingId: bookingRequestId,
+          })
+        } else {
+          console.log('Tutor new student booking email sent successfully:', {
+            messageId: tutorEmailResult.messageId,
+            email: tutorData.data.email,
+            bookingId: bookingRequestId,
+          })
+        }
+      } catch (tutorEmailError) {
+        console.error('Failed to send tutor new student booking email:', {
+          error:
+            tutorEmailError instanceof Error
+              ? tutorEmailError.message
+              : String(tutorEmailError),
+          email: tutorData.data.email,
+          bookingId: bookingRequestId,
+        })
+      }
+    }
+
     // Send confirmation email
     if (
       booking.contact_email &&
@@ -1850,6 +2105,45 @@ async function handleBookingPaymentCompletion(bookingRequestId: string): Promise
         console.error('Failed to send final booking confirmation email:', {
           error: emailError instanceof Error ? emailError.message : String(emailError),
           email: booking.contact_email,
+          bookingId: bookingRequestId,
+        })
+      }
+    }
+
+    // SMS potwierdzenia po płatności
+    if (
+      booking.contact_phone?.trim() &&
+      tutorData.data &&
+      subjectData.data &&
+      levelData.data
+    ) {
+      try {
+        const smsResult = await sendBookingConfirmationSms({
+          toPhone: booking.contact_phone.trim(),
+          studentName,
+          tutorName: tutorData.data.full_name,
+          subject: subjectData.data.name,
+          level: levelData.data.level_name,
+          date: formattedDate,
+          time: timeRange,
+        })
+
+        if (!smsResult.success) {
+          console.error('Final booking confirmation SMS failed:', {
+            error: smsResult.error,
+            phone: booking.contact_phone,
+            bookingId: bookingRequestId,
+          })
+        } else {
+          console.log('Final booking confirmation SMS sent successfully:', {
+            phone: booking.contact_phone,
+            bookingId: bookingRequestId,
+          })
+        }
+      } catch (smsError) {
+        console.error('Failed to send final booking confirmation SMS:', {
+          error: smsError instanceof Error ? smsError.message : String(smsError),
+          phone: booking.contact_phone,
           bookingId: bookingRequestId,
         })
       }

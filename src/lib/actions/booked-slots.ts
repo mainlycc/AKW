@@ -121,7 +121,67 @@ export async function listBookedSlots(params: {
 
   const { data, error } = await query
   if (error) throw error
-  return data as unknown as BookedSlot[]
+  const slots = data as unknown as BookedSlot[]
+  if (params.tutorId) {
+    return markFirstLessonOnBookedSlots(params.tutorId, slots)
+  }
+  return slots
+}
+
+/**
+ * Uczeń bez żadnej odbytej lekcji u tego tutora → slot oznaczony jako pierwsza lekcja.
+ */
+async function getStudentIdsWithCompletedLessons(
+  tutorId: string,
+  studentIds: string[]
+): Promise<Set<string>> {
+  const completed = new Set<string>()
+  if (studentIds.length === 0) return completed
+
+  const admin = createAdminClient()
+  const { data } = await admin
+    .from('tutoring_sessions')
+    .select('student_id')
+    .eq('tutor_id', tutorId)
+    .eq('status', 'completed')
+    .in('student_id', studentIds)
+
+  for (const row of data ?? []) {
+    if (row.student_id) completed.add(row.student_id)
+  }
+  return completed
+}
+
+function extractStudentIdFromBookedSlot(slot: BookedSlot): string | null {
+  const assignment = slot.student_assignments as
+    | { students?: { id: string } | { id: string }[] | null }
+    | null
+    | undefined
+  if (!assignment) return slot.students?.id ?? null
+  const stud = assignment.students
+  const student = Array.isArray(stud) ? stud[0] : stud
+  return student?.id ?? slot.students?.id ?? null
+}
+
+async function markFirstLessonOnBookedSlots(
+  tutorId: string,
+  slots: BookedSlot[]
+): Promise<BookedSlot[]> {
+  const studentIds = [
+    ...new Set(
+      slots
+        .map(extractStudentIdFromBookedSlot)
+        .filter((id): id is string => !!id)
+    ),
+  ]
+  const completedStudentIds = await getStudentIdsWithCompletedLessons(tutorId, studentIds)
+
+  return slots.map((slot) => {
+    const studentId = extractStudentIdFromBookedSlot(slot)
+    const isFirst =
+      !!studentId && !completedStudentIds.has(studentId) && slot.status === 'booked'
+    return { ...slot, is_first_lesson: isFirst }
+  })
 }
 
 /** Booked slots + jednorazowe sesje bez booked_slot (do siatki tygodniowej). */
@@ -182,7 +242,7 @@ export async function listTutorCalendarOccupancy(tutorId: string) {
     } as unknown as BookedSlot)
   }
 
-  return [...booked, ...fromSessions]
+  return markFirstLessonOnBookedSlots(tutorId, [...booked, ...fromSessions])
 }
 
 export async function createBookedSlot(
@@ -265,7 +325,9 @@ export async function createBookedSlot(
     revalidatePath(route)
   }
 
-  return data as unknown as BookedSlot
+  const created = data as unknown as BookedSlot
+  const [marked] = await markFirstLessonOnBookedSlots(assignment.tutor_id, [created])
+  return marked
 }
 
 export async function cancelBookedSlot(slotId: string, meta?: MonitoringMeta) {

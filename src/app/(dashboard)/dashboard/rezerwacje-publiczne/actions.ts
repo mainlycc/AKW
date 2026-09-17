@@ -5,7 +5,8 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createNotification } from '@/lib/actions/notifications'
 import { createConfirmedBookingResources, cancelConfirmedBookingResources } from '@/lib/actions/public-booking'
-import { sendFinalBookingConfirmationEmail } from '@/lib/email/send'
+import { sendFinalBookingConfirmationEmail, sendTutorNewStudentBookingEmail } from '@/lib/email/send'
+import { sendBookingConfirmationSms } from '@/lib/sms/send'
 import { format, parseISO } from 'date-fns'
 import { pl } from 'date-fns/locale'
 import { SLOT_DURATION_MINUTES } from '@/lib/types/availability.types'
@@ -19,7 +20,7 @@ export async function updateBookingStatus(bookingId: string, status: BookingStat
   const { data: booking, error: fetchError } = await supabase
     .from('public_booking_requests')
     .select(
-      'assignment_id, booked_slot_id, session_id, tutor_id, student_id, request_date, weekday, start_time, end_time, student_first_name, student_last_name, contact_email, subject_id, subject_level_id, is_recurring'
+      'assignment_id, booked_slot_id, session_id, tutor_id, student_id, request_date, weekday, start_time, end_time, student_first_name, student_last_name, contact_email, contact_phone, subject_id, subject_level_id, is_recurring'
     )
     .eq('id', bookingId)
     .maybeSingle()
@@ -104,7 +105,7 @@ export async function updateBookingStatus(bookingId: string, status: BookingStat
           : Promise.resolve({ data: null }),
         admin
           .from('profiles')
-          .select('full_name')
+          .select('full_name, email')
           .eq('id', booking.tutor_id)
           .single(),
       ])
@@ -130,6 +131,42 @@ export async function updateBookingStatus(bookingId: string, status: BookingStat
             time: timeRange,
           },
         })
+
+        // Mail do korepetytora
+        if (
+          tutorData.data?.email &&
+          subjectData.data &&
+          levelData.data
+        ) {
+          try {
+            const tutorEmailResult = await sendTutorNewStudentBookingEmail({
+              to: tutorData.data.email,
+              tutorName: tutorData.data.full_name,
+              studentName,
+              subject: subjectData.data.name,
+              level: levelData.data.level_name,
+              date: formattedDate,
+              time: timeRange,
+            })
+
+            if (!tutorEmailResult.success) {
+              console.error('Tutor new student booking email failed:', {
+                error: tutorEmailResult.error,
+                email: tutorData.data.email,
+                bookingId,
+              })
+            }
+          } catch (tutorEmailError) {
+            console.error('Failed to send tutor new student booking email:', {
+              error:
+                tutorEmailError instanceof Error
+                  ? tutorEmailError.message
+                  : String(tutorEmailError),
+              email: tutorData.data.email,
+              bookingId,
+            })
+          }
+        }
 
         // Wyślij email z ostatecznym potwierdzeniem do osoby, która zarezerwowała
         if (
@@ -178,6 +215,40 @@ export async function updateBookingStatus(bookingId: string, status: BookingStat
             hasSubject: !!subjectData.data,
             hasLevel: !!levelData.data,
           })
+        }
+
+        // SMS potwierdzenia (gdy admin ręcznie potwierdza — ten sam komunikat co po PayU)
+        if (
+          booking.contact_phone?.trim() &&
+          tutorData.data &&
+          subjectData.data &&
+          levelData.data
+        ) {
+          try {
+            const smsResult = await sendBookingConfirmationSms({
+              toPhone: booking.contact_phone.trim(),
+              studentName,
+              tutorName: tutorData.data.full_name,
+              subject: subjectData.data.name,
+              level: levelData.data.level_name,
+              date: formattedDate,
+              time: timeRange,
+            })
+
+            if (!smsResult.success) {
+              console.error('Final booking confirmation SMS failed:', {
+                error: smsResult.error,
+                phone: booking.contact_phone,
+                bookingId,
+              })
+            }
+          } catch (smsError) {
+            console.error('Failed to send final booking confirmation SMS:', {
+              error: smsError instanceof Error ? smsError.message : String(smsError),
+              phone: booking.contact_phone,
+              bookingId,
+            })
+          }
         }
       } else if (status === 'cancelled') {
         await createNotification({

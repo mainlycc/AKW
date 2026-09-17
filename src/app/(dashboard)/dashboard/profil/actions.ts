@@ -8,6 +8,7 @@ export async function saveProfile(
   data: {
     full_name: string
     phone: string
+    messenger_url: string
     bio: string
   }
 ) {

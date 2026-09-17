@@ -9,6 +9,7 @@ interface DayColumnProps {
   endTime: string
   isAvailable: boolean
   isBooked?: boolean
+  isFirstLesson?: boolean
   bookedLabel?: string
   isEditing?: boolean
   onToggle: (day: DayOfWeek, startTime: string, endTime: string) => void
@@ -20,10 +21,15 @@ export function DayColumn({
   endTime,
   isAvailable,
   isBooked = false,
+  isFirstLesson = false,
   bookedLabel,
   isEditing = true,
   onToggle,
 }: DayColumnProps) {
+  const bookedStatusLabel = isFirstLesson
+    ? `Pierwsza lekcja${bookedLabel ? ' · ' + bookedLabel : ''}`
+    : `Zarezerwowany${bookedLabel ? ' · ' + bookedLabel : ''}`
+
   return (
     <button
       type="button"
@@ -34,7 +40,9 @@ export function DayColumn({
         isEditing && 'hover:scale-105 cursor-pointer',
         !isEditing && 'cursor-pointer',
         isBooked
-          ? 'bg-purple-500/20 border-purple-500 hover:bg-purple-500/30'
+          ? isFirstLesson
+            ? 'bg-amber-400/35 border-amber-500 hover:bg-amber-400/45'
+            : 'bg-purple-500/20 border-purple-500 hover:bg-purple-500/30'
           : isAvailable
             ? cn(
                 'bg-green-500/20 border-green-500',
@@ -45,7 +53,7 @@ export function DayColumn({
                 isEditing && 'hover:bg-muted/80'
               )
       )}
-      title={`${startTime} - ${endTime}: ${isBooked ? `Zarezerwowany${bookedLabel ? ' · ' + bookedLabel : ''}` : (isAvailable ? 'Dostępny' : 'Niedostępny')}`}
+      title={`${startTime} - ${endTime}: ${isBooked ? bookedStatusLabel : (isAvailable ? 'Dostępny' : 'Niedostępny')}`}
     >
       {isBooked && (
         <span className="block w-full px-1 text-[10px] leading-4 text-foreground/90 truncate text-center">
@@ -55,4 +63,3 @@ export function DayColumn({
     </button>
   )
 }
-

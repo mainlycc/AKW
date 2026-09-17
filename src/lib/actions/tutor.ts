@@ -49,6 +49,7 @@ export async function updateTutorProfile(
   data: {
     full_name: string
     phone: string
+    messenger_url: string
     bio: string
   }
 ) {
@@ -59,6 +60,7 @@ export async function updateTutorProfile(
     .update({
       full_name: data.full_name,
       phone: data.phone || null,
+      messenger_url: data.messenger_url.trim() || null,
       bio: data.bio || null,
     })
     .eq('id', tutorId)

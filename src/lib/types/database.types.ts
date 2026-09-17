@@ -11,6 +11,11 @@ export interface Profile {
   role: UserRole
   full_name: string
   email: string
+  phone?: string | null
+  bio?: string | null
+  messenger_url?: string | null
+  hourly_rate?: number | null
+  public_booking_enabled?: boolean | null
   created_at: string
   updated_at: string
   onboarding_completed_at?: string | null

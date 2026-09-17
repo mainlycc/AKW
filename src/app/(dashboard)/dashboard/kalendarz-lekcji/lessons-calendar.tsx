@@ -49,6 +49,10 @@ const STATUS_FILTERS: { value: StatusFilter; label: string; status?: SessionStat
   { value: 'cancelled', label: 'Anulowane', status: 'cancelled' },
 ]
 
+function tutorStudentKey(tutorId: string, studentId: string) {
+  return `${tutorId}:${studentId}`
+}
+
 export function LessonsCalendar({ sessions, isAdmin = false }: LessonsCalendarProps) {
   const [currentMonth, setCurrentMonth] = useState(new Date())
   const [selectedDate, setSelectedDate] = useState<Date | null>(null)
@@ -60,6 +64,23 @@ export function LessonsCalendar({ sessions, isAdmin = false }: LessonsCalendarPr
   
   // Tylko dla tutora (nie admina)
   const isTutor = !isAdmin
+
+  /** Pary tutor–uczeń, które mają już choć jedną odbytą lekcję */
+  const pairsWithCompletedLesson = useMemo(() => {
+    const set = new Set<string>()
+    for (const session of sessions) {
+      if (session.status !== 'completed') continue
+      set.add(tutorStudentKey(session.profiles.id, session.students.id))
+    }
+    return set
+  }, [sessions])
+
+  const isFirstLessonSession = (session: Session) => {
+    if (session.status !== 'scheduled') return false
+    return !pairsWithCompletedLesson.has(
+      tutorStudentKey(session.profiles.id, session.students.id)
+    )
+  }
 
   const filteredSessions = useMemo(() => {
     if (statusFilter === 'all') return sessions
@@ -206,7 +227,10 @@ export function LessonsCalendar({ sessions, isAdmin = false }: LessonsCalendarPr
   const firstDayOfWeek = (getDay(monthStart) + 6) % 7 // Konwersja: niedziela (0) → 6, poniedziałek (1) → 0
   const weekDays = ['Pon', 'Wt', 'Śr', 'Czw', 'Pt', 'Sob', 'Nie']
 
-  const getStatusColor = (status: SessionStatus) => {
+  const getStatusColor = (status: SessionStatus, firstLesson = false) => {
+    if (firstLesson && status === 'scheduled') {
+      return 'bg-amber-400/35 text-amber-900 border-amber-500 dark:text-amber-100'
+    }
     switch (status) {
       case 'completed':
         return 'bg-green-500/20 text-green-700 border-green-500'
@@ -219,7 +243,10 @@ export function LessonsCalendar({ sessions, isAdmin = false }: LessonsCalendarPr
     }
   }
 
-  const getStatusLabel = (status: SessionStatus) => {
+  const getStatusLabel = (status: SessionStatus, firstLesson = false) => {
+    if (firstLesson && status === 'scheduled') {
+      return 'Pierwsza lekcja'
+    }
     switch (status) {
       case 'completed':
         return 'Odbyta'
@@ -432,15 +459,16 @@ export function LessonsCalendar({ sessions, isAdmin = false }: LessonsCalendarPr
                         {sortedSessions.map((session) => {
                           const studentName = `${session.students.first_name} ${session.students.last_name}`
                           const time = format(new Date(session.session_date), 'HH:mm')
+                          const firstLesson = isFirstLessonSession(session)
                           return (
                             <div
                               key={session.id}
                               className={cn(
                                 "text-xs px-1.5 py-1 rounded leading-tight truncate",
                                 "flex items-center gap-1 w-full",
-                                getStatusColor(session.status)
+                                getStatusColor(session.status, firstLesson)
                               )}
-                              title={`${time} - ${studentName}`}
+                              title={`${time} - ${studentName}${firstLesson ? ' (pierwsza lekcja)' : ''}`}
                             >
                               <span className="font-medium">{time}</span>
                               <span className="truncate">{studentName}</span>
@@ -507,7 +535,9 @@ export function LessonsCalendar({ sessions, isAdmin = false }: LessonsCalendarPr
           </DialogHeader>
           {selectedSessions.length > 0 && (
             <div className="space-y-2">
-              {selectedSessions.map((session) => (
+              {selectedSessions.map((session) => {
+                const firstLesson = isFirstLessonSession(session)
+                return (
                 <Card key={session.id}>
                   <CardContent className="p-4">
                     <div className="space-y-2">
@@ -515,9 +545,9 @@ export function LessonsCalendar({ sessions, isAdmin = false }: LessonsCalendarPr
                         <div className="flex items-center gap-2">
                           <Badge
                             variant="outline"
-                            className={getStatusColor(session.status)}
+                            className={getStatusColor(session.status, firstLesson)}
                           >
-                            {getStatusLabel(session.status)}
+                            {getStatusLabel(session.status, firstLesson)}
                           </Badge>
                           <span className="font-medium">
                             {format(new Date(session.session_date), 'HH:mm', { locale: pl })}
@@ -555,7 +585,8 @@ export function LessonsCalendar({ sessions, isAdmin = false }: LessonsCalendarPr
                     </div>
                   </CardContent>
                 </Card>
-              ))}
+                )
+              })}
             </div>
           )}
         </DialogContent>

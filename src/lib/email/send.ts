@@ -12,6 +12,10 @@ import { generateDeclarationReminderEmail, type DeclarationReminderEmailData } f
 import { generateAvailabilityReminderEmail, type AvailabilityReminderEmailData } from './templates/availability-reminder-email'
 import { AVAILABILITY_LABELS } from '@/lib/labels/availability'
 import { generateTutorBookingNotificationEmail, type TutorBookingNotificationEmailData } from './templates/tutor-booking-notification-email'
+import {
+  generateTutorNewStudentBookingEmail,
+  type TutorNewStudentBookingEmailData,
+} from './templates/tutor-new-student-booking-email'
 import { generatePasswordResetEmail } from './templates/password-reset-email'
 import { LABELS } from '@/lib/labels/reports-declarations'
 
@@ -1008,6 +1012,78 @@ export async function sendTutorBookingNotificationEmail({
     return { 
       success: false, 
       error: error instanceof Error ? error.message : 'Nieoczekiwany błąd podczas wysyłania emaila' 
+    }
+  }
+}
+
+export interface SendTutorNewStudentBookingEmailParams extends TutorNewStudentBookingEmailData {
+  to: string
+}
+
+export async function sendTutorNewStudentBookingEmail({
+  to,
+  tutorName,
+  studentName,
+  subject,
+  level,
+  date,
+  time,
+}: SendTutorNewStudentBookingEmailParams): Promise<SendEmailResult> {
+  try {
+    const resendApiKey = process.env.RESEND_API_KEY
+    if (!resendApiKey) {
+      const errorMsg = 'RESEND_API_KEY is not set in environment variables'
+      console.error('Tutor new student booking email sending failed:', {
+        error: errorMsg,
+        hasFromEmail: !!FROM_EMAIL,
+      })
+      return { success: false, error: errorMsg }
+    }
+
+    if (!resendApiKey.startsWith('re_')) {
+      return { success: false, error: 'RESEND_API_KEY appears to be invalid (should start with "re_")' }
+    }
+
+    const resend = new Resend(resendApiKey)
+    const html = generateTutorNewStudentBookingEmail({
+      tutorName,
+      studentName,
+      subject,
+      level,
+      date,
+      time,
+    })
+
+    const { data, error } = await resend.emails.send({
+      from: FROM_EMAIL,
+      to: [to],
+      subject: `Nowy uczeń zarezerwował lekcję — ${studentName} — ${subject} (${level}) — ${date}`,
+      html,
+    })
+
+    if (error) {
+      console.error('Resend API error (tutor new student booking):', {
+        message: error.message,
+        email: to,
+        fromEmail: FROM_EMAIL,
+      })
+      return { success: false, error: error.message }
+    }
+
+    console.log('Tutor new student booking email sent successfully:', {
+      messageId: data?.id,
+      email: to,
+      studentName,
+    })
+    return { success: true, messageId: data?.id }
+  } catch (error) {
+    console.error('Unexpected error sending tutor new student booking email:', {
+      error: error instanceof Error ? error.message : String(error),
+      email: to,
+    })
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Nieoczekiwany błąd podczas wysyłania emaila',
     }
   }
 }

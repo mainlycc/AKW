@@ -302,7 +302,17 @@ export async function reserveTutorSlot(input: ReserveTutorSlotInput) {
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
     student_assignments: session.student_assignments,
+    is_first_lesson: true,
   } as unknown as BookedSlot
+
+  const { count: completedCount } = await supabase
+    .from('tutoring_sessions')
+    .select('id', { count: 'exact', head: true })
+    .eq('tutor_id', input.tutorId)
+    .eq('student_id', studentId)
+    .eq('status', 'completed')
+
+  bookedSlot.is_first_lesson = (completedCount ?? 0) === 0
 
   revalidatePath(`/dashboard/tutorzy/${input.tutorId}`)
   revalidatePath('/dashboard/kalendarz-lekcji')

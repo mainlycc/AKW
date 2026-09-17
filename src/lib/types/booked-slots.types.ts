@@ -18,6 +18,8 @@ export interface BookedSlot {
   created_by: string
   created_at: string
   updated_at: string
+  /** Brak odbytej lekcji ucznia u tego tutora — wyróżnienie pierwszej lekcji w grafiku */
+  is_first_lesson?: boolean
   // enriched
   students?: { id: string; first_name: string; last_name: string } | null
   profiles?: { id: string; full_name: string } | null

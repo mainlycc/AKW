@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import {
   Table,
@@ -26,6 +26,7 @@ interface TutorWithStats {
   full_name: string
   email: string
   phone: string | null
+  messenger_url?: string | null
   bio: string | null
   hourly_rate: number | null
   public_booking_enabled?: boolean | null
@@ -52,6 +53,10 @@ interface TutorsTableProps {
 
 export function TutorsTable({ tutors, tutorSubjects, defaultTutorRate = null }: TutorsTableProps) {
   const router = useRouter()
+  const removedIdsRef = useRef(new Set<string>())
+  const [visibleTutors, setVisibleTutors] = useState(() =>
+    tutors.filter((t) => !removedIdsRef.current.has(t.id))
+  )
   const [search, setSearch] = useState("")
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false)
@@ -63,7 +68,21 @@ export function TutorsTable({ tutors, tutorSubjects, defaultTutorRate = null }: 
   }>({ title: '', description: '', confirmText: 'OK', onConfirm: () => {} })
   const [groupMessageDialogOpen, setGroupMessageDialogOpen] = useState(false)
 
-  const filteredTutors = tutors.filter((tutor) => {
+  useEffect(() => {
+    setVisibleTutors(tutors.filter((t) => !removedIdsRef.current.has(t.id)))
+  }, [tutors])
+
+  const removeTutorsFromUi = (ids: Set<string>) => {
+    ids.forEach((id) => removedIdsRef.current.add(id))
+    setVisibleTutors((prev) => prev.filter((t) => !ids.has(t.id)))
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      ids.forEach((id) => next.delete(id))
+      return next
+    })
+  }
+
+  const filteredTutors = visibleTutors.filter((tutor) => {
     if (!search.trim()) return true
     
     const searchLower = search.toLowerCase().trim()
@@ -93,20 +112,36 @@ export function TutorsTable({ tutors, tutorSubjects, defaultTutorRate = null }: 
     if (selectedIds.size === 0) return
     
     const count = selectedIds.size
+    const idsToDelete = Array.from(selectedIds)
     setConfirmDialogContent({
       title: 'Usuwanie tutorów',
       description: `Czy na pewno chcesz usunąć ${count} ${count === 1 ? 'tutora' : 'tutorów'}?`,
       confirmText: 'Usuń',
       onConfirm: async () => {
+        const deletedIds = new Set<string>()
         try {
-          for (const id of selectedIds) {
-            await deleteTutor(id)
+          for (const id of idsToDelete) {
+            const result = await deleteTutor(id)
+            if (!result.success) {
+              if (deletedIds.size > 0) {
+                removeTutorsFromUi(deletedIds)
+                router.refresh()
+              }
+              alert(`Wystąpił błąd podczas usuwania tutorów: ${result.error ?? 'Nieznany błąd'}`)
+              return
+            }
+            deletedIds.add(id)
           }
-          setSelectedIds(new Set())
+
+          removeTutorsFromUi(deletedIds)
           setConfirmDialogOpen(false)
           router.refresh()
         } catch (error) {
           console.error('Błąd podczas usuwania tutorów:', error)
+          if (deletedIds.size > 0) {
+            removeTutorsFromUi(deletedIds)
+            router.refresh()
+          }
           const errorMessage = error instanceof Error ? error.message : 'Nieznany błąd'
           alert(`Wystąpił błąd podczas usuwania tutorów: ${errorMessage}`)
         }
@@ -150,8 +185,8 @@ export function TutorsTable({ tutors, tutorSubjects, defaultTutorRate = null }: 
   )
 
   const selectedTutors = useMemo(
-    () => tutors.filter((t) => selectedIds.has(t.id)),
-    [tutors, selectedIds]
+    () => visibleTutors.filter((t) => selectedIds.has(t.id)),
+    [visibleTutors, selectedIds]
   )
 
   const allFilteredSelected =

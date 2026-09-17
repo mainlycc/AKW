@@ -14,6 +14,7 @@ interface ProfileFormProps {
     full_name: string
     email: string
     phone: string | null
+    messenger_url?: string | null
     bio: string | null
   }
 }
@@ -23,6 +24,7 @@ export function ProfileForm({ profile }: ProfileFormProps) {
   const [formData, setFormData] = useState({
     full_name: profile.full_name || '',
     phone: profile.phone || '',
+    messenger_url: profile.messenger_url || '',
     bio: profile.bio || '',
   })
 
@@ -80,6 +82,18 @@ export function ProfileForm({ profile }: ProfileFormProps) {
               onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
               disabled={loading}
               placeholder="+48 123 456 789"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="messenger_url">Link Messenger</Label>
+            <Input
+              id="messenger_url"
+              type="url"
+              value={formData.messenger_url}
+              onChange={(e) => setFormData({ ...formData, messenger_url: e.target.value })}
+              disabled={loading}
+              placeholder="https://m.me/..."
             />
           </div>
 

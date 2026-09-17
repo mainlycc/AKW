@@ -49,6 +49,7 @@ interface Tutor {
   full_name: string
   email: string
   phone: string | null
+  messenger_url?: string | null
   bio: string | null
   hourly_rate: number | null
   public_booking_enabled?: boolean | null
@@ -511,6 +512,21 @@ export function TutorDetailsView({
               <p className="text-lg">{tutor.phone || '-'}</p>
             </div>
             <div>
+              <p className="text-sm font-medium text-muted-foreground">Messenger</p>
+              {tutor.messenger_url ? (
+                <a
+                  href={tutor.messenger_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-lg text-primary underline-offset-4 hover:underline break-all"
+                >
+                  {tutor.messenger_url}
+                </a>
+              ) : (
+                <p className="text-lg">-</p>
+              )}
+            </div>
+            <div>
               <p className="text-sm font-medium text-muted-foreground">Stawka godzinowa</p>
               <p className="text-lg">{hourlyRateText}</p>
             </div>
@@ -548,7 +564,7 @@ export function TutorDetailsView({
         <CardHeader>
           <CardTitle>Dostępność w tygodniu</CardTitle>
           <p className="text-sm text-muted-foreground">
-            Kliknij zielony slot, aby zarezerwować lekcję. Kliknij fioletowy, aby anulować rezerwację.
+            Kliknij zielony slot, aby zarezerwować lekcję. Kliknij fioletowy lub żółty, aby anulować rezerwację.
           </p>
         </CardHeader>
         <CardContent>

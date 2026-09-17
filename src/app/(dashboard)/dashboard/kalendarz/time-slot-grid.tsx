@@ -99,6 +99,7 @@ export function TimeSlotGrid({ slots, isEditing = true, onSlotToggle, bookedSlot
                   )
                   const isBooked = bookedAtSlot.length > 0
                   const matched = bookedAtSlot[0]
+                  const isFirstLesson = Boolean(matched?.is_first_lesson)
                   type BookedSlotWithAssignment = BookedSlot & {
                     student_assignments?: {
                       students?: { id: string; first_name: string; last_name: string } | null
@@ -128,6 +129,7 @@ export function TimeSlotGrid({ slots, isEditing = true, onSlotToggle, bookedSlot
                       endTime={currentSlot.end}
                       isAvailable={isAvailable}
                       isBooked={isBooked}
+                      isFirstLesson={isFirstLesson}
                       bookedLabel={bookedLabel}
                       isEditing={isEditing}
                       onToggle={onSlotToggle}
@@ -152,6 +154,10 @@ export function TimeSlotGrid({ slots, isEditing = true, onSlotToggle, bookedSlot
           <div className="flex items-center gap-2">
             <div className="w-6 h-6 bg-purple-500/20 border-2 border-purple-500 rounded" />
             <span>Zarezerwowany (uczeń)</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-6 bg-amber-400/35 border-2 border-amber-500 rounded" />
+            <span>Pierwsza lekcja</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="w-6 h-6 bg-muted/30 rounded" />

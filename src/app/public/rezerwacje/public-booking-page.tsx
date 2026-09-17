@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState, useTransition } from 'react'
 import { addDays, format, getISODay, parseISO, subDays } from 'date-fns'
 import { pl } from 'date-fns/locale'
-import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 
 import type { DayOfWeek } from '@/lib/types/availability.types'
@@ -46,8 +45,7 @@ interface PendingBooking {
 const formatLabel = (slot: SubjectLevelSlot) => {
   const date = parseISO(slot.date)
   const labelDate = format(date, 'EEEE, d MMMM', { locale: pl })
-  const tutorLabel = slot.tutorName ?? 'Tutor'
-  return `${labelDate} · ${slot.startTime}-${slot.endTime} · ${tutorLabel}`
+  return `${labelDate} · ${slot.startTime}-${slot.endTime}`
 }
 
 const getTodayDate = () => format(new Date(), 'yyyy-MM-dd')
@@ -60,7 +58,6 @@ const TODAY_BOOKING_BLOCKED_MESSAGE =
   'Na dzisiaj nie możesz rezerwować już lekcji. Dostępne są wyłącznie terminy od jutra.'
 
 export function PublicBookingPage({ subjects }: PublicBookingPageProps) {
-  const router = useRouter()
   const [selectedSubjectId, setSelectedSubjectId] = useState<string>(subjects[0]?.id ?? '')
   const [selectedLevelId, setSelectedLevelId] = useState<string>(
     subjects[0]?.levels?.[0]?.id ?? ''
@@ -70,10 +67,6 @@ export function PublicBookingPage({ subjects }: PublicBookingPageProps) {
   const [loadingSlots, startSlotsTransition] = useTransition()
   const [booking, setBooking] = useState<PendingBooking | null>(null)
   const [isBooking, startBookingTransition] = useTransition()
-  const [tutorSelection, setTutorSelection] = useState<{
-    slots: SubjectLevelSlot[]
-    onSelect: (slot: SubjectLevelSlot) => void
-  } | null>(null)
 
   const [formData, setFormData] = useState({
     studentFirstName: '',
@@ -82,7 +75,6 @@ export function PublicBookingPage({ subjects }: PublicBookingPageProps) {
     contactPhone: '',
     notes: '',
   })
-  const [isRecurring, setIsRecurring] = useState(false)
 
   const rangeEnd = useMemo(() => {
     const start = parseISO(rangeStart)
@@ -196,7 +188,7 @@ export function PublicBookingPage({ subjects }: PublicBookingPageProps) {
       contactEmail: formData.contactEmail.trim(),
       contactPhone: formData.contactPhone.trim() || undefined,
       notes: formData.notes.trim() || undefined,
-      isRecurring,
+      isRecurring: false,
     }
 
     startBookingTransition(async () => {
@@ -289,34 +281,34 @@ export function PublicBookingPage({ subjects }: PublicBookingPageProps) {
   }
 
   return (
-    <div className="space-y-8 pb-8">
+    <div className="space-y-6 pb-8 sm:space-y-8">
       {/* Informacja o automatycznym przypisywaniu korepetytora */}
-      <div className="flex items-start gap-3 rounded-lg border border-blue-200 bg-blue-50 p-4 dark:border-blue-800 dark:bg-blue-950/40">
+      <div className="flex items-start gap-3 rounded-lg border border-blue-200 bg-blue-50 p-3 sm:p-4 dark:border-blue-800 dark:bg-blue-950/40">
         <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-blue-600 dark:text-blue-400" />
         <p className="text-sm text-blue-800 dark:text-blue-300">
           System automatycznie przypisuje właściwego korepetytora do wybranego przedmiotu i poziomu.
           Wystarczy, że wybierzesz interesujący Cię przedmiot oraz poziom, a my dopasujemy najlepszego dostępnego korepetytora.
         </p>
       </div>
-      <div className="grid gap-6 lg:grid-cols-[1fr_400px]">
+      <div className="grid min-w-0 gap-6 lg:grid-cols-[1fr_400px]">
         {/* Lewy panel - Kroki rezerwacji */}
-        <div className="space-y-6">
+        <div className="min-w-0 space-y-6">
           {/* Krok 1: Preferencje */}
-          <Card>
-            <CardHeader>
-              <div className="flex items-center gap-3">
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground text-sm font-semibold">
+          <Card className="min-w-0 overflow-hidden">
+            <CardHeader className="px-4 sm:px-6">
+              <div className="flex items-start gap-3">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
                   1
                 </div>
-                <div>
-                  <CardTitle className="text-lg">Krok 1: Preferencje</CardTitle>
-                  <CardDescription className="mt-1 text-base">
+                <div className="min-w-0">
+                  <CardTitle className="text-base sm:text-lg">Krok 1: Preferencje</CardTitle>
+                  <CardDescription className="mt-1 text-sm sm:text-base">
                     Wybierz przedmiot i poziom, a my znajdziemy najbliższy wolny termin u dostępnego tutora.
                   </CardDescription>
                 </div>
               </div>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-4 px-4 sm:px-6">
               <div className="grid gap-4 sm:grid-cols-3">
                 <div className="flex flex-col gap-2">
                   <Label className="text-sm font-semibold uppercase tracking-wide">Przedmiot</Label>
@@ -325,7 +317,7 @@ export function PublicBookingPage({ subjects }: PublicBookingPageProps) {
                     onValueChange={handleSubjectChange}
                     disabled={subjects.length === 0}
                   >
-                    <SelectTrigger className="w-full">
+                    <SelectTrigger className="h-11 w-full">
                       <SelectValue placeholder="Wybierz przedmiot" />
                     </SelectTrigger>
                     <SelectContent>
@@ -344,7 +336,7 @@ export function PublicBookingPage({ subjects }: PublicBookingPageProps) {
                     onValueChange={handleLevelChange}
                     disabled={availableLevels.length === 0}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className="h-11 w-full">
                       <SelectValue placeholder={availableLevels.length ? 'Wybierz poziom' : 'Brak poziomów'} />
                     </SelectTrigger>
                     <SelectContent>
@@ -358,12 +350,13 @@ export function PublicBookingPage({ subjects }: PublicBookingPageProps) {
                 </div>
                 <div className="flex flex-col gap-2">
                   <Label className="text-sm font-semibold uppercase tracking-wide">Od daty</Label>
-                  <div className="flex items-center gap-2">
+                  <div className="flex min-w-0 items-center gap-2">
                     <Button
                       type="button"
                       variant="outline"
                       size="icon"
-                      className="h-9 w-9"
+                      className="h-11 w-11 shrink-0"
+                      aria-label="Poprzedni tydzień"
                       onClick={() => {
                         const prev = subDays(parseISO(rangeStart), 7)
                         const minDate = getMinBookingDate()
@@ -385,13 +378,14 @@ export function PublicBookingPage({ subjects }: PublicBookingPageProps) {
                       value={rangeStart}
                       onChange={(event) => handleRangeChange(event.target.value)}
                       min={getMinBookingDate()}
-                      className="h-9"
+                      className="h-11 min-w-0 flex-1"
                     />
                     <Button
                       type="button"
                       variant="outline"
                       size="icon"
-                      className="h-9 w-9"
+                      className="h-11 w-11 shrink-0"
+                      aria-label="Następny tydzień"
                       onClick={() => {
                         const next = addDays(parseISO(rangeStart), 7)
                         const value = format(next, 'yyyy-MM-dd')
@@ -406,7 +400,7 @@ export function PublicBookingPage({ subjects }: PublicBookingPageProps) {
                   </div>
                 </div>
               </div>
-              <div className="flex justify-end">
+              <div className="flex sm:justify-end">
                 <Button
                   type="button"
                   onClick={() => {
@@ -417,7 +411,7 @@ export function PublicBookingPage({ subjects }: PublicBookingPageProps) {
                     }
                   }}
                   disabled={!selectedLevelId || loadingSlots}
-                  className="gap-2"
+                  className="h-11 w-full gap-2 sm:w-auto"
                 >
                   <Search className="h-4 w-4" />
                   {loadingSlots ? 'Ładowanie...' : 'Pokaż terminy'}
@@ -427,31 +421,31 @@ export function PublicBookingPage({ subjects }: PublicBookingPageProps) {
           </Card>
 
           {/* Krok 2: Wybierz slot */}
-          <Card>
-            <CardHeader>
-              <div className="flex items-center gap-3">
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground text-sm font-semibold">
+          <Card className="min-w-0 overflow-hidden">
+            <CardHeader className="px-4 sm:px-6">
+              <div className="flex items-start gap-3">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
                   2
                 </div>
-                <div>
-                  <CardTitle className="text-lg">Krok 2: Wybierz slot</CardTitle>
-                  <CardDescription className="mt-1 text-base">
-                    Kliknij w dostępny termin, aby kontynuować
+                <div className="min-w-0">
+                  <CardTitle className="text-base sm:text-lg">Krok 2: Wybierz slot</CardTitle>
+                  <CardDescription className="mt-1 text-sm sm:text-base">
+                    Wybierz dostępny termin, aby kontynuować
                   </CardDescription>
                 </div>
               </div>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="min-w-0 space-y-4 overflow-hidden px-4 sm:px-6">
               {loadingSlots && (
-                <p className="text-base text-muted-foreground">Ładuję terminy...</p>
+                <p className="text-sm text-muted-foreground sm:text-base">Ładuję terminy...</p>
               )}
               {!loadingSlots && !initialised && (
-                <p className="text-base text-muted-foreground">
+                <p className="text-sm text-muted-foreground sm:text-base">
                   Wybierz przedmiot i poziom, aby zobaczyć dostępne sloty.
                 </p>
               )}
               {!loadingSlots && initialised && slots.length === 0 && (
-                <p className="text-base text-muted-foreground">
+                <p className="text-sm text-muted-foreground sm:text-base">
                   Brak wolnych terminów w wybranym zakresie. Spróbuj zmienić daty lub poziom.
                 </p>
               )}
@@ -460,9 +454,6 @@ export function PublicBookingPage({ subjects }: PublicBookingPageProps) {
                 slotMap={slotMap}
                 onSelect={(slot) => {
                   openBooking(slot)
-                }}
-                onMultipleSlots={(slots) => {
-                  setTutorSelection({ slots, onSelect: openBooking })
                 }}
               />
             </CardContent>
@@ -553,120 +544,34 @@ export function PublicBookingPage({ subjects }: PublicBookingPageProps) {
         </Card>
       </div>
 
-      {/* Dialog wyboru tutora gdy jest więcej niż jeden slot */}
-      <Dialog open={!!tutorSelection} onOpenChange={(open) => !open && setTutorSelection(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="text-lg">Wybierz tutora</DialogTitle>
-            <DialogDescription className="text-base">
-              Dla wybranego terminu dostępni są następujący tutorzy. Wybierz jednego z nich.
-            </DialogDescription>
-          </DialogHeader>
-          {tutorSelection && (
-            <div className="space-y-2">
-              {tutorSelection.slots.map((slot) => (
-                <button
-                  key={slot.tutorId}
-                  type="button"
-                  onClick={() => {
-                    tutorSelection.onSelect(slot)
-                    setTutorSelection(null)
-                  }}
-                  className="w-full text-left p-3 rounded-lg border-2 border-border hover:border-primary hover:bg-accent transition-colors"
-                >
-                  <div className="font-semibold">{slot.tutorName || 'Tutor'}</div>
-                  <div className="text-sm text-muted-foreground">
-                    {formatLabel(slot)}
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setTutorSelection(null)}>
-              Anuluj
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       <Dialog open={!!booking} onOpenChange={(open) => {
         if (!open) {
           setBooking(null)
-          setIsRecurring(false)
         }
       }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="text-lg">Potwierdź rezerwację</DialogTitle>
-            <DialogDescription className="text-base">
-              Podaj dane kontaktowe, abyśmy mogli potwierdzić rezerwację.
+        <DialogContent className="flex max-h-[90dvh] flex-col gap-0 overflow-hidden p-0 sm:max-w-lg">
+          <DialogHeader className="shrink-0 space-y-2 border-b px-4 py-4 text-left sm:px-6">
+            <DialogTitle className="pr-6 text-lg">Potwierdź rezerwację</DialogTitle>
+            <DialogDescription className="text-sm sm:text-base">
+              Podaj dane kontaktowe, abyśmy mogli potwierdzić rezerwację jednorazowej lekcji.
             </DialogDescription>
           </DialogHeader>
 
           {booking && (
-            <div className="space-y-3">
-              <p className="rounded-md bg-muted px-3 py-2 text-base">
+            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6">
+              <p className="rounded-md bg-muted px-3 py-2 text-sm sm:text-base">
                 Wybrany termin: <strong>{formatLabel(booking.slot)}</strong>
               </p>
-              <p className="text-sm text-muted-foreground px-3">
+              <p className="text-sm text-muted-foreground">
                 Przedmiot: <strong>{selectedSubject?.name ?? '—'}</strong>{' '}
                 {selectedLevelName && <>· Poziom: <strong>{selectedLevelName}</strong></>}
               </p>
-              <div className="space-y-2 px-1">
-                <Label>Typ lekcji</Label>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  <label
-                    className={cn(
-                      'flex cursor-pointer flex-col gap-1 rounded-lg border-2 p-3 transition-colors',
-                      !isRecurring
-                        ? 'border-primary bg-primary/5'
-                        : 'border-border hover:border-primary/50'
-                    )}
-                  >
-                    <span className="flex items-center gap-2 text-sm font-semibold">
-                      <input
-                        type="radio"
-                        name="lessonType"
-                        checked={!isRecurring}
-                        onChange={() => setIsRecurring(false)}
-                        className="h-4 w-4"
-                      />
-                      Jednorazowa
-                    </span>
-                    <span className="text-xs text-muted-foreground pl-6">
-                      Tylko wybrany termin — bez powtarzania w kolejnych tygodniach.
-                    </span>
-                  </label>
-                  <label
-                    className={cn(
-                      'flex cursor-pointer flex-col gap-1 rounded-lg border-2 p-3 transition-colors',
-                      isRecurring
-                        ? 'border-primary bg-primary/5'
-                        : 'border-border hover:border-primary/50'
-                    )}
-                  >
-                    <span className="flex items-center gap-2 text-sm font-semibold">
-                      <input
-                        type="radio"
-                        name="lessonType"
-                        checked={isRecurring}
-                        onChange={() => setIsRecurring(true)}
-                        className="h-4 w-4"
-                      />
-                      Cykliczna
-                    </span>
-                    <span className="text-xs text-muted-foreground pl-6">
-                      Lekcja co tydzień o tej samej porze — termin zostaje zarezerwowany na stałe.
-                    </span>
-                  </label>
-                </div>
-              </div>
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label htmlFor="studentFirstName">Imię ucznia</Label>
                   <Input
                     id="studentFirstName"
+                    className="h-11"
                     value={formData.studentFirstName}
                     onChange={(event) =>
                       setFormData((prev) => ({ ...prev, studentFirstName: event.target.value }))
@@ -678,6 +583,7 @@ export function PublicBookingPage({ subjects }: PublicBookingPageProps) {
                   <Label htmlFor="studentLastName">Nazwisko ucznia</Label>
                   <Input
                     id="studentLastName"
+                    className="h-11"
                     value={formData.studentLastName}
                     onChange={(event) =>
                       setFormData((prev) => ({ ...prev, studentLastName: event.target.value }))
@@ -692,6 +598,7 @@ export function PublicBookingPage({ subjects }: PublicBookingPageProps) {
                   <Input
                     id="contactEmail"
                     type="email"
+                    className="h-11"
                     value={formData.contactEmail}
                     onChange={(event) =>
                       setFormData((prev) => ({ ...prev, contactEmail: event.target.value }))
@@ -703,6 +610,9 @@ export function PublicBookingPage({ subjects }: PublicBookingPageProps) {
                   <Label htmlFor="contactPhone">Telefon (opcjonalnie)</Label>
                   <Input
                     id="contactPhone"
+                    type="tel"
+                    inputMode="tel"
+                    className="h-11"
                     value={formData.contactPhone}
                     onChange={(event) =>
                       setFormData((prev) => ({ ...prev, contactPhone: event.target.value }))
@@ -725,11 +635,16 @@ export function PublicBookingPage({ subjects }: PublicBookingPageProps) {
             </div>
           )}
 
-          <DialogFooter className="flex flex-col gap-2 sm:flex-row sm:justify-end">
-            <Button variant="outline" onClick={() => setBooking(null)} disabled={isBooking}>
+          <DialogFooter className="relative z-10 shrink-0 gap-2 border-t bg-background px-4 py-4 sm:justify-end sm:px-6">
+            <Button
+              variant="outline"
+              className="h-11 w-full sm:w-auto"
+              onClick={() => setBooking(null)}
+              disabled={isBooking}
+            >
               Anuluj
             </Button>
-            <Button onClick={handleBookingSubmit} disabled={isBooking}>
+            <Button className="h-11 w-full sm:w-auto" onClick={handleBookingSubmit} disabled={isBooking}>
               {isBooking ? 'Zapisywanie...' : 'Zarezerwuj'}
             </Button>
           </DialogFooter>
@@ -743,13 +658,21 @@ interface PublicSlotGridProps {
   rangeStart: string
   slotMap: Map<string, SubjectLevelSlot[]>
   onSelect: (slot: SubjectLevelSlot) => void
-  onMultipleSlots: (slots: SubjectLevelSlot[]) => void
 }
 
 const HOURS_START = 8
 const HOURS_END = 21
 
-function PublicSlotGrid({ rangeStart, slotMap, onSelect, onMultipleSlots }: PublicSlotGridProps) {
+function isWithinPublicBookingHours(weekday: DayOfWeek, start: string) {
+  // Pn–Pt: 13:00–21:00, Sb–Nd: 08:00–21:00
+  const hour = parseInt(start.slice(0, 2), 10)
+  const isWeekend = weekday === 6 || weekday === 7
+  const startHour = isWeekend ? 8 : 13
+  const endHour = 21
+  return hour >= startHour && hour < endHour
+}
+
+function PublicSlotGrid({ rangeStart, slotMap, onSelect }: PublicSlotGridProps) {
   const startDate = parseISO(rangeStart)
   const daysToDisplay = useMemo(() => {
     return Array.from({ length: 7 }, (_, index) => {
@@ -760,7 +683,9 @@ function PublicSlotGrid({ rangeStart, slotMap, onSelect, onMultipleSlots }: Publ
     })
   }, [startDate])
 
-  const generateTimeSlots = () => {
+  const [selectedMobileDay, setSelectedMobileDay] = useState(daysToDisplay[0]?.isoDate ?? '')
+
+  const allTimeSlots = useMemo(() => {
     const slots: { start: string; end: string }[] = []
     for (let hour = HOURS_START; hour < HOURS_END; hour++) {
       slots.push({
@@ -769,28 +694,150 @@ function PublicSlotGrid({ rangeStart, slotMap, onSelect, onMultipleSlots }: Publ
       })
     }
     return slots
+  }, [])
+
+  const dayAvailabilityCounts = useMemo(() => {
+    const today = getTodayDate()
+    return Object.fromEntries(
+      daysToDisplay.map((day) => {
+        if (day.isoDate <= today) return [day.isoDate, 0]
+        const count = allTimeSlots.reduce((acc, timeSlot) => {
+          if (!isWithinPublicBookingHours(day.weekday, timeSlot.start)) return acc
+          const key = `${day.isoDate}-${timeSlot.start}`
+          return acc + ((slotMap.get(key)?.length ?? 0) > 0 ? 1 : 0)
+        }, 0)
+        return [day.isoDate, count]
+      })
+    ) as Record<string, number>
+  }, [allTimeSlots, daysToDisplay, slotMap])
+
+  useEffect(() => {
+    if (!daysToDisplay.some((day) => day.isoDate === selectedMobileDay)) {
+      const firstWithSlots = daysToDisplay.find((day) => (dayAvailabilityCounts[day.isoDate] ?? 0) > 0)
+      setSelectedMobileDay(firstWithSlots?.isoDate ?? daysToDisplay[0]?.isoDate ?? '')
+      return
+    }
+
+    const currentCount = dayAvailabilityCounts[selectedMobileDay] ?? 0
+    if (currentCount === 0) {
+      const firstWithSlots = daysToDisplay.find((day) => (dayAvailabilityCounts[day.isoDate] ?? 0) > 0)
+      if (firstWithSlots) {
+        setSelectedMobileDay(firstWithSlots.isoDate)
+      }
+    }
+  }, [daysToDisplay, selectedMobileDay, dayAvailabilityCounts])
+
+  const handleSlotActivate = (availableSlots: SubjectLevelSlot[]) => {
+    if (availableSlots.length === 0) return
+    onSelect(availableSlots[0])
   }
 
-  const allTimeSlots = useMemo(() => generateTimeSlots(), [])
+  const mobileDay = daysToDisplay.find((day) => day.isoDate === selectedMobileDay) ?? daysToDisplay[0]
+  const mobileAvailableSlots = useMemo(() => {
+    if (!mobileDay) return []
+    const today = getTodayDate()
+    if (mobileDay.isoDate <= today) return []
 
-  const isWithinPublicBookingHours = (weekday: DayOfWeek, start: string) => {
-    // Pn–Pt: 13:00–21:00, Sb–Nd: 08:00–21:00
-    const hour = parseInt(start.slice(0, 2), 10)
-    const isWeekend = weekday === 6 || weekday === 7
-    const startHour = isWeekend ? 8 : 13
-    const endHour = 21
-    return hour >= startHour && hour < endHour
-  }
+    return allTimeSlots
+      .filter((timeSlot) => isWithinPublicBookingHours(mobileDay.weekday, timeSlot.start))
+      .map((timeSlot) => {
+        const key = `${mobileDay.isoDate}-${timeSlot.start}`
+        const availableSlots = slotMap.get(key) || []
+        return { timeSlot, availableSlots }
+      })
+      .filter((entry) => entry.availableSlots.length > 0)
+  }, [allTimeSlots, mobileDay, slotMap])
 
   return (
-    <div>
-      <div>
-        <div className="grid grid-cols-8 gap-1 mb-2">
-          <div className="text-sm font-medium text-muted-foreground p-2 text-right">
+    <div className="w-full min-w-0 max-w-full">
+      {/* Mobile: wybór dnia + lista godzin */}
+      <div className="w-full min-w-0 max-w-full space-y-4 md:hidden">
+        <div className="w-full max-w-full overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch]">
+          <div className="flex w-max gap-2 pb-1">
+          {daysToDisplay.map((day) => {
+            const today = getTodayDate()
+            const isPastOrToday = day.isoDate <= today
+            const isSelected = day.isoDate === selectedMobileDay
+            const count = dayAvailabilityCounts[day.isoDate] ?? 0
+
+            return (
+              <button
+                key={day.isoDate}
+                type="button"
+                disabled={isPastOrToday}
+                onClick={() => setSelectedMobileDay(day.isoDate)}
+                className={cn(
+                  'flex min-w-[4.75rem] shrink-0 flex-col items-center rounded-xl border-2 px-3 py-2.5 transition-colors',
+                  isPastOrToday && 'cursor-not-allowed opacity-40',
+                  isSelected
+                    ? 'border-primary bg-primary/10 text-foreground'
+                    : 'border-border bg-background hover:border-primary/50'
+                )}
+              >
+                <span className="text-sm font-semibold">{day.label}</span>
+                <span className="text-xs text-muted-foreground">
+                  {format(parseISO(day.isoDate), 'dd.MM')}
+                </span>
+                {!isPastOrToday && (
+                  <span
+                    className={cn(
+                      'mt-1 text-[10px] font-medium',
+                      count > 0 ? 'text-green-700 dark:text-green-400' : 'text-muted-foreground'
+                    )}
+                  >
+                    {count > 0 ? `${count} wolne` : 'brak'}
+                  </span>
+                )}
+              </button>
+            )
+          })}
+          </div>
+        </div>
+
+        {mobileDay && mobileDay.isoDate <= getTodayDate() ? (
+          <p className="text-sm text-muted-foreground">
+            Na dzisiaj nie możesz rezerwować lekcji. Wybierz inny dzień.
+          </p>
+        ) : mobileAvailableSlots.length === 0 ? (
+          <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+            Brak wolnych godzin w tym dniu. Wybierz inny dzień lub zmień poziom.
+          </p>
+        ) : (
+          <div className="grid w-full min-w-0 grid-cols-2 gap-2 [grid-template-columns:repeat(2,minmax(0,1fr))]">
+            {mobileAvailableSlots.map(({ timeSlot, availableSlots }) => (
+              <button
+                key={`${mobileDay?.isoDate}-${timeSlot.start}`}
+                type="button"
+                onClick={() => handleSlotActivate(availableSlots)}
+                className={cn(
+                  'flex min-h-12 w-full min-w-0 flex-col items-center justify-center overflow-hidden rounded-xl border-2 px-2 py-3 text-center transition-colors',
+                  'border-green-400 bg-green-100 hover:bg-green-200 dark:border-green-600 dark:bg-green-900/30 dark:hover:bg-green-900/50'
+                )}
+              >
+                <span className="text-sm font-semibold tabular-nums sm:text-base">
+                  {timeSlot.start}–{timeSlot.end}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
+          <div className="flex items-center gap-2">
+            <div className="h-5 w-5 rounded border-2 border-green-400 bg-green-100 dark:border-green-600 dark:bg-green-900/30" />
+            <span>Dostępny slot</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Desktop: siatka tygodniowa */}
+      <div className="hidden md:block">
+        <div className="mb-2 grid grid-cols-8 gap-1">
+          <div className="p-2 text-right text-sm font-medium text-muted-foreground">
             Czas
           </div>
           {daysToDisplay.map((day) => (
-            <div key={day.isoDate} className="text-center p-2">
+            <div key={day.isoDate} className="p-2 text-center">
               <div className="text-sm font-medium">{day.label}</div>
               <div className="text-xs text-muted-foreground">
                 {format(parseISO(day.isoDate), 'dd.MM')}
@@ -809,9 +856,8 @@ function PublicSlotGrid({ rangeStart, slotMap, onSelect, onMultipleSlots }: Publ
               {daysToDisplay.map((day) => {
                 const today = getTodayDate()
                 const isPastOrToday = day.isoDate <= today
-
-                // Ukryj interakcję poza dozwolonymi godzinami dla danego dnia
                 const withinHours = isWithinPublicBookingHours(day.weekday, timeSlot.start)
+
                 if (!withinHours || isPastOrToday) {
                   const title = isPastOrToday
                     ? day.isoDate === today
@@ -821,7 +867,7 @@ function PublicSlotGrid({ rangeStart, slotMap, onSelect, onMultipleSlots }: Publ
                   return (
                     <div
                       key={`${day.isoDate}-${timeSlot.start}`}
-                      className="h-6 rounded border-2 border-border bg-muted cursor-not-allowed"
+                      className="h-8 cursor-not-allowed rounded border-2 border-border bg-muted"
                       title={title}
                     />
                   )
@@ -835,58 +881,38 @@ function PublicSlotGrid({ rangeStart, slotMap, onSelect, onMultipleSlots }: Publ
                   return (
                     <div
                       key={key}
-                      className="h-6 rounded border-2 border-border bg-muted cursor-not-allowed"
+                      className="h-8 cursor-not-allowed rounded border-2 border-border bg-muted"
                       title="Slot niedostępny"
                     />
                   )
                 }
 
-                // Jeśli jest tylko jeden slot, kliknij bezpośrednio
-                // Jeśli jest więcej, pokaż pierwszy (użytkownik może wybrać inny w dialogu)
                 const primarySlot = availableSlots[0]
-                const slotCount = availableSlots.length
-                const titleText = slotCount === 1 
-                  ? formatLabel(primarySlot)
-                  : `${slotCount} dostępnych tutorów: ${availableSlots.map(s => s.tutorName || 'Tutor').join(', ')}`
 
                 return (
                   <button
                     key={key}
                     type="button"
-                    onClick={() => {
-                      if (slotCount === 1) {
-                        onSelect(primarySlot)
-                      } else {
-                        // Jeśli jest więcej slotów, pokaż dialog wyboru tutora
-                        onMultipleSlots(availableSlots)
-                      }
-                    }}
+                    onClick={() => handleSlotActivate(availableSlots)}
                     className={cn(
-                      'h-6 rounded border-2 transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1 cursor-pointer',
-                      'bg-green-100 dark:bg-green-900/30 border-green-400 dark:border-green-600 hover:bg-green-200 dark:hover:bg-green-900/50',
-                      slotCount > 1 && 'relative'
+                      'h-8 cursor-pointer rounded border-2 transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1',
+                      'border-green-400 bg-green-100 hover:bg-green-200 dark:border-green-600 dark:bg-green-900/30 dark:hover:bg-green-900/50'
                     )}
-                    title={titleText}
-                  >
-                    {slotCount > 1 && (
-                      <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] font-semibold text-primary-foreground">
-                        {slotCount}
-                      </span>
-                    )}
-                  </button>
+                    title={formatLabel(primarySlot)}
+                  />
                 )
               })}
             </div>
           ))}
         </div>
 
-        <div className="flex items-center gap-4 mt-4 text-sm text-muted-foreground">
+        <div className="mt-4 flex items-center gap-4 text-sm text-muted-foreground">
           <div className="flex items-center gap-2">
-            <div className="w-6 h-6 bg-green-100 dark:bg-green-900/30 border-2 border-green-400 dark:border-green-600 rounded" />
+            <div className="h-6 w-6 rounded border-2 border-green-400 bg-green-100 dark:border-green-600 dark:bg-green-900/30" />
             <span>Dostępny slot</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-6 h-6 bg-muted border-2 border-border rounded" />
+            <div className="h-6 w-6 rounded border-2 border-border bg-muted" />
             <span>Niedostępny</span>
           </div>
         </div>

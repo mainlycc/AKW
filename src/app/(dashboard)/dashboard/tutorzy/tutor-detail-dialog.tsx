@@ -24,6 +24,7 @@ interface TutorWithStats {
   full_name: string
   email: string
   phone: string | null
+  messenger_url?: string | null
   bio: string | null
   hourly_rate: number | null
   public_booking_enabled?: boolean | null
@@ -53,6 +54,7 @@ export function TutorDetailDialog({ open, onClose, tutor, tutorSubjects }: Tutor
   const [formData, setFormData] = useState({
     full_name: '',
     phone: '',
+    messenger_url: '',
     bio: '',
     hourly_rate: '',
     public_booking_enabled: true,
@@ -63,6 +65,7 @@ export function TutorDetailDialog({ open, onClose, tutor, tutorSubjects }: Tutor
       setFormData({
         full_name: tutor.full_name,
         phone: tutor.phone || '',
+        messenger_url: tutor.messenger_url || '',
         bio: tutor.bio || '',
         hourly_rate: tutor.hourly_rate?.toString() || '',
         public_booking_enabled: tutor.public_booking_enabled ?? true,
@@ -80,6 +83,7 @@ export function TutorDetailDialog({ open, onClose, tutor, tutorSubjects }: Tutor
       await updateTutorDetails(tutor.id, {
         full_name: formData.full_name,
         phone: formData.phone.trim(),
+        messenger_url: formData.messenger_url.trim(),
         bio: formData.bio.trim(),
         hourly_rate: formData.hourly_rate ? parseFloat(formData.hourly_rate) : null,
         public_booking_enabled: formData.public_booking_enabled,
@@ -223,6 +227,18 @@ export function TutorDetailDialog({ open, onClose, tutor, tutorSubjects }: Tutor
                 onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                 disabled={loading}
                 placeholder="+48 123 456 789"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="messenger_url">Link Messenger</Label>
+              <Input
+                id="messenger_url"
+                type="url"
+                value={formData.messenger_url}
+                onChange={(e) => setFormData({ ...formData, messenger_url: e.target.value })}
+                disabled={loading}
+                placeholder="https://m.me/..."
               />
             </div>
 

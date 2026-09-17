@@ -202,12 +202,6 @@ export async function getTutorOpenSlots({
     return []
   }
 
-  const { data: tutorProfile } = await supabase
-    .from('profiles')
-    .select('full_name')
-    .eq('id', tutorId)
-    .single()
-
   const { data: templateSlots, error: slotsError } = await supabase
     .from('tutor_availability_slots')
     .select('day_of_week, start_time, end_time, is_available')
@@ -284,7 +278,6 @@ export async function getTutorOpenSlots({
   return baseSlots.map((slot) => ({
     ...slot,
     tutorId,
-    tutorName: tutorProfile?.full_name,
   }))
 }
 
@@ -296,7 +289,6 @@ export interface GetSubjectLevelSlotsParams {
 
 export interface SubjectLevelSlot extends CalendarSlot {
   tutorId: string
-  tutorName?: string
 }
 
 export async function getSubjectLevelOpenSlots({
@@ -400,7 +392,6 @@ export async function getSubjectLevelOpenSlots({
         slots.push({
           ...slot,
           tutorId: slot.tutorId,
-          tutorName: slot.tutorName,
         })
       } else {
         console.warn('[getSubjectLevelOpenSlots] Skipping slot with invalid tutorId:', slot.tutorId)

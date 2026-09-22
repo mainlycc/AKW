@@ -1980,7 +1980,7 @@ async function handleBookingPaymentCompletion(bookingRequestId: string): Promise
     const [tutorData, subjectData, levelData] = await Promise.all([
       admin
         .from('profiles')
-        .select('full_name, email')
+        .select('full_name, email, messenger_url')
         .eq('id', booking.tutor_id)
         .single(),
       booking.subject_id
@@ -2086,6 +2086,7 @@ async function handleBookingPaymentCompletion(bookingRequestId: string): Promise
           date: formattedDate,
           time: timeRange,
           duration: SLOT_DURATION_MINUTES,
+          messengerUrl: tutorData.data.messenger_url,
         })
 
         if (!emailResult.success) {

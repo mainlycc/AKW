@@ -20,7 +20,7 @@ export function generateAvailabilityReminderEmail(data: AvailabilityReminderEmai
   <title>${AVAILABILITY_LABELS.reminderAvailabilityTitle} - Akademia Wiedzy</title>
 </head>
 <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-  <div style="background: linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+  <div style="background: #0ea5e9; padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
     <h1 style="color: white; margin: 0;">Akademia Wiedzy</h1>
   </div>
   

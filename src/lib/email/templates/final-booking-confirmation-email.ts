@@ -6,11 +6,13 @@ export interface FinalBookingConfirmationEmailData {
   date: string // Format: "15 stycznia 2025"
   time: string // Format: "14:00-15:00"
   duration: number // w minutach
+  messengerUrl?: string | null
 }
 
 export function generateFinalBookingConfirmationEmail(data: FinalBookingConfirmationEmailData) {
-  const { studentName, tutorName, subject, level, date, time, duration } = data
+  const { studentName, tutorName, subject, level, date, time, duration, messengerUrl } = data
   const hours = duration / 60
+  const contactUrl = messengerUrl?.trim() || 'https://www.facebook.com'
 
   return `
 <!DOCTYPE html>
@@ -21,7 +23,7 @@ export function generateFinalBookingConfirmationEmail(data: FinalBookingConfirma
   <title>Potwierdzenie rezerwacji - Akademia Wiedzy</title>
 </head>
 <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-  <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+  <div style="background: #0ea5e9; padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
     <h1 style="color: white; margin: 0;">Akademia Wiedzy</h1>
   </div>
   
@@ -72,9 +74,22 @@ export function generateFinalBookingConfirmationEmail(data: FinalBookingConfirma
       </p>
     </div>
     
-    <p style="margin-top: 30px;">
-      Prosimy o punktualne przybycie na zajęcia. W razie potrzeby zmiany terminu lub pytań, prosimy o kontakt z nami jak najszybciej.
-    </p>
+    <div style="background: white; border: 1px solid #e0e0e0; border-radius: 8px; padding: 20px; margin: 20px 0;">
+      <p style="margin: 0 0 12px 0;">
+        Prosimy o punktualne przybycie na zajęcia. Jeżeli chcą Państwo przełożyć lekcję, prosimy o poinformowanie korepetytora <strong>1 godzinę</strong> przed lekcją — wówczas lekcję bezpłatnie przekładamy.
+      </p>
+      <p style="margin: 0 0 12px 0;">
+        Lekcje przeprowadzi korepetytor z naszego zespołu. Prosimy, aby Państwa dziecko skontaktowało się z nim na Messengerze — został poinformowany/a i czeka na wiadomość. Wszelkie sprawy związane ze współpracą są omawiane ze szkołą.
+      </p>
+      <p style="text-align: center; margin: 16px 0;">
+        <a href="${contactUrl}" style="display: inline-block; background: #0084ff; color: white; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-weight: bold;">
+          Napisz na Messengerze
+        </a>
+      </p>
+      <p style="margin: 0;">
+        Pierwsza lekcja jest próbna — jeśli dziecko nie jest zadowolone z danego korepetytora, prosimy o informację. Wówczas organizujemy bezpłatną lekcję z innym nauczycielem, aby sprostać wyzwaniu.
+      </p>
+    </div>
     
     <p style="margin-top: 20px; color: #666; font-size: 14px;">
       Do zobaczenia!<br>
@@ -90,4 +105,3 @@ export function generateFinalBookingConfirmationEmail(data: FinalBookingConfirma
 </html>
   `.trim()
 }
-

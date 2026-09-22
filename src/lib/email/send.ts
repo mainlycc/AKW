@@ -114,6 +114,7 @@ export async function sendBookingConfirmationEmail({
   date,
   time,
   duration,
+  messengerUrl,
 }: SendBookingConfirmationEmailParams): Promise<SendEmailResult> {
   try {
     // Szczegółowe sprawdzenie zmiennej środowiskowej
@@ -150,6 +151,7 @@ export async function sendBookingConfirmationEmail({
       date,
       time,
       duration,
+      messengerUrl,
     })
     
     const { data, error } = await resend.emails.send({
@@ -202,6 +204,7 @@ export async function sendFinalBookingConfirmationEmail({
   date,
   time,
   duration,
+  messengerUrl,
 }: SendFinalBookingConfirmationEmailParams): Promise<SendEmailResult> {
   try {
     // Szczegółowe sprawdzenie zmiennej środowiskowej
@@ -238,6 +241,7 @@ export async function sendFinalBookingConfirmationEmail({
       date,
       time,
       duration,
+      messengerUrl,
     })
     
     const { data, error } = await resend.emails.send({

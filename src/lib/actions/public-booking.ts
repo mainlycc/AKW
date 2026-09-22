@@ -1010,7 +1010,7 @@ export async function bookPublicSlot(payload: PublicBookingPayload) {
   const [tutorData, subjectData, levelData] = await Promise.all([
     admin
       .from('profiles')
-      .select('full_name, email')
+      .select('full_name, email, messenger_url')
       .eq('id', payload.tutorId)
       .single(),
     admin
@@ -1083,6 +1083,7 @@ export async function bookPublicSlot(payload: PublicBookingPayload) {
         date: formattedDate,
         time: timeRange,
         duration: SLOT_DURATION_MINUTES,
+        messengerUrl: tutorData.data.messenger_url,
       })
 
       if (!emailResult.success) {

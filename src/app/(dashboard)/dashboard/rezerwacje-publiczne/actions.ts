@@ -105,7 +105,7 @@ export async function updateBookingStatus(bookingId: string, status: BookingStat
           : Promise.resolve({ data: null }),
         admin
           .from('profiles')
-          .select('full_name, email')
+          .select('full_name, email, messenger_url')
           .eq('id', booking.tutor_id)
           .single(),
       ])
@@ -185,6 +185,7 @@ export async function updateBookingStatus(bookingId: string, status: BookingStat
               date: formattedDate,
               time: timeRange,
               duration: SLOT_DURATION_MINUTES,
+              messengerUrl: tutorData.data.messenger_url,
             })
 
             if (!emailResult.success) {
